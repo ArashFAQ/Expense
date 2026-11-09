@@ -595,60 +595,108 @@ fun AccountsSection() {
     var words by remember { mutableStateOf(Banks.savingsWords(ctx).joinToString("، ")) }
     var turningOff by remember { mutableStateOf<String?>(null) }
     var working by remember { mutableStateOf(false) }
+    var q by remember { mutableStateOf("") }
+    var onlyOn by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<String?>(null) }
 
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = cardColors()) {
-        Column(Modifier.padding(16.dp)) {
-            Text("حساب‌ها", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(
-                "پیامک‌های کدام بانک‌ها خوانده شود، و برای هر بانک برداشت‌ها خرج و واریزها درآمد حساب شوند یا نه. " +
-                    "انتقال بین دو حساب خودت (مثلا ویپاد به بلو) همیشه خودکار تشخیص داده می‌شود و حساب نمی‌شود.",
-                style = MaterialTheme.typography.bodySmall
-            )
-            if (working) Text("در حال انجام…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-            Banks.all(ctx).forEach { b ->
-                key(tick, b) {
-                    val on = Banks.enabled(ctx, b)
-                    Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(Banks.name(b), Modifier.weight(1f), fontWeight = FontWeight.Bold)
-                        Text(
-                            if (on) "خوانده می‌شود" else "خاموش",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Switch(checked = on, enabled = !working, onCheckedChange = { v ->
-                            if (!v) turningOff = b
-                            else {
-                                working = true
-                                scope.launch { Banks.setEnabled(ctx, b, true); working = false; tick++ }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            "روی هر بانک بزن تا مشخص کنی برداشت‌ها خرج و واریزها درآمد حساب شوند یا نه. " +
+                "با کلید کنار هر بانک، خواندن پیامک‌هایش را روشن یا خاموش کن.",
+            style = MaterialTheme.typography.bodySmall
+        )
+        OutlinedTextField(
+            value = q, onValueChange = { q = it },
+            placeholder = { Text("جستجوی بانک") },
+            leadingIcon = { Icon(Icons.Filled.Search, null) },
+            singleLine = true, modifier = Modifier.fillMaxWidth()
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = !onlyOn, onClick = { onlyOn = false }, label = { Text("همه") })
+            FilterChip(selected = onlyOn, onClick = { onlyOn = true }, label = { Text("فقط روشن‌ها") })
+        }
+        if (working) Text("در حال انجام…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+
+        key(tick) {
+            val banks = Banks.all(ctx).filter { b ->
+                (q.isBlank() || Banks.name(b).contains(q.trim())) && (!onlyOn || Banks.enabled(ctx, b))
+            }
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = cardColors()) {
+                Column {
+                    if (banks.isEmpty()) Text("بانکی پیدا نشد.", Modifier.padding(16.dp))
+                    banks.forEachIndexed { i, b ->
+                        val on = Banks.enabled(ctx, b)
+                        if (i > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = on) { editing = b }
+                                .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(Banks.name(b), fontWeight = FontWeight.Bold)
+                                Text(
+                                    if (!on) "خاموش"
+                                    else "برداشت: " + (if (Banks.counts(ctx, b, true)) "خرج" else "حساب نمی‌شود") +
+                                        "  ·  واریز: " + (if (Banks.counts(ctx, b, false)) "درآمد" else "حساب نمی‌شود"),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        })
-                    }
-                    if (on) {
-                        RoleSwitch("برداشت‌ها خرج حساب شوند", Banks.counts(ctx, b, true)) { v ->
-                            scope.launch { Banks.setCounts(ctx, b, true, v); tick++ }
-                        }
-                        RoleSwitch("واریزها درآمد حساب شوند", Banks.counts(ctx, b, false)) { v ->
-                            scope.launch { Banks.setCounts(ctx, b, false, v); tick++ }
+                            Switch(checked = on, enabled = !working, onCheckedChange = { v ->
+                                if (!v) turningOff = b
+                                else {
+                                    working = true
+                                    scope.launch { Banks.setEnabled(ctx, b, true); working = false; tick++ }
+                                }
+                            })
                         }
                     }
                 }
             }
-            HorizontalDivider(Modifier.padding(vertical = 14.dp))
-            Text("پس‌انداز و سرمایه‌گذاری", fontWeight = FontWeight.Bold)
-            Text(
-                "برداشتی که قبلش رمز پویا با یکی از این اسم‌ها آمده باشد، به‌جای خرج «پس‌انداز» ثبت می‌شود. با «،» جدا کن.",
-                style = MaterialTheme.typography.bodySmall
-            )
-            Spacer(Modifier.height(6.dp))
-            OutlinedTextField(
-                value = words,
-                onValueChange = { words = it; Banks.setSavingsWords(ctx, it) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
         }
+
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = cardColors()) {
+            Column(Modifier.padding(16.dp)) {
+                Text("پس‌انداز و سرمایه‌گذاری", fontWeight = FontWeight.Bold)
+                Text(
+                    "برداشتی که قبلش رمز پویا با یکی از این اسم‌ها آمده باشد، به‌جای خرج «پس‌انداز» ثبت می‌شود. با «،» جدا کن.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = words,
+                    onValueChange = { words = it; Banks.setSavingsWords(ctx, it) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+
+    editing?.let { b ->
+        AlertDialog(
+            onDismissRequest = { editing = null; tick++ },
+            title = { Text(Banks.name(b)) },
+            text = {
+                Column {
+                    RoleSwitch("برداشت‌ها خرج حساب شوند", Banks.counts(ctx, b, true)) { v ->
+                        scope.launch { Banks.setCounts(ctx, b, true, v) }
+                    }
+                    RoleSwitch("واریزها درآمد حساب شوند", Banks.counts(ctx, b, false)) { v ->
+                        scope.launch { Banks.setCounts(ctx, b, false, v) }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "انتقال بین دو حساب خودت در دو بانک مختلف همیشه خودکار تشخیص داده می‌شود و حساب نمی‌شود.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { editing = null; tick++ }) { Text("بستن") } }
+        )
     }
 
     turningOff?.let { b ->

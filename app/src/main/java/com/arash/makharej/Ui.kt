@@ -15,6 +15,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -1503,6 +1504,18 @@ fun ColorPickerDialog(current: Int, onPick: (Int) -> Unit, onDismiss: () -> Unit
     )
 }
 
+class SettingsPage(val id: String, val title: String, val subtitle: String)
+
+val SettingsPages = listOf(
+    SettingsPage("cats", "دسته‌ها", "افزودن، ویرایش، رنگ و حذف دسته‌ها"),
+    SettingsPage("banks", "بانک‌ها و حساب‌ها", "کدام بانک‌ها خوانده شوند، خرج و درآمد، پس‌انداز"),
+    SettingsPage("backup", "پشتیبان‌گیری", "Google Drive، فایل پشتیبان، بازگردانی"),
+    SettingsPage("theme", "ظاهر", "حالت روشن و تیره، رنگ اصلی"),
+    SettingsPage("samples", "نمونه پیامک بانک‌ها", "آموزش بانک جدید، وضعیت همه‌ی بانک‌ها"),
+    SettingsPage("misc", "پیامک‌ها و کار در پس‌زمینه", "خواندن دوباره‌ی پیامک‌ها، Autostart و باتری"),
+    SettingsPage("update", "به‌روزرسانی اپ", "نسخه‌ی " + Fa.toFa(BuildConfig.VERSION_CODE.toString())),
+)
+
 @Composable
 fun SettingsScreen(cats: List<Category>, db: AppDb) {
     val ctx = LocalContext.current
@@ -1511,16 +1524,47 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
     var renaming by remember { mutableStateOf<Category?>(null) }
     var deleting by remember { mutableStateOf<Category?>(null) }
     var coloring by remember { mutableStateOf<Category?>(null) }
+    var page by rememberSaveable { mutableStateOf("") }
+    BackHandler(enabled = page != "") { page = "" }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item { UpdateSection() }
-        item { ThemeSection() }
-        item { BackupSection() }
-        item { AccountsSection() }
-        item { SamplesSection() }
+        if (page != "") item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { page = "" }) { Icon(Icons.Filled.KeyboardArrowRight, "بازگشت") }
+                Text(
+                    SettingsPages.firstOrNull { it.id == page }?.title ?: "",
+                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold
+                )
+            }
+        }
+        when (page) {
+            "" -> items(SettingsPages, key = { it.id }) { pg ->
+                Card(
+                    onClick = { page = pg.id },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp), colors = cardColors()
+                ) {
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(pg.title, fontWeight = FontWeight.Bold)
+                            Text(
+                                pg.subtitle, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(Icons.Filled.KeyboardArrowLeft, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            "update" -> item { UpdateSection() }
+            "theme" -> item { ThemeSection() }
+            "backup" -> item { BackupSection() }
+            "banks" -> item { AccountsSection() }
+            "samples" -> item { SamplesSection() }
+            "cats" -> {
         item {
             Column {
                 Text(
@@ -1571,12 +1615,14 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
                 ) { Text("افزودن") }
             }
         }
+            }
+            "misc" -> {
         item {
-            Card(Modifier.fillMaxWidth().padding(top = 8.dp), shape = RoundedCornerShape(18.dp), colors = cardColors()) {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = cardColors()) {
                 Column(Modifier.padding(16.dp)) {
                     Text("پیامک‌های قبلی", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
-                        "پیامک‌های بلو که الان در گوشی هست را می‌خواند. موارد تکراری دوباره ثبت نمی‌شوند.",
+                        "پیامک‌های بانکی که الان در گوشی هست را دوباره می‌خواند. موارد تکراری دوباره ثبت نمی‌شوند.",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(Modifier.height(8.dp))
@@ -1587,7 +1633,7 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
                             val n = try { InboxImporter.run(ctx) } catch (_: Exception) { 0 }
                             Toast.makeText(ctx, "${Fa.toFa(n.toString())} تراکنش جدید ثبت شد", Toast.LENGTH_SHORT).show()
                         }
-                    }) { Text("خواندن پیامک‌های بلو") }
+                    }) { Text("خواندن پیامک‌های بانکی") }
                 }
             }
         }
@@ -1613,6 +1659,8 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
                         }) { Text("بهینه‌سازی باتری") }
                     }
                 }
+            }
+        }
             }
         }
     }
