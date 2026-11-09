@@ -111,7 +111,8 @@ data class Parsed(
     val balance: Long?,
     val jDate: String,
     val time: String,
-    val ym: Int
+    val ym: Int,
+    val bank: String = Banks.BLU
 )
 
 /**
@@ -133,6 +134,7 @@ object BluParser {
 
     fun normalize(s: String): String =
         Fa.toEn(s).replace(invisible, "").replace('٬', ',').replace('\r', '\n')
+            .replace('ي', 'ی').replace('ك', 'ک')
             .replace(' ', ' ').replace(' ', ' ').replace(' ', ' ')
 
     private val otpAmountRe = Regex("""مبلغ[^\d\n]{0,15}(\d[\d,]*)""")
@@ -142,14 +144,18 @@ object BluParser {
      */
     fun parseOtp(body: String): Otp? {
         val t = normalize(body).trim()
+        if (!t.contains("رمز")) return null
         val lines = t.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        if (lines.firstOrNull() != "بلو" || !t.contains("رمز")) return null
-        val i = lines.indexOfFirst { it == "خرید" || it == "پرداخت" }
-        val merchant = lines.getOrNull(i + 1)
-            ?.takeIf { i >= 0 && !it.startsWith("مبلغ") && !it.contains("رمز") }
-            ?: return null
+        // «خرید» یا «خرید از» در یک خط و اسم مقصد در خط بعد؛ یا «خرید از X» در یک خط
+        var merchant: String? = null
+        val i = lines.indexOfFirst { it == "خرید" || it == "خرید از" || it == "پرداخت" || it == "پرداخت به" }
+        if (i >= 0) merchant = lines.getOrNull(i + 1)
+        if (merchant == null) {
+            lines.firstOrNull { it.startsWith("خرید از ") }?.let { merchant = it.removePrefix("خرید از ").trim() }
+        }
+        val m = merchant?.takeIf { it.isNotBlank() && !it.startsWith("مبلغ") && !it.contains("رمز") } ?: return null
         val amount = otpAmountRe.find(t)?.groupValues?.get(1)?.replace(",", "")?.toLongOrNull() ?: return null
-        return Otp(merchant, amount)
+        return Otp(m, amount)
     }
 
     fun parse(body: String, smsTs: Long): Parsed? {

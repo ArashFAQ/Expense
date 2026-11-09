@@ -36,7 +36,11 @@ data class Tx(
     /** انتقال به حساب خودم: در جمع‌ها و گزارش‌ها حساب نمی‌شود */
     @ColumnInfo(defaultValue = "0") val excluded: Boolean = false,
     /** برای جلوگیری از ثبت تکراری یک پیامک */
-    val dedupKey: String? = null
+    val dedupKey: String? = null,
+    /** BLU / MELLAT / EN / PASARGAD / MANUAL */
+    val bank: String = Banks.BLU,
+    /** ۰ عادی، ۱ انتقال بین حساب‌ها، ۲ طبق نقش حساب، ۳ پس‌انداز — ببین Banks */
+    @ColumnInfo(defaultValue = "0") val reason: Int = 0
 )
 
 @Entity
@@ -89,10 +93,28 @@ interface TxDao {
     @Query("UPDATE tx SET categoryId = :cat WHERE id = :id")
     suspend fun setCategory(id: Long, cat: Long?)
 
-    @Query("UPDATE tx SET excluded = :ex WHERE id = :id")
+    @Query("UPDATE tx SET excluded = :ex, reason = 0 WHERE id = :id")
     suspend fun setExcluded(id: Long, ex: Boolean)
 
-    @Query("UPDATE tx SET categoryId = :cat, note = :note, excluded = :ex, amount = :amount WHERE id = :id")
+    @Query("UPDATE tx SET excluded = 1, reason = 2 WHERE bank = :bank AND isExpense = :e AND excluded = 0 AND reason = 0")
+    suspend fun setRoleIgnore(bank: String, e: Boolean)
+
+    @Query("UPDATE tx SET excluded = 0, reason = 0 WHERE bank = :bank AND isExpense = :e AND reason = 2")
+    suspend fun clearRoleIgnore(bank: String, e: Boolean)
+
+    @Query(
+        "SELECT * FROM tx WHERE isExpense = :e AND bank != :notBank AND bank != 'MANUAL' AND reason NOT IN (1, 3) " +
+            "AND ts BETWEEN :from AND :to"
+    )
+    suspend fun transferCandidates(e: Boolean, notBank: String, from: Long, to: Long): List<Tx>
+
+    @Query("UPDATE tx SET excluded = 1, reason = 1 WHERE id IN (:ids)")
+    suspend fun markTransfer(ids: List<Long>)
+
+    @Query(
+        "UPDATE tx SET categoryId = :cat, note = :note, amount = :amount, " +
+            "reason = CASE WHEN excluded = :ex THEN reason ELSE 0 END, excluded = :ex WHERE id = :id"
+    )
     suspend fun update(id: Long, cat: Long?, note: String, ex: Boolean, amount: Long)
 
     @Query("DELETE FROM tx WHERE id = :id")
@@ -266,7 +288,26 @@ private val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
-@Database(entities = [Tx::class, Category::class], version = 5, exportSchema = false)
+/** نسخه‌ی ۵ ← ۶: چند بانک، نقش حساب‌ها، انتقال بین حساب‌ها، پس‌انداز؛ دسته‌ی «قسط» */
+private val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE tx ADD COLUMN bank TEXT NOT NULL DEFAULT 'BLU'")
+        db.execSQL("ALTER TABLE tx ADD COLUMN reason INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE tx SET bank = 'MANUAL' WHERE dedupKey LIKE 'manual-%'")
+        var exists = false
+        db.query("SELECT COUNT(*) FROM Category WHERE name = 'قسط'").use { c -> if (c.moveToFirst()) exists = c.getInt(0) > 0 }
+        if (!exists) {
+            var sort = 0
+            db.query("SELECT COALESCE(MAX(sort), 0) + 1 FROM Category").use { c -> if (c.moveToFirst()) sort = c.getInt(0) }
+            db.execSQL(
+                "INSERT INTO Category(name, sort, color) VALUES(?, ?, ?)",
+                arrayOf<Any>("قسط", sort, 0xFF6D4C41.toInt())
+            )
+        }
+    }
+}
+
+@Database(entities = [Tx::class, Category::class], version = 6, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun tx(): TxDao
     abstract fun cat(): CatDao
@@ -274,7 +315,7 @@ abstract class AppDb : RoomDatabase() {
     companion object {
         val DEFAULT_CATS = listOf(
             "خوراک و رستوران", "سوپرمارکت", "رفت‌وآمد", "خرید", "قبض و شارژ",
-            "سلامت", "تفریح", "خانه", "سایر"
+            "سلامت", "تفریح", "خانه", "قسط", "سایر"
         )
 
         @Volatile
@@ -282,7 +323,7 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "makharej.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         DEFAULT_CATS.forEachIndexed { i, n ->

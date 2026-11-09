@@ -180,7 +180,7 @@ private fun openAppSettings(ctx: Context) {
 
 internal fun List<Tx>.counted() = filter { !it.excluded }
 
-private const val IMPORT_VERSION = 5
+private const val IMPORT_VERSION = 6
 
 // ================================================================ Activities
 
@@ -265,6 +265,7 @@ fun MainScreen(startTab: Int = 0) {
     LaunchedEffect(Unit) {
         val pr = prefs(ctx)
         if (hasPerm(ctx, Manifest.permission.READ_SMS) && pr.getInt("importVer", 0) < IMPORT_VERSION) {
+            try { Banks.applyAll(ctx) } catch (_: Exception) {}
             try { InboxImporter.run(ctx) } catch (_: Exception) {}
             pr.edit().putInt("importVer", IMPORT_VERSION).putBoolean("imported", true).apply()
         }
@@ -520,6 +521,9 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
     val title: String
     val bg: Color
     when {
+        t.excluded && t.reason == 1 -> { title = "انتقال بین حساب‌ها"; bg = neutral }
+        t.excluded && t.reason == 3 -> { title = "پس‌انداز"; bg = neutral }
+        t.excluded && t.reason == 2 -> { title = "حساب نمی‌شود"; bg = neutral }
         t.excluded -> { title = "حساب خودم"; bg = neutral }
         cat != null -> { title = cat.name; bg = cat.uiColor() }
         !t.isExpense -> { title = "واریز"; bg = neutral }
@@ -544,7 +548,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.Bold, color = titleColor)
                 Text(
-                    Fa.toFa(t.time) + if (t.note.isNotEmpty()) "  ·  ${t.note}" else "",
+                    Fa.toFa(t.time) + "  ·  " + Banks.name(t.bank) + if (t.note.isNotEmpty()) "  ·  ${t.note}" else "",
                     style = MaterialTheme.typography.bodySmall,
                     color = fgSub,
                     maxLines = 1, overflow = TextOverflow.Ellipsis
@@ -762,7 +766,8 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                                 ts = ts,
                                 categoryId = sel,
                                 note = note.trim(),
-                                dedupKey = "manual-$now"
+                                dedupKey = "manual-$now",
+                                bank = Banks.MANUAL
                             )
                             scope.launch { db.tx().insert(tx) }
                             onClose()
@@ -813,7 +818,7 @@ fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: 
     var onlyUncat by rememberSaveable { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Tx?>(null) }
     val catById = cats.associateBy { it.id }
-    val month = txs.filter { it.ym == ym && it.isExpense }
+    val month = txs.filter { it.ym == ym && it.isExpense && it.reason != 2 }
     val counted = month.counted()
     val uncat = counted.count { it.categoryId == null }
     val shown = if (onlyUncat) month.filter { it.categoryId == null && !it.excluded } else month
@@ -857,7 +862,7 @@ fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: 
 fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: () -> Unit, onSearch: () -> Unit, onYm: (Int) -> Unit) {
     var editing by remember { mutableStateOf<Tx?>(null) }
     val catById = cats.associateBy { it.id }
-    val month = txs.filter { it.ym == ym && !it.isExpense }
+    val month = txs.filter { it.ym == ym && !it.isExpense && it.reason != 2 }
     val counted = month.counted()
 
     LazyColumn(
@@ -1106,6 +1111,8 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
                     Text("آمار ${Fa.monthName(ym)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     StatLine("جمع خرج", Fa.toman(totalOut), ExpenseColor)
                     StatLine("جمع واریزی", Fa.toman(totalIn), IncomeColor)
+                    val saved = txs.filter { it.ym == ym && it.reason == 3 }.sumOf { it.amount }
+                    if (saved > 0) StatLine("پس‌انداز (صندوق)", Fa.toman(saved), MaterialTheme.colorScheme.primary)
                     StatLine(
                         "مانده‌ی ماه (واریزی − خرج)",
                         Fa.toman(kotlin.math.abs(totalIn - totalOut)),
@@ -1280,7 +1287,8 @@ fun TxEditor(
             )
         }
         Text(
-            Fa.dayTitle(tx.jDate) + "  ·  " + Fa.toFa(tx.time) + "  ·  " + if (tx.isExpense) "برداشت" else "واریز",
+            Fa.dayTitle(tx.jDate) + "  ·  " + Fa.toFa(tx.time) + "  ·  " + (if (tx.isExpense) "برداشت" else "واریز") +
+                "  ·  " + Banks.name(tx.bank),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -1320,7 +1328,15 @@ fun TxEditor(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("انتقال به حساب خودم", fontWeight = FontWeight.SemiBold)
+                Text(
+                    when {
+                        excluded && tx.reason == 1 -> "انتقال بین حساب‌های خودم"
+                        excluded && tx.reason == 2 -> "حساب نمی‌شود (نقش حساب)"
+                        excluded && tx.reason == 3 -> "پس‌انداز (صندوق)"
+                        else -> "انتقال به حساب خودم"
+                    },
+                    fontWeight = FontWeight.SemiBold
+                )
                 Text(
                     "در جمع‌ها و گزارش‌ها حساب نمی‌شود",
                     style = MaterialTheme.typography.bodySmall,
@@ -1484,6 +1500,7 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
     ) {
         item { UpdateSection() }
         item { BackupSection() }
+        item { AccountsSection() }
         item {
             Column {
                 Text(

@@ -40,6 +40,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.key
 import androidx.activity.result.IntentSenderRequest
 import android.content.IntentSender
 import com.google.android.gms.auth.api.identity.Identity
@@ -534,6 +536,64 @@ fun DrivePart(busy: Boolean, setBusy: (Boolean) -> Unit, onRestoreContent: (Back
             },
             confirmButton = { TextButton(onClick = { files = null }) { Text("بستن") } }
         )
+    }
+}
+
+// ================================================================ Accounts (roles)
+
+@Composable
+fun AccountsSection() {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var tick by remember { mutableIntStateOf(0) }
+    var words by remember { mutableStateOf(Banks.savingsWords(ctx).joinToString("، ")) }
+
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = cardColors()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("حساب‌ها", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "برای هر بانک مشخص کن برداشت‌ها خرج و واریزها درآمد حساب شوند یا نه. " +
+                    "انتقال بین دو حساب خودت (مثلا ویپاد به بلو) همیشه خودکار تشخیص داده می‌شود و حساب نمی‌شود.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Banks.all.forEach { b ->
+                key(tick, b) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(Banks.name(b), fontWeight = FontWeight.Bold)
+                    RoleSwitch("برداشت‌ها خرج حساب شوند", Banks.counts(ctx, b, true)) { on ->
+                        scope.launch { Banks.setCounts(ctx, b, true, on); tick++ }
+                    }
+                    RoleSwitch("واریزها درآمد حساب شوند", Banks.counts(ctx, b, false)) { on ->
+                        scope.launch { Banks.setCounts(ctx, b, false, on); tick++ }
+                    }
+                }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 14.dp))
+            Text("پس‌انداز و سرمایه‌گذاری", fontWeight = FontWeight.Bold)
+            Text(
+                "برداشتی که قبلش رمز پویا با یکی از این اسم‌ها آمده باشد، به‌جای خرج «پس‌انداز» ثبت می‌شود. با «،» جدا کن.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(
+                value = words,
+                onValueChange = { words = it; Banks.setSavingsWords(ctx, it) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun RoleSwitch(label: String, initial: Boolean, onChange: (Boolean) -> Unit) {
+    var on by remember { mutableStateOf(initial) }
+    Row(
+        Modifier.fillMaxWidth().clickable { on = !on; onChange(on) }.padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Switch(checked = on, onCheckedChange = { on = it; onChange(it) })
     }
 }
 

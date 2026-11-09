@@ -181,6 +181,7 @@ object Backup {
                     .put("categoryId", t.categoryId ?: JSONObject.NULL)
                     .put("note", t.note).put("raw", t.raw).put("excluded", t.excluded)
                     .put("dedupKey", t.dedupKey ?: JSONObject.NULL)
+                    .put("bank", t.bank).put("reason", t.reason)
             )
         }
         JSONObject()
@@ -215,7 +216,9 @@ object Backup {
                 note = t.optString("note"),
                 raw = t.optString("raw"),
                 excluded = t.optBoolean("excluded"),
-                dedupKey = if (t.isNull("dedupKey")) null else t.getString("dedupKey")
+                dedupKey = if (t.isNull("dedupKey")) null else t.getString("dedupKey"),
+                bank = t.optString("bank", Banks.BLU).ifEmpty { Banks.BLU },
+                reason = t.optInt("reason", 0)
             )
         }
         return Content(cats, txs)
@@ -349,17 +352,25 @@ object Excel {
         val catName = cats.associate { it.id to it.name }
         val sorted = txs.sortedBy { it.ts }
 
-        val head = listOf("تاریخ", "ساعت", "نوع", "مبلغ (تومان)", "دسته", "توضیح", "حساب خودم").map { Cell(it, 2) }
+        val head = listOf("تاریخ", "ساعت", "بانک", "نوع", "مبلغ (تومان)", "دسته", "توضیح", "وضعیت").map { Cell(it, 2) }
         val rows1 = mutableListOf(listOf(Cell(title, 2)), emptyList(), head)
         sorted.forEach { t ->
             rows1.add(
                 listOf(
-                    Cell(t.jDate), Cell(t.time),
+                    Cell(t.jDate), Cell(t.time), Cell(Banks.name(t.bank)),
                     Cell(if (t.isExpense) "خرج" else "واریز"),
                     Cell(t.amount / 10, 1),
                     Cell(t.categoryId?.let { catName[it] } ?: if (t.isExpense) "بدون دسته" else ""),
                     Cell(t.note),
-                    Cell(if (t.excluded) "بله" else "")
+                    Cell(
+                        when {
+                            !t.excluded -> ""
+                            t.reason == 1 -> "انتقال بین حساب‌ها"
+                            t.reason == 2 -> "حساب نمی‌شود"
+                            t.reason == 3 -> "پس‌انداز"
+                            else -> "حساب خودم"
+                        }
+                    )
                 )
             )
         }
@@ -371,6 +382,7 @@ object Excel {
             listOf(Cell(title, 2)), emptyList(),
             listOf(Cell("جمع خرج", 2), Cell(out.sumOf { it.amount } / 10, 1)),
             listOf(Cell("جمع واریزی", 2), Cell(inc.sumOf { it.amount } / 10, 1)),
+            listOf(Cell("پس‌انداز", 2), Cell(sorted.filter { it.reason == 3 }.sumOf { it.amount } / 10, 1)),
             emptyList(),
             listOf(Cell("دسته", 2), Cell("مبلغ (تومان)", 2), Cell("تعداد", 2))
         )
@@ -406,7 +418,7 @@ object Excel {
                 "xl/styles.xml",
                 """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>"""
             )
-            put("xl/worksheets/sheet1.xml", sheetXml(rows1, listOf(13, 8, 8, 16, 18, 30, 11)))
+            put("xl/worksheets/sheet1.xml", sheetXml(rows1, listOf(13, 8, 12, 8, 16, 18, 30, 18)))
             put("xl/worksheets/sheet2.xml", sheetXml(rows2, listOf(20, 18, 10)))
         }
         return bos.toByteArray()

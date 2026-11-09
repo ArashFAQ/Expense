@@ -28,29 +28,44 @@ object Ingest {
 
     /** پیامک را پارس و ذخیره می‌کند. اگر تراکنش جدید بود true برمی‌گرداند. */
     suspend fun handle(ctx: Context, body: String, ts: Long, notify: Boolean): Boolean {
-        val p = BluParser.parse(body, ts)
-        if (p == null) return false
+        val p = Banks.parse(body, ts) ?: return false
         val db = AppDb.get(ctx)
-        // همان تراکنش قبلا ثبت شده؟ (نوع، مبلغ، تاریخ، ساعت یکسان و موجودی یکسان یا نامعلوم)
+        // همان تراکنش قبلا ثبت شده؟ (همان بانک، نوع، مبلغ، روز، ساعت و موجودی یکسان یا نامعلوم)
         // مبلغ و موجودی از متن اصلی پیامک مقایسه می‌شود، تا اگر مبلغ را دستی ویرایش کرده‌ای باز هم تکراری ثبت نشود
         val same = db.tx().findSameMinute(p.isExpense, p.jDate, p.time).any { old ->
-            val o = if (old.raw.isNotBlank()) BluParser.parse(old.raw, old.ts) else null
+            val o = if (old.raw.isNotBlank()) Banks.parse(old.raw, old.ts) else null
+            val oBank = o?.bank ?: old.bank
             val oAmount = o?.amount ?: old.amount
             val oBalance = o?.balance ?: old.balance
-            oAmount == p.amount && (oBalance == null || p.balance == null || oBalance == p.balance)
+            oBank == p.bank && oAmount == p.amount && (oBalance == null || p.balance == null || oBalance == p.balance)
         }
         if (same) return false
+
+        var reason = if (Banks.counts(ctx, p.bank, p.isExpense)) 0 else 2
+        // پرداخت به صندوق / کارگزاری (از روی پیامک رمز پویای قبلش) = پس‌انداز
+        if (p.isExpense) {
+            val merchant = Banks.merchantFor(ctx, p.amount, ts)
+            if (merchant != null && Banks.savingsWords(ctx).any { merchant.contains(it) }) reason = 3
+        }
         val id = db.tx().insert(
             Tx(
                 isExpense = p.isExpense, amount = p.amount, balance = p.balance,
                 jDate = p.jDate, time = p.time, ym = p.ym, ts = ts, raw = body,
-                dedupKey = dedupKey(body)
+                dedupKey = dedupKey(body), bank = p.bank, reason = reason, excluded = reason != 0
             )
         )
         if (id <= 0) return false // تکراری
-        if (notify && p.isExpense) {
-            db.tx().get(id)?.let { Notifier.showExpense(ctx, it) }
+
+        // انتقال بین حساب‌های خودم؟
+        val tx = db.tx().get(id) ?: return true
+        if (reason != 3) {
+            val other = Banks.matchTransfer(ctx, tx)
+            if (other != null) {
+                Notifier.cancel(ctx, other)
+                return true
+            }
         }
+        if (notify && p.isExpense && reason == 0) Notifier.showExpense(ctx, tx)
         return true
     }
 }
@@ -95,14 +110,14 @@ object OtpNoteCleanup {
 }
 
 object InboxImporter {
-    /** پیامک‌های قبلی بلو را از صندوق می‌خواند (بدون نوتیفیکیشن). تعداد موارد جدید را برمی‌گرداند. */
+    /** پیامک‌های بانکی قبلی را از صندوق می‌خواند (بدون نوتیفیکیشن). تعداد موارد جدید را برمی‌گرداند. */
     suspend fun run(ctx: Context): Int = withContext(Dispatchers.IO) {
         var n = 0
         ctx.contentResolver.query(
             Telephony.Sms.Inbox.CONTENT_URI,
             arrayOf(Telephony.Sms.BODY, Telephony.Sms.DATE),
-            "${Telephony.Sms.BODY} LIKE ?",
-            arrayOf("%بلو%"),
+            null,
+            null,
             "${Telephony.Sms.DATE} ASC"
         )?.use { c ->
             while (c.moveToNext()) {
@@ -137,7 +152,7 @@ object Notifier {
         val nid = tx.id.toInt()
         val b = NotificationCompat.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat)
-            .setContentTitle("${Fa.toman(tx.amount)} خرج شد")
+            .setContentTitle("${Fa.toman(tx.amount)} از ${Banks.name(tx.bank)} خرج شد")
             .setContentText("برای ثبت دسته بزن")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
