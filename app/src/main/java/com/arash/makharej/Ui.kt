@@ -83,6 +83,12 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import android.app.Activity
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -133,28 +139,86 @@ internal val IncomeColor = Color(0xFF16A34A)
 private val ExpenseGradient = listOf(Color(0xFFE53935), Color(0xFFB71C1C))
 private val IncomeGradient = listOf(Color(0xFF059669), Color(0xFF0D9488))
 
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF4F46E5),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFE0E7FF),
-    onPrimaryContainer = Color(0xFF1E1B4B),
-    secondary = Color(0xFF0D9488),
-    background = Color(0xFFF4F5FA),
-    surface = Color(0xFFF4F5FA),
-    surfaceContainer = Color(0xFFFFFFFF),
-)
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFFA5B4FC),
-    onPrimary = Color(0xFF1E1B4B),
-    primaryContainer = Color(0xFF3730A3),
-    onPrimaryContainer = Color(0xFFE0E7FF),
-    secondary = Color(0xFF5EEAD4),
-)
+/** تم ذخیره‌شده: حالت (سیستم/روشن/تیره) و رنگ اصلی */
+object ThemeSettings {
+    var mode by mutableIntStateOf(0)    // ۰ سیستم، ۱ روشن، ۲ تیره
+    var accent by mutableIntStateOf(0)
+
+    class Accent(val name: String, val light: Color, val lightContainer: Color, val dark: Color, val darkContainer: Color)
+
+    val accents = listOf(
+        Accent("نیلی", Color(0xFF4F46E5), Color(0xFFE0E7FF), Color(0xFFA5B4FC), Color(0xFF3730A3)),
+        Accent("فیروزه‌ای", Color(0xFF0D9488), Color(0xFFCCFBF1), Color(0xFF5EEAD4), Color(0xFF115E59)),
+        Accent("آبی", Color(0xFF1D4ED8), Color(0xFFDBEAFE), Color(0xFF93C5FD), Color(0xFF1E3A8A)),
+        Accent("سبز", Color(0xFF15803D), Color(0xFFDCFCE7), Color(0xFF86EFAC), Color(0xFF14532D)),
+        Accent("نارنجی", Color(0xFFC2410C), Color(0xFFFFEDD5), Color(0xFFFDBA74), Color(0xFF7C2D12)),
+        Accent("صورتی", Color(0xFFBE185D), Color(0xFFFCE7F3), Color(0xFFF9A8D4), Color(0xFF831843)),
+        Accent("بنفش", Color(0xFF7E22CE), Color(0xFFF3E8FF), Color(0xFFD8B4FE), Color(0xFF581C87)),
+        Accent("خاکستری", Color(0xFF475569), Color(0xFFE2E8F0), Color(0xFFCBD5E1), Color(0xFF334155)),
+    )
+
+    private var loaded = false
+    fun load(ctx: Context) {
+        if (loaded) return
+        val p = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+        mode = p.getInt("themeMode", 0)
+        accent = p.getInt("themeAccent", 0).coerceIn(0, accents.size - 1)
+        loaded = true
+    }
+
+    fun setMode(ctx: Context, m: Int) {
+        mode = m
+        ctx.getSharedPreferences("app", Context.MODE_PRIVATE).edit().putInt("themeMode", m).apply()
+    }
+
+    fun setAccent(ctx: Context, a: Int) {
+        accent = a
+        ctx.getSharedPreferences("app", Context.MODE_PRIVATE).edit().putInt("themeAccent", a).apply()
+    }
+}
+
+internal val LocalDark = staticCompositionLocalOf { false }
 
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors) {
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+    val dark = when (ThemeSettings.mode) {
+        1 -> false
+        2 -> true
+        else -> isSystemInDarkTheme()
+    }
+    val a = ThemeSettings.accents[ThemeSettings.accent]
+    val scheme = if (dark) darkColorScheme(
+        primary = a.dark,
+        onPrimary = Color(0xFF111111),
+        primaryContainer = a.darkContainer,
+        onPrimaryContainer = Color.White,
+        secondary = a.dark,
+    ) else lightColorScheme(
+        primary = a.light,
+        onPrimary = Color.White,
+        primaryContainer = a.lightContainer,
+        onPrimaryContainer = Color(0xFF111111),
+        secondary = a.light,
+        background = Color(0xFFF4F5FA),
+        surface = Color(0xFFF4F5FA),
+        surfaceContainer = Color(0xFFFFFFFF),
+    )
+
+    // رنگ نوار وضعیت و نوار پایین گوشی با تم
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as? Activity)?.window ?: return@SideEffect
+            window.statusBarColor = scheme.background.toArgb()
+            window.navigationBarColor = (if (dark) scheme.surfaceContainer else scheme.surfaceContainer).toArgb()
+            val ctl = WindowCompat.getInsetsController(window, view)
+            ctl.isAppearanceLightStatusBars = !dark
+            ctl.isAppearanceLightNavigationBars = !dark
+        }
+    }
+
+    MaterialTheme(colorScheme = scheme) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl, LocalDark provides dark) {
             content()
         }
     }
@@ -162,7 +226,7 @@ fun AppTheme(content: @Composable () -> Unit) {
 
 @Composable
 internal fun cardColors(): CardColors = CardDefaults.cardColors(
-    containerColor = if (isSystemInDarkTheme()) MaterialTheme.colorScheme.surfaceContainerHigh else Color.White
+    containerColor = if (LocalDark.current) MaterialTheme.colorScheme.surfaceContainerHigh else Color.White
 )
 
 internal fun Category.uiColor(): Color = Color(if (color != 0) color else Palette.at(id.toInt()))
@@ -189,6 +253,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Notifier.ensureChannel(this)
         Backup.schedule(this)
+        ThemeSettings.load(this)
         val startTab = if (intent?.getBooleanExtra("openSettings", false) == true) 3 else 0
         setContent { AppTheme { MainScreen(startTab) } }
     }
@@ -199,6 +264,7 @@ class CategorizeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val txId = intent.getLongExtra("tx", -1)
+        ThemeSettings.load(this)
         setContent {
             AppTheme {
                 val ctx = LocalContext.current
@@ -516,7 +582,7 @@ fun Badge(color: Color, text: String) {
 
 @Composable
 fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
-    val dark = isSystemInDarkTheme()
+    val dark = LocalDark.current
     val neutral = if (dark) MaterialTheme.colorScheme.surfaceContainerHigh else Color.White
     val title: String
     val bg: Color
@@ -1499,6 +1565,7 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item { UpdateSection() }
+        item { ThemeSection() }
         item { BackupSection() }
         item { AccountsSection() }
         item {

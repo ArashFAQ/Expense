@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -536,6 +537,44 @@ fun DrivePart(busy: Boolean, setBusy: (Boolean) -> Unit, onRestoreContent: (Back
             },
             confirmButton = { TextButton(onClick = { files = null }) { Text("بستن") } }
         )
+    }
+}
+
+// ================================================================ Theme
+
+@Composable
+fun ThemeSection() {
+    val ctx = LocalContext.current
+    Card(Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(18.dp), colors = cardColors()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("تم", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("مثل گوشی", "روشن", "تیره").forEachIndexed { i, label ->
+                    FilterChip(
+                        selected = ThemeSettings.mode == i,
+                        onClick = { ThemeSettings.setMode(ctx, i) },
+                        label = { Text(label) }
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text("رنگ اصلی", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(6.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ThemeSettings.accents.forEachIndexed { i, a ->
+                    val sel = ThemeSettings.accent == i
+                    Box(
+                        Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(if (LocalDark.current) a.dark else a.light)
+                            .then(if (sel) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
+                            .clickable { ThemeSettings.setAccent(ctx, i) }
+                    )
+                }
+            }
+        }
     }
 }
 
