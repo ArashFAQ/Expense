@@ -51,6 +51,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.ui.focus.FocusRequester
@@ -257,7 +258,7 @@ class MainActivity : ComponentActivity() {
         ThemeSettings.load(this)
         Learned.banks(this)
         RemoteBanks.entries(this)
-        val startTab = if (intent?.getBooleanExtra("openSettings", false) == true) 3 else 0
+        val startTab = if (intent?.getBooleanExtra("openSettings", false) == true) 4 else 0
         setContent { AppTheme { MainScreen(startTab) } }
     }
 }
@@ -349,6 +350,7 @@ fun MainScreen(startTab: Int = 0) {
     }
 
     val tabs = listOf(
+        "خانه" to Icons.Filled.Home,
         "خرج‌ها" to Icons.Filled.ShoppingCart,
         "واریزی‌ها" to Icons.Filled.AddCircle,
         "گزارش" to Icons.Filled.DateRange,
@@ -377,9 +379,10 @@ fun MainScreen(startTab: Int = 0) {
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (tab) {
-                0 -> ExpensesTab(txs, cats, db, ym, onAdd = { adding = 1 }, onSearch = { searching = true }) { ym = it }
-                1 -> IncomeTab(txs, cats, db, ym, onAdd = { adding = 2 }, onSearch = { searching = true }) { ym = it }
-                2 -> ReportTab(txs, cats, ym) { ym = it }
+                0 -> HomeTab(txs, cats, ym, onYm = { ym = it }, onOpenExpenses = { tab = 1 })
+                1 -> ExpensesTab(txs, cats, db, ym, onAdd = { adding = 1 }, onSearch = { searching = true }) { ym = it }
+                2 -> IncomeTab(txs, cats, db, ym, onAdd = { adding = 2 }, onSearch = { searching = true }) { ym = it }
+                3 -> ReportTab(txs, cats, ym) { ym = it }
                 else -> SettingsScreen(cats, db)
             }
         }
@@ -617,7 +620,22 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = bg)
     ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            val icon = when {
+                t.excluded && t.reason == 1 -> CatIcons.transfer
+                t.excluded && t.reason == 3 -> CatIcons.savingsIcon
+                t.excluded -> CatIcons.transfer
+                cat != null -> cat.uiIcon()
+                else -> CatIcons.unknown
+            }
+            Box(
+                Modifier.size(40.dp).clip(CircleShape)
+                    .background(if (colored) Color.White.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, tint = if (colored) fg else titleColor, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.Bold, color = titleColor)
                 Text(
@@ -802,7 +820,7 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                                     selected = sel == c.id,
                                     onClick = { sel = if (sel == c.id) null else c.id },
                                     label = { Text(c.name) },
-                                    leadingIcon = { Box(Modifier.size(10.dp).clip(CircleShape).background(col)) }
+                                    leadingIcon = { Icon(c.uiIcon(), null, tint = col, modifier = Modifier.size(18.dp)) }
                                 )
                             }
                         }
@@ -900,7 +918,7 @@ fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: 
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item { MonthGrid(txs, true, ym, onYm) }
+        item { MonthRow(txs, true, ym, onYm) }
         item {
             HeroCard(
                 title = "خرج ${Fa.monthName(ym)}",
@@ -942,7 +960,7 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item { MonthGrid(txs, false, ym, onYm) }
+        item { MonthRow(txs, false, ym, onYm) }
         item {
             HeroCard(
                 title = "واریزی ${Fa.monthName(ym)}",
@@ -993,94 +1011,7 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { MonthBar(ym, onYm) }
-
-        // ---- donut
-        item {
-            Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
-                Column(Modifier.fillMaxWidth().padding(18.dp)) {
-                    Text("خرج به تفکیک دسته", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(14.dp))
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Donut(slices.map { it.sum.toFloat() to it.color }, Modifier.size(190.dp))
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("جمع خرج", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(Fa.compact(totalOut), fontSize = 24.sp, fontWeight = FontWeight.Black)
-                            Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    if (slices.isEmpty()) EmptyNote("این ماه خرجی ثبت نشده.")
-                    if (slices.isNotEmpty()) Text(
-                        "روی هر دسته بزن تا ریز خرج‌هایش را ببینی.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    slices.forEach { s ->
-                        val frac = if (totalOut > 0) s.sum.toFloat() / totalOut else 0f
-                        val open = openCat == s.key
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 3.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(if (open) s.color.copy(alpha = 0.12f) else Color.Transparent)
-                                .clickable { openCat = if (open) null else s.key }
-                                .padding(horizontal = 8.dp, vertical = 8.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(12.dp).clip(CircleShape).background(s.color))
-                                Spacer(Modifier.width(8.dp))
-                                Text(s.name, Modifier.weight(1f), fontWeight = FontWeight.Medium)
-                                Text(
-                                    Fa.toFa("${(frac * 100).toInt()}") + "٪",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Text(Fa.toman(s.sum), fontWeight = FontWeight.Bold)
-                                Text(
-                                    if (open) "  ▴" else "  ▾",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Spacer(Modifier.height(5.dp))
-                            LinearProgressIndicator(
-                                progress = { frac },
-                                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                                color = s.color,
-                                trackColor = s.color.copy(alpha = 0.15f),
-                                drawStopIndicator = {}
-                            )
-                            if (open) {
-                                Spacer(Modifier.height(10.dp))
-                                val byNote = s.items
-                                    .groupBy { it.note.trim() }
-                                    .map { (note, l) -> Triple(note.ifEmpty { "بدون توضیح" }, l.sumOf { it.amount }, l.size) }
-                                    .sortedWith(compareBy<Triple<String, Long, Int>> { it.first == "بدون توضیح" }.thenByDescending { it.second })
-                                byNote.forEach { (note, sum, n) ->
-                                    val f = if (s.sum > 0) sum.toFloat() / s.sum else 0f
-                                    Row(
-                                        Modifier.fillMaxWidth().padding(start = 20.dp, top = 5.dp, bottom = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(note, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Text(
-                                                Fa.toFa(n.toString()) + " بار  ·  " + Fa.toFa("${(f * 100).toInt()}") + "٪",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        Text(Fa.toman(sum), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        item { MonthRow(txs, true, ym, onYm) }
 
         // ---- year chart (فروردین تا اسفند)
         item {
@@ -1376,7 +1307,7 @@ fun TxEditor(
                         selected = sel == c.id,
                         onClick = { sel = if (sel == c.id) null else c.id },
                         label = { Text(c.name) },
-                        leadingIcon = { Box(Modifier.size(10.dp).clip(CircleShape).background(col)) }
+                        leadingIcon = { Icon(c.uiIcon(), null, tint = col, modifier = Modifier.size(18.dp)) }
                     )
                 }
             }
@@ -1504,6 +1435,37 @@ fun ColorPickerDialog(current: Int, onPick: (Int) -> Unit, onDismiss: () -> Unit
     )
 }
 
+/** شبکه‌ی آیکون‌ها برای انتخاب شکل دسته */
+@Composable
+fun IconPickerGrid(selected: String, color: Color, onPick: (String) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        CatIcons.all.forEach { item ->
+            val sel = item.key == selected
+            Column(
+                Modifier
+                    .width(64.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (sel) color.copy(alpha = 0.15f) else Color.Transparent)
+                    .clickable { onPick(item.key) }
+                    .padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    Modifier.size(42.dp).clip(CircleShape)
+                        .background(if (sel) color else MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(item.icon, null, tint = if (sel) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+                }
+                Text(
+                    item.label, style = MaterialTheme.typography.labelSmall, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
 class SettingsPage(val id: String, val title: String, val subtitle: String)
 
 val SettingsPages = listOf(
@@ -1584,9 +1546,7 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
                     Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        Modifier.size(30.dp).clip(CircleShape).background(c.uiColor()).clickable { coloring = c }
-                    )
+                    CatBadge(c.uiColor(), c.uiIcon(), 38.dp, Modifier.clickable { renaming = c })
                     Spacer(Modifier.width(12.dp))
                     Text(c.name, Modifier.weight(1f), fontWeight = FontWeight.Medium)
                     TextButton(onClick = { renaming = c }) { Text("ویرایش") }
@@ -1609,7 +1569,7 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
                         val sort = (cats.maxOfOrNull { it.sort } ?: 0) + 1
                         val used = cats.map { it.color }.toSet()
                         val color = Palette.colors.firstOrNull { it !in used } ?: Palette.at(cats.size)
-                        scope.launch { db.cat().insert(Category(name = n, sort = sort, color = color)) }
+                        scope.launch { db.cat().insert(Category(name = n, sort = sort, color = color, icon = CatIcons.guess(n))) }
                         newName = ""
                     }
                 ) { Text("افزودن") }
@@ -1679,6 +1639,7 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
     renaming?.let { c ->
         var name by remember(c.id) { mutableStateOf(c.name) }
         var color by remember(c.id) { mutableIntStateOf(if (c.color != 0) c.color else Palette.at(c.id.toInt())) }
+        var icon by remember(c.id) { mutableStateOf(c.icon.ifEmpty { CatIcons.guess(c.name) }) }
         AlertDialog(
             onDismissRequest = { renaming = null },
             title = { Text("ویرایش دسته") },
@@ -1692,6 +1653,10 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
                     Text("رنگ", style = MaterialTheme.typography.titleSmall)
                     Spacer(Modifier.height(8.dp))
                     HsvPicker(color) { color = it }
+                    Spacer(Modifier.height(16.dp))
+                    Text("شکل", style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(8.dp))
+                    IconPickerGrid(icon, Color(color)) { icon = it }
                 }
             },
             confirmButton = {
@@ -1699,6 +1664,7 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
                     scope.launch {
                         db.cat().rename(c.id, name.trim())
                         db.cat().setColor(c.id, color)
+                        db.cat().setIcon(c.id, icon)
                     }
                     renaming = null
                 }) { Text("ذخیره") }

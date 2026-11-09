@@ -48,7 +48,9 @@ data class Category(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val sort: Int = 0,
-    @ColumnInfo(defaultValue = "0") val color: Int = 0
+    @ColumnInfo(defaultValue = "0") val color: Int = 0,
+    /** کلید آیکون (CatIcons) */
+    val icon: String = ""
 )
 
 /** رنگ‌های قابل انتخاب برای دسته‌ها */
@@ -156,6 +158,9 @@ interface CatDao {
 
     @Query("UPDATE Category SET color = :color WHERE id = :id")
     suspend fun setColor(id: Long, color: Int)
+
+    @Query("UPDATE Category SET icon = :icon WHERE id = :id")
+    suspend fun setIcon(id: Long, icon: String)
 
     @Query("DELETE FROM Category WHERE id = :id")
     suspend fun delete(id: Long)
@@ -310,7 +315,19 @@ private val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
-@Database(entities = [Tx::class, Category::class], version = 6, exportSchema = false)
+/** نسخه‌ی ۶ ← ۷: آیکون دسته‌ها (از روی اسم حدس زده می‌شود) */
+private val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE Category ADD COLUMN icon TEXT NOT NULL DEFAULT ''")
+        val rows = mutableListOf<Pair<Long, String>>()
+        db.query("SELECT id, name FROM Category").use { c -> while (c.moveToNext()) rows.add(c.getLong(0) to c.getString(1)) }
+        rows.forEach { (id, name) ->
+            db.execSQL("UPDATE Category SET icon = ? WHERE id = ?", arrayOf<Any>(CatIcons.guess(name), id))
+        }
+    }
+}
+
+@Database(entities = [Tx::class, Category::class], version = 7, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun tx(): TxDao
     abstract fun cat(): CatDao
@@ -326,13 +343,13 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "makharej.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         DEFAULT_CATS.forEachIndexed { i, n ->
                             db.execSQL(
-                                "INSERT INTO Category(name, sort, color) VALUES(?, ?, ?)",
-                                arrayOf<Any>(n, i, Palette.at(i))
+                                "INSERT INTO Category(name, sort, color, icon) VALUES(?, ?, ?, ?)",
+                                arrayOf<Any>(n, i, Palette.at(i), CatIcons.guess(n))
                             )
                         }
                     }

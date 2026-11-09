@@ -169,7 +169,7 @@ object Backup {
         val db = AppDb.get(ctx)
         val cats = JSONArray()
         db.cat().list().forEach {
-            cats.put(JSONObject().put("id", it.id).put("name", it.name).put("sort", it.sort).put("color", it.color))
+            cats.put(JSONObject().put("id", it.id).put("name", it.name).put("sort", it.sort).put("color", it.color).put("icon", it.icon))
         }
         val txs = JSONArray()
         db.tx().list().forEach { t ->
@@ -198,7 +198,10 @@ object Backup {
         val ca = o.getJSONArray("categories")
         val cats = (0 until ca.length()).map { i ->
             val c = ca.getJSONObject(i)
-            Category(c.getLong("id"), c.getString("name"), c.optInt("sort"), c.optInt("color"))
+            Category(
+                c.getLong("id"), c.getString("name"), c.optInt("sort"), c.optInt("color"),
+                c.optString("icon").ifEmpty { CatIcons.guess(c.getString("name")) }
+            )
         }
         val ta = o.getJSONArray("tx")
         val txs = (0 until ta.length()).map { i ->
