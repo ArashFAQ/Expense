@@ -643,44 +643,75 @@ fun ExcelSection(txs: List<Tx>, cats: List<Category>, ym: Int) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
-    val year = ym / 100
-
-    fun run(fileTitle: String, sheetTitle: String, list: List<Tx>) {
-        if (list.isEmpty()) {
-            Toast.makeText(ctx, "تراکنشی برای این بازه نیست", Toast.LENGTH_SHORT).show()
-            return
-        }
-        busy = true
-        scope.launch {
-            try {
-                val uri = Excel.export(ctx, fileTitle, sheetTitle, list, cats)
-                Toast.makeText(ctx, "در Download/Makharej ذخیره شد", Toast.LENGTH_SHORT).show()
-                ctx.startActivity(FileOut.shareIntent(uri, Excel.MIME, "مخارج $sheetTitle"))
-            } catch (e: Exception) {
-                Toast.makeText(ctx, "خطا: " + e.message, Toast.LENGTH_LONG).show()
-            } finally {
-                busy = false
-            }
-        }
+    val today = Jalali.fromMillis(System.currentTimeMillis())
+    // پیش‌فرض: از اول ماه انتخاب‌شده تا امروز (یا آخر همان ماه)
+    var from by remember(ym) { mutableStateOf(intArrayOf(ym / 100, ym % 100, 1)) }
+    var to by remember(ym) {
+        mutableStateOf(
+            if (ym == today[0] * 100 + today[1]) today
+            else intArrayOf(ym / 100, ym % 100, JalaliCal.monthLength(ym / 100, ym % 100))
+        )
     }
+    var picking by remember { mutableIntStateOf(0) } // ۱ از، ۲ تا
+
+    fun key(d: IntArray) = d[0] * 10000 + d[1] * 100 + d[2]
+    fun key(jDate: String) = jDate.replace("/", "").toIntOrNull() ?: 0
+    fun label(d: IntArray) = Fa.toFa(d[2].toString()) + " " + Fa.monthName(d[0] * 100 + d[1]) + " " + Fa.toFa(d[0].toString())
+    fun file(d: IntArray) = String.format(Locale.US, "%04d-%02d-%02d", d[0], d[1], d[2])
 
     Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
         Column(Modifier.fillMaxWidth().padding(18.dp)) {
             Text("خروجی اکسل", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                "فایل در Download/Makharej ذخیره می‌شود و می‌توانی بفرستی‌اش. یک برگه‌ی تراکنش‌ها و یک برگه‌ی خلاصه‌ی دسته‌ها دارد.",
+                "بازه را انتخاب کن. فایل در Download/Makharej ذخیره می‌شود و می‌توانی بفرستی‌اش. " +
+                    "یک برگه‌ی تراکنش‌ها و یک برگه‌ی خلاصه‌ی دسته‌ها دارد.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(enabled = !busy, onClick = {
-                    run(String.format(Locale.US, "%04d-%02d", year, ym % 100), Fa.monthTitle(ym), txs.filter { it.ym == ym })
-                }) { Text(Fa.monthTitle(ym)) }
-                OutlinedButton(enabled = !busy, onClick = {
-                    run(year.toString(), "سال " + Fa.toFa(year.toString()), txs.filter { it.ym / 100 == year })
-                }) { Text("کل سال " + Fa.toFa(year.toString())) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("از", Modifier.width(28.dp))
+                OutlinedButton(onClick = { picking = 1 }, modifier = Modifier.weight(1f)) { Text(label(from)) }
             }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("تا", Modifier.width(28.dp))
+                OutlinedButton(onClick = { picking = 2 }, modifier = Modifier.weight(1f)) { Text(label(to)) }
+            }
+            Spacer(Modifier.height(8.dp))
+            val valid = key(from) <= key(to)
+            if (!valid) Text("تاریخ «از» باید قبل از «تا» باشد.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Button(
+                enabled = !busy && valid,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    val list = txs.filter { key(it.jDate) in key(from)..key(to) }
+                    if (list.isEmpty()) {
+                        Toast.makeText(ctx, "تراکنشی در این بازه نیست", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    busy = true
+                    scope.launch {
+                        try {
+                            val title = label(from) + " تا " + label(to)
+                            val uri = Excel.export(ctx, file(from) + "_" + file(to), title, list, cats)
+                            Toast.makeText(ctx, "در Download/Makharej ذخیره شد", Toast.LENGTH_SHORT).show()
+                            ctx.startActivity(FileOut.shareIntent(uri, Excel.MIME, "مخارج $title"))
+                        } catch (e: Exception) {
+                            Toast.makeText(ctx, "خطا: " + e.message, Toast.LENGTH_LONG).show()
+                        } finally {
+                            busy = false
+                        }
+                    }
+                }
+            ) { Text("ساخت فایل اکسل") }
         }
+    }
+
+    if (picking != 0) {
+        JalaliDateDialog(
+            initial = if (picking == 1) from else to,
+            onPick = { d -> if (picking == 1) from = d else to = d; picking = 0 },
+            onDismiss = { picking = 0 }
+        )
     }
 }

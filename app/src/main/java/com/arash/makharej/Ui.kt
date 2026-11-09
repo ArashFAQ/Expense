@@ -981,10 +981,6 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
     var openCat by rememberSaveable(ym) { mutableStateOf<Long?>(null) }
     var year by rememberSaveable { mutableIntStateOf(ym / 100) }
 
-    val months = (5 downTo 0).map { Jalali.shiftYm(ym, -it) }
-    val outByMonth = months.map { m -> counted.filter { it.ym == m && it.isExpense }.sumOf { it.amount } }
-    val inByMonth = months.map { m -> counted.filter { it.ym == m && !it.isExpense }.sumOf { it.amount } }
-    val maxBar = (outByMonth + inByMonth).maxOrNull()?.coerceAtLeast(1) ?: 1
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -1072,56 +1068,6 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
                                         Text(Fa.toman(sum), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                                     }
                                 }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ---- 6 months bars
-        item {
-            Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
-                Column(Modifier.fillMaxWidth().padding(18.dp)) {
-                    Text("روند ۶ ماه اخیر", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(10.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
-                        Text(" خرج    ", style = MaterialTheme.typography.labelMedium)
-                        Box(Modifier.size(10.dp).clip(CircleShape).background(IncomeColor))
-                        Text(" واریزی", style = MaterialTheme.typography.labelMedium)
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                        months.forEachIndexed { i, m ->
-                            val sel = m == ym
-                            Column(
-                                Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (sel) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color.Transparent)
-                                    .clickable { onYm(m) }
-                                    .padding(vertical = 6.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    Fa.compact(outByMonth[i]),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
-                                    maxLines = 1
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Row(Modifier.height(120.dp), verticalAlignment = Alignment.Bottom) {
-                                    Bar(outByMonth[i].toFloat() / maxBar, MaterialTheme.colorScheme.primary)
-                                    Spacer(Modifier.width(3.dp))
-                                    Bar(inByMonth[i].toFloat() / maxBar, IncomeColor)
-                                }
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    Fa.monthName(m), style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
-                                    maxLines = 1, softWrap = false, overflow = TextOverflow.Clip
-                                )
                             }
                         }
                     }
