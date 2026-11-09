@@ -1,0 +1,433 @@
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+
+package com.arash.makharej
+
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+// ================================================================ Note suggestions
+
+/**
+ * توضیح‌هایی که قبلا نوشته‌ای. اگر دسته انتخاب شده باشد فقط توضیح‌های همان دسته،
+ * وگرنه همه. با تایپ کردن فیلتر می‌شود.
+ */
+@Composable
+fun NoteSuggestions(
+    stats: List<NoteStat>,
+    category: Long?,
+    typed: String,
+    onPick: (note: String, category: Long?) -> Unit
+) {
+    val q = typed.trim()
+    val pool = if (category != null) stats.filter { it.categoryId == category } else stats
+    val items = pool
+        .groupBy { it.note.trim() }
+        .map { (note, l) -> Triple(note, l.sumOf { it.cnt }, l.maxByOrNull { it.cnt }?.categoryId) }
+        .filter { (note, _, _) -> note != q && (q.isEmpty() || note.contains(q, ignoreCase = true)) }
+        .sortedByDescending { it.second }
+        .take(15)
+    if (items.isEmpty()) return
+    Spacer(Modifier.height(6.dp))
+    Text(
+        if (category != null) "توضیح‌های قبلی این دسته" else "توضیح‌های قبلی",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items.forEach { (note, _, cat) ->
+            SuggestionChip(onClick = { onPick(note, cat) }, label = { Text(note) })
+        }
+    }
+}
+
+// ================================================================ Jalali date picker
+
+@Composable
+fun JalaliDateDialog(
+    initial: IntArray,
+    onPick: (IntArray) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val today = Jalali.fromMillis(System.currentTimeMillis())
+    val todayKey = today[0] * 10000 + today[1] * 100 + today[2]
+    var y by remember { mutableIntStateOf(initial[0]) }
+    var m by remember { mutableIntStateOf(initial[1]) }
+    var d by remember { mutableIntStateOf(initial[2]) }
+    val len = JalaliCal.monthLength(y, m)
+    if (d > len) d = len
+    fun key(yy: Int, mm: Int, dd: Int) = yy * 10000 + mm * 100 + dd
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("انتخاب تاریخ") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { y = today[0]; m = today[1]; d = today[2] }) { Text("امروز") }
+                    OutlinedButton(onClick = {
+                        val j = Jalali.fromMillis(System.currentTimeMillis() - 86_400_000L)
+                        y = j[0]; m = j[1]; d = j[2]
+                    }) { Text("دیروز") }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { y-- }) { Icon(Icons.Filled.KeyboardArrowRight, "سال قبل") }
+                    Text(
+                        Fa.toFa(y.toString()), Modifier.weight(1f),
+                        textAlign = TextAlign.Center, fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    IconButton(onClick = { y++ }, enabled = y < today[0]) { Icon(Icons.Filled.KeyboardArrowLeft, "سال بعد") }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    (1..12).forEach { mm ->
+                        val future = key(y, mm, 1) > todayKey
+                        FilterChip(
+                            selected = m == mm, enabled = !future,
+                            onClick = { m = mm },
+                            label = { Text(Fa.monthName(y * 100 + mm)) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    (1..len).forEach { dd ->
+                        val future = key(y, m, dd) > todayKey
+                        val sel = d == dd
+                        Box(
+                            Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(if (sel) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                .clickable(enabled = !future) { d = dd }
+                                .alpha(if (future) 0.3f else 1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                Fa.toFa(dd.toString()),
+                                color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = key(y, m, d) <= todayKey,
+                onClick = { onPick(intArrayOf(y, m, d)) }
+            ) { Text("تأیید") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
+    )
+}
+
+// ================================================================ Search
+
+@Composable
+fun SearchDialog(txs: List<Tx>, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
+    var q by remember { mutableStateOf("") }
+    var kind by remember { mutableIntStateOf(0) } // ۰ همه، ۱ خرج، ۲ واریز
+    var editing by remember { mutableStateOf<Tx?>(null) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    val catById = cats.associateBy { it.id }
+
+    val query = Fa.toEn(q).trim()
+    val digits = query.replace(",", "").replace("٬", "")
+    val isNumber = digits.isNotEmpty() && digits.all { it.isDigit() }
+    val results = if (query.isEmpty()) emptyList() else txs.filter { t ->
+        val kindOk = when (kind) { 1 -> t.isExpense; 2 -> !t.isExpense; else -> true }
+        kindOk && if (isNumber) {
+            (t.amount / 10).toString().contains(digits)
+        } else {
+            t.note.contains(query, ignoreCase = true) ||
+                (t.categoryId?.let { catById[it]?.name }?.contains(query, ignoreCase = true) == true)
+        }
+    }
+    val counted = results.counted()
+    val sumOut = counted.filter { it.isExpense }.sumOf { it.amount }
+    val sumIn = counted.filter { !it.isExpense }.sumOf { it.amount }
+
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    ) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.systemBarsPadding().imePadding()) {
+                Row(Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onClose) { Icon(Icons.Filled.Close, "بستن") }
+                    OutlinedTextField(
+                        value = q, onValueChange = { q = it },
+                        placeholder = { Text("توضیح، دسته یا مبلغ (تومان)") },
+                        leadingIcon = { Icon(Icons.Filled.Search, null) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).focusRequester(focus)
+                    )
+                }
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = kind == 0, onClick = { kind = 0 }, label = { Text("همه") })
+                    FilterChip(selected = kind == 1, onClick = { kind = 1 }, label = { Text("خرج") })
+                    FilterChip(selected = kind == 2, onClick = { kind = 2 }, label = { Text("واریز") })
+                }
+                if (query.isNotEmpty()) {
+                    Card(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(18.dp), colors = cardColors()
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text(
+                                Fa.toFa(results.size.toString()) + " مورد پیدا شد",
+                                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold
+                            )
+                            if (sumOut > 0) Text("جمع خرج: " + Fa.toman(sumOut), color = ExpenseColor, fontWeight = FontWeight.Bold)
+                            if (sumIn > 0) Text("جمع واریزی: " + Fa.toman(sumIn), color = IncomeColor, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (query.isEmpty()) {
+                        item {
+                            Text(
+                                "مثلا «اسنپ»، «خوراک» یا «۶۳۰۰۰۰» را بنویس.",
+                                Modifier.fillMaxWidth().padding(24.dp),
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else if (results.isEmpty()) {
+                        item {
+                            Text(
+                                "چیزی پیدا نشد.",
+                                Modifier.fillMaxWidth().padding(24.dp),
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    dayGroups(results, catById, showYear = true) { editing = it }
+                }
+            }
+        }
+    }
+
+    editing?.let { t -> EditDialog(t, cats, db) { editing = null } }
+}
+
+// ================================================================ Backup UI
+
+@Composable
+fun BackupSection() {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var pending by remember { mutableStateOf<Backup.Content?>(null) }
+    val last = prefs(ctx).getLong("lastBackup", 0L)
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            try {
+                val bytes = withContext(Dispatchers.IO) {
+                    ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("فایل خوانده نشد")
+                }
+                pending = Backup.parse(bytes)
+            } catch (e: Exception) {
+                Toast.makeText(ctx, e.message ?: "فایل پشتیبان معتبر نیست", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = cardColors()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("پشتیبان‌گیری", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "پشتیبان در پوشه‌ی Download/Makharej ذخیره می‌شود و می‌توانی آن را به Gmail یا Google Drive بفرستی. " +
+                    "هر هفته هم خودکار یک پشتیبان گرفته می‌شود و نوتیفیکیشن ارسالش می‌آید.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            if (last > 0) {
+                val j = Jalali.fromMillis(last)
+                Text(
+                    "آخرین پشتیبان خودکار: " + Fa.dayTitle(String.format(Locale.US, "%04d/%02d/%02d", j[0], j[1], j[2])) +
+                        " " + Fa.toFa(SimpleDateFormat("HH:mm", Locale.US).format(Date(last))),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(enabled = !busy, onClick = {
+                    busy = true
+                    scope.launch {
+                        try {
+                            val uri = Backup.makeAndSave(ctx, auto = false)
+                            ctx.startActivity(FileOut.shareIntent(uri, Backup.MIME, "پشتیبان مخارج " + FileOut.stamp()))
+                        } catch (e: Exception) {
+                            Toast.makeText(ctx, "خطا: " + e.message, Toast.LENGTH_LONG).show()
+                        } finally {
+                            busy = false
+                        }
+                    }
+                }) { Text("گرفتن و ارسال پشتیبان") }
+                OutlinedButton(onClick = { picker.launch(arrayOf("application/json", "application/octet-stream", "text/plain", "*/*")) }) {
+                    Text("بازگردانی")
+                }
+            }
+        }
+    }
+
+    pending?.let { c ->
+        AlertDialog(
+            onDismissRequest = { pending = null },
+            title = { Text("بازگردانی پشتیبان؟") },
+            text = {
+                Text(
+                    "این فایل " + Fa.toFa(c.txs.size.toString()) + " تراکنش و " + Fa.toFa(c.cats.size.toString()) +
+                        " دسته دارد.\nهمه‌ی داده‌های فعلی اپ پاک و با این پشتیبان جایگزین می‌شود."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val content = c
+                    pending = null
+                    scope.launch {
+                        try {
+                            Backup.restore(ctx, content)
+                            Toast.makeText(ctx, "بازگردانی انجام شد", Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            Toast.makeText(ctx, "خطا: " + e.message, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }) { Text("بازگردانی") }
+            },
+            dismissButton = { TextButton(onClick = { pending = null }) { Text("انصراف") } }
+        )
+    }
+}
+
+// ================================================================ Excel UI
+
+@Composable
+fun ExcelSection(txs: List<Tx>, cats: List<Category>, ym: Int) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    val year = ym / 100
+
+    fun run(fileTitle: String, sheetTitle: String, list: List<Tx>) {
+        if (list.isEmpty()) {
+            Toast.makeText(ctx, "تراکنشی برای این بازه نیست", Toast.LENGTH_SHORT).show()
+            return
+        }
+        busy = true
+        scope.launch {
+            try {
+                val uri = Excel.export(ctx, fileTitle, sheetTitle, list, cats)
+                Toast.makeText(ctx, "در Download/Makharej ذخیره شد", Toast.LENGTH_SHORT).show()
+                ctx.startActivity(FileOut.shareIntent(uri, Excel.MIME, "مخارج $sheetTitle"))
+            } catch (e: Exception) {
+                Toast.makeText(ctx, "خطا: " + e.message, Toast.LENGTH_LONG).show()
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
+        Column(Modifier.fillMaxWidth().padding(18.dp)) {
+            Text("خروجی اکسل", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "فایل در Download/Makharej ذخیره می‌شود و می‌توانی بفرستی‌اش. یک برگه‌ی تراکنش‌ها و یک برگه‌ی خلاصه‌ی دسته‌ها دارد.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(enabled = !busy, onClick = {
+                    run(String.format(Locale.US, "%04d-%02d", year, ym % 100), Fa.monthTitle(ym), txs.filter { it.ym == ym })
+                }) { Text(Fa.monthTitle(ym)) }
+                OutlinedButton(enabled = !busy, onClick = {
+                    run(year.toString(), "سال " + Fa.toFa(year.toString()), txs.filter { it.ym / 100 == year })
+                }) { Text("کل سال " + Fa.toFa(year.toString())) }
+            }
+        }
+    }
+}

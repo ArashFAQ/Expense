@@ -50,6 +50,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -127,8 +128,8 @@ import kotlinx.coroutines.launch
 
 // ================================================================ Theme
 
-private val ExpenseColor = Color(0xFFE53935)
-private val IncomeColor = Color(0xFF16A34A)
+internal val ExpenseColor = Color(0xFFE53935)
+internal val IncomeColor = Color(0xFF16A34A)
 private val ExpenseGradient = listOf(Color(0xFFE53935), Color(0xFFB71C1C))
 private val IncomeGradient = listOf(Color(0xFF059669), Color(0xFF0D9488))
 
@@ -160,15 +161,15 @@ fun AppTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun cardColors(): CardColors = CardDefaults.cardColors(
+internal fun cardColors(): CardColors = CardDefaults.cardColors(
     containerColor = if (isSystemInDarkTheme()) MaterialTheme.colorScheme.surfaceContainerHigh else Color.White
 )
 
-private fun Category.uiColor(): Color = Color(if (color != 0) color else Palette.at(id.toInt()))
+internal fun Category.uiColor(): Color = Color(if (color != 0) color else Palette.at(id.toInt()))
 
-private fun prefs(ctx: Context) = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+internal fun prefs(ctx: Context) = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
 
-private fun hasPerm(ctx: Context, p: String) =
+internal fun hasPerm(ctx: Context, p: String) =
     ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
 
 private fun openAppSettings(ctx: Context) {
@@ -177,7 +178,7 @@ private fun openAppSettings(ctx: Context) {
     )
 }
 
-private fun List<Tx>.counted() = filter { !it.excluded }
+internal fun List<Tx>.counted() = filter { !it.excluded }
 
 private const val IMPORT_VERSION = 5
 
@@ -187,6 +188,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Notifier.ensureChannel(this)
+        Backup.schedule(this)
         setContent { AppTheme { MainScreen() } }
     }
 }
@@ -203,6 +205,7 @@ class CategorizeActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
                 val tx by produceState<Tx?>(null) { value = db.tx().get(txId) }
                 val cats by remember { db.cat().all() }.collectAsState(initial = emptyList())
+                val notes by remember { db.tx().noteStats() }.collectAsState(initial = emptyList())
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -226,7 +229,7 @@ class CategorizeActivity : ComponentActivity() {
                         Text("در حال بارگذاری…", Modifier.padding(24.dp))
                     } else {
                         TxEditor(
-                            tx = t, cats = cats,
+                            tx = t, cats = cats, notes = notes,
                             onSave = { cat, note, ex, amount ->
                                 scope.launch {
                                     db.tx().update(t.id, cat, note, ex, amount)
@@ -255,6 +258,7 @@ fun MainScreen() {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var ym by rememberSaveable { mutableIntStateOf(Jalali.currentYm()) }
     var adding by rememberSaveable { mutableIntStateOf(0) } // ۰ بسته، ۱ خرج، ۲ واریز
+    var searching by rememberSaveable { mutableStateOf(false) }
 
     // یک بار بعد از هر اصلاح مهم در خواندن پیامک‌ها، پیامک‌های قبلی دوباره خوانده می‌شوند
     LaunchedEffect(Unit) {
@@ -298,8 +302,8 @@ fun MainScreen() {
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (tab) {
-                0 -> ExpensesTab(txs, cats, db, ym, onAdd = { adding = 1 }) { ym = it }
-                1 -> IncomeTab(txs, cats, db, ym, onAdd = { adding = 2 }) { ym = it }
+                0 -> ExpensesTab(txs, cats, db, ym, onAdd = { adding = 1 }, onSearch = { searching = true }) { ym = it }
+                1 -> IncomeTab(txs, cats, db, ym, onAdd = { adding = 2 }, onSearch = { searching = true }) { ym = it }
                 2 -> ReportTab(txs, cats, ym) { ym = it }
                 else -> SettingsScreen(cats, db)
             }
@@ -308,6 +312,9 @@ fun MainScreen() {
 
     if (adding != 0) {
         AddTxDialog(isExpense = adding == 1, cats = cats, db = db) { adding = 0 }
+    }
+    if (searching) {
+        SearchDialog(txs, cats, db) { searching = false }
     }
 }
 
@@ -557,13 +564,18 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
 }
 
 /** لیست تراکنش‌ها گروه‌بندی‌شده بر اساس روز */
-private fun LazyListScope.dayGroups(list: List<Tx>, catById: Map<Long, Category>, onClick: (Tx) -> Unit) {
+internal fun LazyListScope.dayGroups(
+    list: List<Tx>,
+    catById: Map<Long, Category>,
+    showYear: Boolean = false,
+    onClick: (Tx) -> Unit
+) {
     list.groupBy { it.jDate }.forEach { (date, dayTx) ->
         item(key = "h$date") {
             val sum = dayTx.counted().filter { it.isExpense }.sumOf { it.amount }
             Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp, start = 4.dp, end = 4.dp)) {
                 Text(
-                    Fa.dayTitle(date), Modifier.weight(1f),
+                    Fa.dayTitle(date) + if (showYear) " " + Fa.toFa(date.take(4)) else "", Modifier.weight(1f),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -592,6 +604,7 @@ fun EmptyNote(text: String) {
 fun EditDialog(t: Tx, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val notes by remember { db.tx().noteStats() }.collectAsState(initial = emptyList())
     Dialog(
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
@@ -615,7 +628,7 @@ fun EditDialog(t: Tx, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
             modifier = Modifier.widthIn(max = 560.dp)
         ) {
             TxEditor(
-                tx = t, cats = cats,
+                tx = t, cats = cats, notes = notes,
                 onSave = { cat, note, ex, amount ->
                     scope.launch {
                         db.tx().update(t.id, cat, note, ex, amount)
@@ -642,6 +655,11 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
     var sel by remember { mutableStateOf<Long?>(null) }
     var note by remember { mutableStateOf("") }
     val amount: Long? = amountText.toLongOrNull()?.takeIf { it > 0 }?.times(10)
+    var date by remember { mutableStateOf(Jalali.fromMillis(System.currentTimeMillis())) }
+    var pickDate by remember { mutableStateOf(false) }
+    val stats by remember { db.tx().noteStats() }.collectAsState(initial = emptyList())
+    val today = Jalali.fromMillis(System.currentTimeMillis())
+    val isToday = date.contentEquals(today)
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
 
@@ -674,11 +692,17 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                             style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
                             color = if (isExpense) ExpenseColor else IncomeColor
                         )
-                        Text(
-                            "تاریخ و ساعت: همین الان",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "تاریخ: " + (if (isToday) "امروز، " else "") +
+                                    Fa.dayTitle(String.format(java.util.Locale.US, "%04d/%02d/%02d", date[0], date[1], date[2])) +
+                                    " " + Fa.toFa(date[0].toString()),
+                                Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            TextButton(onClick = { pickDate = true }) { Text("تغییر تاریخ") }
+                        }
                         Spacer(Modifier.height(14.dp))
                         OutlinedTextField(
                             value = amountText,
@@ -710,6 +734,10 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                             label = { Text("توضیح (اختیاری)") },
                             modifier = Modifier.fillMaxWidth()
                         )
+                        NoteSuggestions(stats, sel, note) { n, c ->
+                            note = n
+                            if (sel == null && c != null) sel = c
+                        }
                     }
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -718,19 +746,19 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                         Spacer(Modifier.width(8.dp))
                         Button(enabled = amount != null, onClick = {
                             val now = System.currentTimeMillis()
-                            val j = Jalali.fromMillis(now)
                             val c = java.util.Calendar.getInstance().apply { timeInMillis = now }
+                            val hh = c.get(java.util.Calendar.HOUR_OF_DAY)
+                            val mi = c.get(java.util.Calendar.MINUTE)
+                            val j = date
+                            val ts = if (isToday) now else JalaliCal.toMillis(j[0], j[1], j[2], hh, mi)
                             val tx = Tx(
                                 isExpense = isExpense,
                                 amount = amount ?: 0,
                                 balance = null,
                                 jDate = String.format(java.util.Locale.US, "%04d/%02d/%02d", j[0], j[1], j[2]),
-                                time = String.format(
-                                    java.util.Locale.US, "%02d:%02d",
-                                    c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE)
-                                ),
+                                time = String.format(java.util.Locale.US, "%02d:%02d", hh, mi),
                                 ym = j[0] * 100 + j[1],
-                                ts = now,
+                                ts = ts,
                                 categoryId = sel,
                                 note = note.trim(),
                                 dedupKey = "manual-$now"
@@ -742,6 +770,24 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                 }
             }
         }
+    }
+
+    if (pickDate) {
+        JalaliDateDialog(date, onPick = { date = it; pickDate = false }, onDismiss = { pickDate = false })
+    }
+}
+
+@Composable
+fun SearchButton(onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(Icons.Filled.Search, contentDescription = "جستجو", modifier = Modifier.size(20.dp))
     }
 }
 
@@ -762,7 +808,7 @@ fun AddButton(label: String, onClick: () -> Unit) {
 // ================================================================ Expenses
 
 @Composable
-fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: () -> Unit, onYm: (Int) -> Unit) {
+fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: () -> Unit, onSearch: () -> Unit, onYm: (Int) -> Unit) {
     var onlyUncat by rememberSaveable { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Tx?>(null) }
     val catById = cats.associateBy { it.id }
@@ -793,6 +839,7 @@ fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: 
                     label = { Text("بدون دسته (${Fa.toFa(uncat.toString())})") }
                 )
                 Spacer(Modifier.weight(1f))
+                SearchButton(onSearch)
                 AddButton("خرج جدید", onAdd)
             }
         }
@@ -806,7 +853,7 @@ fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: 
 // ================================================================ Income
 
 @Composable
-fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: () -> Unit, onYm: (Int) -> Unit) {
+fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: () -> Unit, onSearch: () -> Unit, onYm: (Int) -> Unit) {
     var editing by remember { mutableStateOf<Tx?>(null) }
     val catById = cats.associateBy { it.id }
     val month = txs.filter { it.ym == ym && !it.isExpense }
@@ -828,6 +875,8 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
         item {
             Row {
                 Spacer(Modifier.weight(1f))
+                SearchButton(onSearch)
+                Spacer(Modifier.width(8.dp))
                 AddButton("واریز جدید", onAdd)
             }
         }
@@ -1044,6 +1093,9 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
             }
         }
 
+        // ---- excel
+        item { ExcelSection(txs, cats, ym) }
+
         // ---- stats
         item {
             val days = monthOut.map { it.jDate }.distinct().size
@@ -1190,7 +1242,8 @@ fun TxEditor(
     cats: List<Category>,
     onSave: (Long?, String, Boolean, Long) -> Unit,
     onCancel: () -> Unit,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    notes: List<NoteStat> = emptyList()
 ) {
     var sel by remember(tx.id) { mutableStateOf(tx.categoryId) }
     var note by remember(tx.id) { mutableStateOf(tx.note) }
@@ -1299,6 +1352,10 @@ fun TxEditor(
             label = { Text("توضیح (اختیاری)") },
             modifier = Modifier.fillMaxWidth()
         )
+        if (!excluded) NoteSuggestions(notes, sel, note) { n, c ->
+            note = n
+            if (sel == null && c != null) sel = c
+        }
     }
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1425,6 +1482,7 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item { UpdateSection() }
+        item { BackupSection() }
         item {
             Column {
                 Text(

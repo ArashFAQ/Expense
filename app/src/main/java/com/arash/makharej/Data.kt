@@ -57,8 +57,26 @@ object Palette {
     fun at(i: Int) = colors[((i % colors.size) + colors.size) % colors.size]
 }
 
+/** توضیح‌های قبلی برای پیشنهاد */
+data class NoteStat(val note: String, val categoryId: Long?, val cnt: Int)
+
 @Dao
 interface TxDao {
+    @Query(
+        "SELECT note, categoryId, COUNT(*) AS cnt FROM tx WHERE TRIM(note) != '' " +
+            "GROUP BY note, categoryId ORDER BY cnt DESC, MAX(ts) DESC"
+    )
+    fun noteStats(): Flow<List<NoteStat>>
+
+    @Query("SELECT * FROM tx ORDER BY ts")
+    suspend fun list(): List<Tx>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(list: List<Tx>)
+
+    @Query("DELETE FROM tx")
+    suspend fun deleteAll()
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(t: Tx): Long
 
@@ -116,6 +134,12 @@ interface CatDao {
 
     @Query("DELETE FROM Category WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(list: List<Category>)
+
+    @Query("DELETE FROM Category")
+    suspend fun deleteAll()
 }
 
 /** نسخه‌ی ۱ ← ۲: رنگ دسته‌ها و گزینه‌ی «حساب خودم». داده‌های قبلی حفظ می‌شوند. */
