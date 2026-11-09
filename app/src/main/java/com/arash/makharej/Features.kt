@@ -39,6 +39,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.activity.result.IntentSenderRequest
+import android.content.IntentSender
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.tasks.Tasks
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -334,7 +339,7 @@ fun BackupSection() {
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(enabled = !busy, onClick = {
+                OutlinedButton(enabled = !busy, onClick = {
                     busy = true
                     scope.launch {
                         try {
@@ -346,11 +351,13 @@ fun BackupSection() {
                             busy = false
                         }
                     }
-                }) { Text("گرفتن و ارسال پشتیبان") }
+                }) { Text("گرفتن و ارسال فایل") }
                 OutlinedButton(onClick = { picker.launch(arrayOf("application/json", "application/octet-stream", "text/plain", "*/*")) }) {
-                    Text("بازگردانی")
+                    Text("بازگردانی از فایل")
                 }
             }
+            HorizontalDivider(Modifier.padding(vertical = 14.dp))
+            DrivePart(busy = busy, setBusy = { busy = it }, onRestoreContent = { pending = it })
         }
     }
 
@@ -379,6 +386,153 @@ fun BackupSection() {
                 }) { Text("بازگردانی") }
             },
             dismissButton = { TextButton(onClick = { pending = null }) { Text("انصراف") } }
+        )
+    }
+}
+
+// ================================================================ Google Drive UI
+
+@Composable
+fun DrivePart(busy: Boolean, setBusy: (Boolean) -> Unit, onRestoreContent: (Backup.Content) -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var connected by remember { mutableStateOf(Drive.isConnected(ctx)) }
+    var email by remember { mutableStateOf(Drive.email(ctx)) }
+    var last by remember { mutableStateOf(Drive.lastUpload(ctx)) }
+    var files by remember { mutableStateOf<List<Drive.FileInfo>?>(null) }
+    var status by remember { mutableStateOf("") }
+
+    fun refresh() {
+        connected = Drive.isConnected(ctx); email = Drive.email(ctx); last = Drive.lastUpload(ctx)
+    }
+
+    var after by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
+        try {
+            val r = Identity.getAuthorizationClient(ctx).getAuthorizationResultFromIntent(res.data)
+            Drive.onConnected(ctx, r)
+            refresh()
+            status = "به Google Drive وصل شد"
+            after?.invoke()
+        } catch (e: Exception) {
+            status = "اتصال انجام نشد: " + (e.message ?: "")
+        }
+        after = null
+    }
+
+    fun ask(sender: IntentSender?, then: (() -> Unit)? = null) {
+        if (sender == null) { status = "اتصال انجام نشد"; return }
+        after = then
+        consent.launch(IntentSenderRequest.Builder(sender).build())
+    }
+
+    /** کار با Drive؛ اگر اجازه لازم شد، صفحه‌ی گوگل باز می‌شود و بعد دوباره امتحان می‌کند */
+    fun withDrive(label: String, block: suspend () -> Unit) {
+        setBusy(true)
+        status = label
+        scope.launch {
+            try {
+                block()
+            } catch (e: Drive.NeedsConsent) {
+                status = ""
+                ask(e.sender) { withDrive(label, block) }
+            } catch (e: Exception) {
+                status = "خطا: " + (e.message ?: "اتصال برقرار نشد") + "\nاگر گوگل در دسترس نیست، فیلترشکن را روشن کن."
+            } finally {
+                setBusy(false)
+            }
+        }
+    }
+
+    Text("Google Drive", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+    if (!connected) {
+        Text(
+            "با اتصال به حساب گوگل، پشتیبان هفتگی بی‌صدا در پوشه‌ی Makharej در Google Drive هم ذخیره می‌شود.",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(Modifier.height(8.dp))
+        Button(enabled = !busy, onClick = {
+            setBusy(true)
+            status = "در حال اتصال…"
+            scope.launch {
+                try {
+                    val r = withContext(Dispatchers.IO) {
+                        Tasks.await(Identity.getAuthorizationClient(ctx).authorize(Drive.request()))
+                    }
+                    if (r.hasResolution()) {
+                        status = ""
+                        ask(r.pendingIntent?.intentSender)
+                    } else {
+                        Drive.onConnected(ctx, r); refresh(); status = "به Google Drive وصل شد"
+                    }
+                } catch (e: Exception) {
+                    status = "اتصال انجام نشد: " + (e.message ?: "") +
+                        "\nسرویس‌های گوگل گوشی و فیلترشکن را بررسی کن."
+                } finally {
+                    setBusy(false)
+                }
+            }
+        }) { Text("اتصال به Google Drive") }
+    } else {
+        Text(
+            "وصل" + (if (email.isNotBlank()) " به $email" else "") + ". پشتیبان هفتگی خودکار در Drive ذخیره می‌شود.",
+            style = MaterialTheme.typography.bodySmall
+        )
+        if (last > 0) {
+            val j = Jalali.fromMillis(last)
+            Text(
+                "آخرین پشتیبان در Drive: " + Fa.dayTitle(String.format(Locale.US, "%04d/%02d/%02d", j[0], j[1], j[2])) +
+                    " " + Fa.toFa(SimpleDateFormat("HH:mm", Locale.US).format(Date(last))),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(enabled = !busy, onClick = {
+                withDrive("در حال ذخیره در Drive…") {
+                    Drive.upload(ctx, auto = false); refresh(); status = "در Google Drive ذخیره شد"
+                }
+            }) { Text("پشتیبان الان") }
+            OutlinedButton(enabled = !busy, onClick = {
+                withDrive("در حال دریافت لیست…") { files = Drive.list(ctx); status = "" }
+            }) { Text("بازگردانی از Drive") }
+            TextButton(enabled = !busy, onClick = { Drive.disconnect(ctx); refresh(); status = "اتصال قطع شد" }) {
+                Text("قطع اتصال", color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+    if (status.isNotEmpty()) {
+        Spacer(Modifier.height(6.dp))
+        Text(status, style = MaterialTheme.typography.bodySmall)
+    }
+
+    files?.let { list ->
+        AlertDialog(
+            onDismissRequest = { files = null },
+            title = { Text("پشتیبان‌های Drive") },
+            text = {
+                if (list.isEmpty()) Text("هنوز پشتیبانی در Drive نیست.")
+                else Column(Modifier.verticalScroll(rememberScrollState())) {
+                    list.forEach { f ->
+                        Text(
+                            Fa.toFa(f.name.removePrefix("makharej-backup-").removeSuffix(".json").replace("auto-", "خودکار ")) +
+                                "   (" + Fa.toFa((f.size / 1024).toString()) + " کیلوبایت)",
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    files = null
+                                    withDrive("در حال دانلود…") {
+                                        onRestoreContent(Backup.parse(Drive.download(ctx, f.id))); status = ""
+                                    }
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { files = null }) { Text("بستن") } }
         )
     }
 }

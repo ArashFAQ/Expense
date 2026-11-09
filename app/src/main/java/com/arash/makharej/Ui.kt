@@ -189,7 +189,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Notifier.ensureChannel(this)
         Backup.schedule(this)
-        setContent { AppTheme { MainScreen() } }
+        val startTab = if (intent?.getBooleanExtra("openSettings", false) == true) 3 else 0
+        setContent { AppTheme { MainScreen(startTab) } }
     }
 }
 
@@ -250,12 +251,12 @@ class CategorizeActivity : ComponentActivity() {
 // ================================================================ Main
 
 @Composable
-fun MainScreen() {
+fun MainScreen(startTab: Int = 0) {
     val ctx = LocalContext.current
     val db = remember { AppDb.get(ctx) }
     val txs by remember { db.tx().all() }.collectAsState(initial = emptyList())
     val cats by remember { db.cat().all() }.collectAsState(initial = emptyList())
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(startTab) }
     var ym by rememberSaveable { mutableIntStateOf(Jalali.currentYm()) }
     var adding by rememberSaveable { mutableIntStateOf(0) } // ۰ بسته، ۱ خرج، ۲ واریز
     var searching by rememberSaveable { mutableStateOf(false) }

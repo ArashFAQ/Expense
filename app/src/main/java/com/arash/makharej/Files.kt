@@ -283,7 +283,9 @@ class BackupWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
         val uri = Backup.makeAndSave(applicationContext, auto = true)
         applicationContext.getSharedPreferences("app", Context.MODE_PRIVATE).edit()
             .putLong("lastBackup", System.currentTimeMillis()).apply()
-        Backup.notifyReady(applicationContext, uri)
+        // اگر Google Drive وصل است، بی‌صدا آنجا هم ذخیره می‌شود؛ وگرنه نوتیفیکیشن ارسال
+        if (Drive.isConnected(applicationContext)) Drive.enqueueUpload(applicationContext)
+        else Backup.notifyReady(applicationContext, uri)
         Result.success()
     } catch (_: Exception) {
         Result.retry()
