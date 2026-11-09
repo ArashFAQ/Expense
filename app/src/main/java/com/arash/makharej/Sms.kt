@@ -134,34 +134,21 @@ object Notifier {
         ) return
         ensureChannel(ctx)
 
-        val db = AppDb.get(ctx)
-        val cats = db.cat().list()
-        val topIds = db.tx().topCategoryIds()
-        val quick = (topIds.mapNotNull { id -> cats.find { it.id == id } } + cats)
-            .distinctBy { it.id }
-            .take(1)
-
         val nid = tx.id.toInt()
         val b = NotificationCompat.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle("${Fa.toman(tx.amount)} خرج شد")
-            .setContentText("کجا خرج شد؟")
+            .setContentText("برای ثبت دسته بزن")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setContentIntent(openPicker(ctx, tx.id, 0))
 
-        quick.forEachIndexed { i, c ->
-            val intent = Intent(ctx, ActionReceiver::class.java)
-                .putExtra("tx", tx.id)
-                .putExtra("cat", c.id)
-            b.addAction(0, c.name, PendingIntent.getBroadcast(ctx, nid * 10 + i + 1, intent, FLAGS))
-        }
         val ownAcc = Intent(ctx, ActionReceiver::class.java)
             .putExtra("tx", tx.id)
             .putExtra("exclude", true)
+        b.addAction(0, "کجا خرج شد؟", openPicker(ctx, tx.id, 9))
         b.addAction(0, "حساب خودم", PendingIntent.getBroadcast(ctx, nid * 10 + 5, ownAcc, FLAGS))
-        b.addAction(0, "دسته‌های دیگر…", openPicker(ctx, tx.id, 9))
 
         try {
             NotificationManagerCompat.from(ctx).notify(nid, b.build())

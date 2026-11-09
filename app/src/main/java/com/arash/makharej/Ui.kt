@@ -203,7 +203,24 @@ class CategorizeActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
                 val tx by produceState<Tx?>(null) { value = db.tx().get(txId) }
                 val cats by remember { db.cat().all() }.collectAsState(initial = emptyList())
-                Surface(color = MaterialTheme.colorScheme.background) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { finish() }
+                        .systemBarsPadding()
+                        .imePadding()
+                        .padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 16.dp),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                Surface(
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.background,
+                    modifier = Modifier.widthIn(max = 560.dp)
+                ) {
                     val t = tx
                     if (t == null) {
                         Text("در حال بارگذاری…", Modifier.padding(24.dp))
@@ -220,6 +237,7 @@ class CategorizeActivity : ComponentActivity() {
                             onCancel = { finish() }
                         )
                     }
+                }
                 }
             }
         }
@@ -588,8 +606,8 @@ fun EditDialog(t: Tx, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
                 )
                 .systemBarsPadding()
                 .imePadding()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            contentAlignment = Alignment.Center
+                .padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 16.dp),
+            contentAlignment = Alignment.TopCenter
         ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
@@ -641,8 +659,8 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                 )
                 .systemBarsPadding()
                 .imePadding()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            contentAlignment = Alignment.Center
+                .padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 16.dp),
+            contentAlignment = Alignment.TopCenter
         ) {
             Surface(
                 shape = RoundedCornerShape(28.dp),
