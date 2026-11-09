@@ -388,7 +388,7 @@ fun MainScreen(startTab: Int = 0) {
         AddTxDialog(isExpense = adding == 1, cats = cats, db = db) { adding = 0 }
     }
     if (searching) {
-        SearchDialog(txs, cats, db) { searching = false }
+        SearchDialog(txs, cats, db, ym) { searching = false }
     }
 }
 

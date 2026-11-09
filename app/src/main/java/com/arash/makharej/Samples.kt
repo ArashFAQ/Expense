@@ -213,13 +213,15 @@ fun SampleDialog(onClose: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var inbox by remember { mutableStateOf<List<InboxSms>?>(null) }
+    var reload by remember { mutableIntStateOf(0) }
     var q by remember { mutableStateOf("") }
+    var senderSel by remember { mutableStateOf<String?>(null) }
     var picked by remember { mutableStateOf<InboxSms?>(null) }
     var manual by remember { mutableStateOf(false) }
     var manualText by remember { mutableStateOf("") }
     var manualSender by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(reload) {
         inbox = withContext(Dispatchers.IO) {
             val out = mutableListOf<InboxSms>()
             try {
@@ -228,13 +230,15 @@ fun SampleDialog(onClose: () -> Unit) {
                     arrayOf(Telephony.Sms.BODY, Telephony.Sms.ADDRESS, Telephony.Sms.DATE),
                     null, null, "${Telephony.Sms.DATE} DESC"
                 )?.use { c ->
-                    while (c.moveToNext() && out.size < 600) {
+                    while (c.moveToNext() && out.size < 4000) {
                         val body = c.getString(0) ?: continue
                         // فقط پیامک‌هایی که عدد دارند (احتمالا تراکنش)
                         if (Learned.numbers(BluParser.normalize(body)).isEmpty()) continue
                         val sender = c.getString(1) ?: ""
                         val ts = c.getLong(2)
-                        val known = Banks.parseFull(ctx, body, sender, ts)?.let { Banks.name(it.bank) }
+                        val known = Banks.parseFull(ctx, body, sender, ts)?.let {
+                            (if (it.isExpense) "برداشت" else "واریز") + " · " + Banks.name(it.bank)
+                        }
                         out.add(InboxSms(body, sender, ts, known))
                     }
                 }
@@ -244,30 +248,50 @@ fun SampleDialog(onClose: () -> Unit) {
         }
     }
 
+    fun back() {
+        when {
+            picked != null -> picked = null
+            manual -> manual = false
+            senderSel != null -> senderSel = null
+            else -> onClose()
+        }
+    }
+
     Dialog(
-        onDismissRequest = onClose,
+        onDismissRequest = { back() },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.systemBarsPadding().imePadding()) {
                 Row(Modifier.padding(start = 8.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { if (picked != null) picked = null else onClose() }) { Icon(Icons.Filled.Close, "بستن") }
+                    IconButton(onClick = { back() }) { Icon(Icons.Filled.Close, "بازگشت") }
                     Text(
-                        if (picked == null) "یک پیامک بانکی انتخاب کن" else "مشخص کردن مبلغ و نوع",
-                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold
+                        when {
+                            picked != null -> "مشخص کردن مبلغ و نوع"
+                            senderSel != null -> "پیامک‌های " + (inbox?.firstOrNull { Learned.normSender(it.sender) == senderSel }?.sender ?: "")
+                            manual -> "وارد کردن دستی"
+                            else -> "فرستنده‌ی بانک را انتخاب کن"
+                        },
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
                 }
                 val p = picked
-                if (p != null) {
-                    TemplateEditor(p.body, p.sender, p.known, inbox.orEmpty(), onSaved = {
+                val list = inbox
+                when {
+                    p != null -> TemplateEditor(p.body, p.sender, p.known, list.orEmpty(), onSaved = {
+                        picked = null
                         scope.launch {
                             val n = try { InboxImporter.run(ctx) } catch (_: Exception) { 0 }
-                            Toast.makeText(ctx, "نمونه ذخیره شد. " + Fa.toFa(n.toString()) + " تراکنش قبلی ثبت شد", Toast.LENGTH_LONG).show()
+                            Toast.makeText(
+                                ctx, "نمونه ذخیره شد. " + Fa.toFa(n.toString()) + " تراکنش قبلی ثبت شد. حالا نمونه‌ی نوع دیگر را انتخاب کن.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            reload++
                         }
-                        onClose()
                     })
-                } else if (manual) {
-                    Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
+
+                    manual -> Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
                         OutlinedTextField(
                             value = manualSender, onValueChange = { manualSender = it },
                             label = { Text("فرستنده (همان که بالای پیامک نوشته)") },
@@ -282,48 +306,71 @@ fun SampleDialog(onClose: () -> Unit) {
                         Spacer(Modifier.height(8.dp))
                         Button(
                             enabled = manualText.isNotBlank() && manualSender.isNotBlank(),
-                            onClick = { picked = InboxSms(manualText, manualSender, System.currentTimeMillis(), null) }
+                            onClick = {
+                                picked = InboxSms(manualText, manualSender, System.currentTimeMillis(), null)
+                                manualText = ""
+                            }
                         ) { Text("ادامه") }
                     }
-                } else {
-                    OutlinedTextField(
-                        value = q, onValueChange = { q = it },
-                        placeholder = { Text("جستجو در متن یا فرستنده") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
-                    )
-                    TextButton(onClick = { manual = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                        Text("یا متن پیامک را دستی وارد کن")
-                    }
-                    val list = inbox
-                    if (list == null) {
-                        Text("در حال خواندن پیامک‌ها…", Modifier.padding(24.dp))
-                    } else {
-                        val shown = list.filter {
-                            q.isBlank() || it.body.contains(q.trim(), true) || it.sender.contains(q.trim(), true)
-                        }
+
+                    list == null -> Text("در حال خواندن پیامک‌ها…", Modifier.padding(24.dp))
+
+                    senderSel != null -> {
+                        val msgs = list.filter { Learned.normSender(it.sender) == senderSel }
+                        Text(
+                            "هر پیامک را برای نمونه انتخاب کن. برای هر نوع (برداشت، واریز، خرید با کارت و …) یک نمونه کافی است. " +
+                                "پیامک‌هایی که برچسب سبز دارند الان هم خوانده می‌شوند.",
+                            Modifier.padding(horizontal = 16.dp),
+                            style = MaterialTheme.typography.bodySmall
+                        )
                         LazyColumn(
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(shown) { m ->
+                            items(msgs) { m -> SmsCard(m) { picked = m } }
+                        }
+                    }
+
+                    else -> {
+                        OutlinedTextField(
+                            value = q, onValueChange = { q = it },
+                            placeholder = { Text("جستجو در فرستنده یا متن") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                        )
+                        TextButton(onClick = { manual = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                            Text("یا متن پیامک را دستی وارد کن (مثلا پیامکی که آشنا فرستاده)")
+                        }
+                        val qq = q.trim()
+                        val groups = list.groupBy { Learned.normSender(it.sender) }
+                            .filter { (_, ms) ->
+                                qq.isEmpty() || ms.first().sender.contains(qq, true) || ms.any { it.body.contains(qq, true) }
+                            }
+                            .toList()
+                        LazyColumn(
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(groups, key = { it.first }) { (key, ms) ->
+                                val known = ms.count { it.known != null }
                                 Card(
-                                    onClick = { picked = m },
+                                    onClick = { senderSel = key },
                                     shape = RoundedCornerShape(14.dp), colors = cardColors(),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(Modifier.padding(12.dp)) {
                                         Row {
-                                            Text(m.sender, Modifier.weight(1f), fontWeight = FontWeight.Bold, maxLines = 1)
-                                            if (m.known != null) Text(
-                                                "شناخته‌شده: " + m.known,
+                                            Text(ms.first().sender, Modifier.weight(1f), fontWeight = FontWeight.Bold, maxLines = 1)
+                                            Text(
+                                                Fa.toFa(ms.size.toString()) + " پیامک" +
+                                                    if (known > 0) "  ·  " + Fa.toFa(known.toString()) + " شناخته‌شده" else "",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = IncomeColor
+                                                color = if (known > 0) IncomeColor else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                         Text(
-                                            m.body.trim(), style = MaterialTheme.typography.bodySmall,
-                                            maxLines = 4, overflow = TextOverflow.Ellipsis
+                                            ms.first().body.trim(), style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 2, overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -332,6 +379,28 @@ fun SampleDialog(onClose: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SmsCard(m: InboxSms, onClick: () -> Unit) {
+    Card(onClick = onClick, shape = RoundedCornerShape(14.dp), colors = cardColors(), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Row {
+                val j = Jalali.fromMillis(m.ts)
+                Text(
+                    Fa.toFa(String.format(java.util.Locale.US, "%04d/%02d/%02d", j[0], j[1], j[2])),
+                    Modifier.weight(1f), style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    m.known?.let { "شناخته‌شده: $it" } ?: "خوانده نمی‌شود",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (m.known != null) IncomeColor else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(m.body.trim(), style = MaterialTheme.typography.bodySmall, maxLines = 6, overflow = TextOverflow.Ellipsis)
         }
     }
 }

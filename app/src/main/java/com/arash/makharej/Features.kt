@@ -207,9 +207,10 @@ fun JalaliDateDialog(
 // ================================================================ Search
 
 @Composable
-fun SearchDialog(txs: List<Tx>, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
+fun SearchDialog(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onClose: () -> Unit) {
     var q by remember { mutableStateOf("") }
     var kind by remember { mutableIntStateOf(0) } // ۰ همه، ۱ خرج، ۲ واریز
+    var onlyMonth by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Tx?>(null) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
@@ -220,11 +221,13 @@ fun SearchDialog(txs: List<Tx>, cats: List<Category>, db: AppDb, onClose: () -> 
     val isNumber = digits.isNotEmpty() && digits.all { it.isDigit() }
     val results = if (query.isEmpty()) emptyList() else txs.filter { t ->
         val kindOk = when (kind) { 1 -> t.isExpense; 2 -> !t.isExpense; else -> true }
-        kindOk && if (isNumber) {
+        val timeOk = !onlyMonth || t.ym == ym
+        kindOk && timeOk && if (isNumber) {
             (t.amount / 10).toString().contains(digits)
         } else {
             t.note.contains(query, ignoreCase = true) ||
-                (t.categoryId?.let { catById[it]?.name }?.contains(query, ignoreCase = true) == true)
+                (t.categoryId?.let { catById[it]?.name }?.contains(query, ignoreCase = true) == true) ||
+                Banks.name(t.bank).contains(query, ignoreCase = true)
         }
     }
     val counted = results.counted()
@@ -241,7 +244,7 @@ fun SearchDialog(txs: List<Tx>, cats: List<Category>, db: AppDb, onClose: () -> 
                     IconButton(onClick = onClose) { Icon(Icons.Filled.Close, "بستن") }
                     OutlinedTextField(
                         value = q, onValueChange = { q = it },
-                        placeholder = { Text("توضیح، دسته یا مبلغ (تومان)") },
+                        placeholder = { Text("توضیح، دسته، بانک یا مبلغ (تومان)") },
                         leadingIcon = { Icon(Icons.Filled.Search, null) },
                         singleLine = true,
                         modifier = Modifier.weight(1f).focusRequester(focus)
@@ -251,6 +254,10 @@ fun SearchDialog(txs: List<Tx>, cats: List<Category>, db: AppDb, onClose: () -> 
                     FilterChip(selected = kind == 0, onClick = { kind = 0 }, label = { Text("همه") })
                     FilterChip(selected = kind == 1, onClick = { kind = 1 }, label = { Text("خرج") })
                     FilterChip(selected = kind == 2, onClick = { kind = 2 }, label = { Text("واریز") })
+                }
+                Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = !onlyMonth, onClick = { onlyMonth = false }, label = { Text("همه‌ی زمان‌ها") })
+                    FilterChip(selected = onlyMonth, onClick = { onlyMonth = true }, label = { Text(Fa.monthTitle(ym)) })
                 }
                 if (query.isNotEmpty()) {
                     Card(
@@ -274,7 +281,7 @@ fun SearchDialog(txs: List<Tx>, cats: List<Category>, db: AppDb, onClose: () -> 
                     if (query.isEmpty()) {
                         item {
                             Text(
-                                "مثلا «اسنپ»، «خوراک» یا «۶۳۰۰۰۰» را بنویس.",
+                                "مثلا «اسنپ»، «خوراک»، «ملت» یا «۶۳۰۰۰۰» را بنویس. در همه‌ی ماه‌ها و سال‌ها جستجو می‌شود.",
                                 Modifier.fillMaxWidth().padding(24.dp),
                                 textAlign = TextAlign.Center,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant

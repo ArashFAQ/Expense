@@ -19,9 +19,10 @@ object Banks {
     const val MELLAT = "MELLAT"
     const val EN = "EN"
     const val PASARGAD = "PASARGAD"
+    const val TEJARAT = "TEJARAT"
     const val MANUAL = "MANUAL"
 
-    val builtIn = listOf(BLU, MELLAT, EN, PASARGAD)
+    val builtIn = listOf(BLU, MELLAT, EN, PASARGAD, TEJARAT)
 
     /** بانک‌های داخلی + بانک‌هایی که با نمونه آموخته شده‌اند */
     fun all(ctx: Context): List<String> =
@@ -33,6 +34,7 @@ object Banks {
         MELLAT -> "ملت"
         EN -> "اقتصاد نوین"
         PASARGAD -> "پاسارگاد / ویپاد"
+        TEJARAT -> "تجارت"
         MANUAL -> "دستی"
         else -> Learned.nameOf(b) ?: "بانک"
     }
@@ -61,7 +63,7 @@ object Banks {
         BluParser.parse(body, ts)?.let { return it }
         val t = BluParser.normalize(body).trim()
         if (t.contains("رمز")) return null
-        return mellat(t, ts) ?: en(t, ts) ?: pasargad(t, ts)
+        return tejarat(t, ts) ?: mellat(t, ts) ?: en(t, ts) ?: pasargad(t, ts)
     }
 
     /** تاریخ از زمان رسیدن پیامک، ساعت از متن (اگر بود) */
@@ -86,6 +88,26 @@ object Banks {
             jDate = String.format(Locale.US, "%04d/%02d/%02d", j[0], j[1], j[2]),
             time = time, ym = j[0] * 100 + j[1], bank = bank
         )
+    }
+
+    /**
+     * تجارت:
+     *   *بانک تجارت*
+     *   حساب: 0177015958438
+     *   برداشت: 8,009,000 ریال
+     *   از طریق: شتاب
+     *   مانده: 1,591,000 ریال
+     *   1405/03/18
+     *   00:07
+     */
+    private val tjAmt = Regex("""(برداشت|واریز)\s*:\s*(\d[\d,]*)""")
+    private val tjBal = Regex("""مانده\s*:\s*(\d[\d,]*)""")
+
+    private fun tejarat(t: String, ts: Long): Parsed? {
+        if (!t.contains("بانک تجارت")) return null
+        val m = tjAmt.find(t) ?: return null
+        val amount = num(m.groupValues[2]) ?: return null
+        return build(m.groupValues[1] == "برداشت", amount, tjBal.find(t)?.let { num(it.groupValues[1]) }, t, ts, TEJARAT)
     }
 
     /**

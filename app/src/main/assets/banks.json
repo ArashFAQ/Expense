@@ -52,7 +52,8 @@
    "id": "TEJARAT",
    "name": "تجارت",
    "senders": [],
-   "templates": []
+   "templates": [],
+   "builtin": true
   },
   {
    "id": "MASKAN",
