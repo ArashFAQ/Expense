@@ -189,7 +189,7 @@ object Learned {
     /** پیامک را با یک نمونه می‌خواند (متن نرمال‌شده) */
     fun apply(t: String, tp: Template): Triple<Boolean, Long, Long?>? {
         // پیامک رمز پویا / رمز ورود هیچ‌وقت تراکنش نیست
-        if (t.contains("رمز")) return null
+        if (BluParser.hasPassword(t)) return null
         // کلمه‌ی نوع اجباری است (پیامک‌های «ورود به بانک» و تبلیغ آن را ندارند)
         if (tp.keyword.isEmpty() || !t.contains(tp.keyword)) return null
         val mul = if (tp.toman) 10 else 1

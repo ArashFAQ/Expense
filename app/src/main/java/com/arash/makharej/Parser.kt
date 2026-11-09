@@ -132,6 +132,10 @@ object BluParser {
     private val dateRe = Regex("""(1[34]\d\d)[./](\d{1,2})[./](\d{1,2})""")
     private val timeRe = Regex("""(?<![\d.])(\d{1,2}):(\d{2})(?!\d)""")
 
+    /** کلمه‌ی «رمز» (پیامک رمز پویا / ورود)؛ نه «کارمزد» */
+    private val passwordRe = Regex("(?<![\\u0600-\\u06FF])رمز")
+    fun hasPassword(t: String) = passwordRe.containsMatchIn(t)
+
     fun normalize(s: String): String =
         Fa.toEn(s).replace(invisible, "").replace('٬', ',').replace('\r', '\n')
             .replace('ي', 'ی').replace('ك', 'ک')
@@ -144,7 +148,7 @@ object BluParser {
      */
     fun parseOtp(body: String): Otp? {
         val t = normalize(body).trim()
-        if (!t.contains("رمز")) return null
+        if (!BluParser.hasPassword(t)) return null
         val lines = t.lines().map { it.trim() }.filter { it.isNotEmpty() }
         // «خرید» یا «خرید از» در یک خط و اسم مقصد در خط بعد؛ یا «خرید از X» در یک خط
         var merchant: String? = null
@@ -163,7 +167,7 @@ object BluParser {
         val first = t.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: return null
         if (first != "بلو") return null
         // پیامک رمز پویا / رمز یکبارمصرف تراکنش نیست
-        if (t.contains("رمز")) return null
+        if (BluParser.hasPassword(t)) return null
 
         val hasBalance = t.contains("موجودی")
         val isExpense = when {

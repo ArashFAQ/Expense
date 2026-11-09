@@ -34,19 +34,22 @@
    "id": "MELLI",
    "name": "ملی",
    "senders": [],
-   "templates": []
+   "templates": [],
+   "builtin": true
   },
   {
    "id": "SEPAH",
    "name": "سپه",
    "senders": [],
-   "templates": []
+   "templates": [],
+   "builtin": true
   },
   {
    "id": "SADERAT",
    "name": "صادرات",
    "senders": [],
-   "templates": []
+   "templates": [],
+   "builtin": true
   },
   {
    "id": "TEJARAT",
@@ -143,7 +146,8 @@
    "id": "GARDESHGARI",
    "name": "گردشگری",
    "senders": [],
-   "templates": []
+   "templates": [],
+   "builtin": true
   },
   {
    "id": "IRANZAMIN",

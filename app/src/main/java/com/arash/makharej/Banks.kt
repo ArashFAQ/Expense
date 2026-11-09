@@ -20,9 +20,13 @@ object Banks {
     const val EN = "EN"
     const val PASARGAD = "PASARGAD"
     const val TEJARAT = "TEJARAT"
+    const val MELLI = "MELLI"
+    const val SADERAT = "SADERAT"
+    const val SEPAH = "SEPAH"
+    const val GARDESHGARI = "GARDESHGARI"
     const val MANUAL = "MANUAL"
 
-    val builtIn = listOf(BLU, MELLAT, EN, PASARGAD, TEJARAT)
+    val builtIn = listOf(BLU, MELLAT, EN, PASARGAD, TEJARAT, MELLI, SADERAT, SEPAH, GARDESHGARI)
 
     /** بانک‌های داخلی + بانک‌هایی که با نمونه آموخته شده‌اند */
     fun all(ctx: Context): List<String> =
@@ -35,6 +39,10 @@ object Banks {
         EN -> "اقتصاد نوین"
         PASARGAD -> "پاسارگاد / ویپاد"
         TEJARAT -> "تجارت"
+        MELLI -> "ملی"
+        SADERAT -> "صادرات"
+        SEPAH -> "سپه"
+        GARDESHGARI -> "گردشگری"
         MANUAL -> "دستی"
         else -> Learned.nameOf(b) ?: "بانک"
     }
@@ -50,7 +58,7 @@ object Banks {
 
     /** پیامک با هر روشی: قالب‌های داخلی، بعد نمونه‌های آموخته‌شده (با فرستنده) */
     fun parseFull(ctx: Context, body: String, sender: String?, ts: Long): Parsed? =
-        parse(body, ts) ?: Learned.parse(ctx, body, sender, ts)
+        parse(body, ts, sender) ?: Learned.parse(ctx, body, sender, ts)
 
     fun buildFor(isExpense: Boolean, amount: Long, balance: Long?, t: String, ts: Long, bank: String): Parsed? =
         build(isExpense, amount, balance, t, ts, bank)
@@ -59,11 +67,90 @@ object Banks {
     private fun num(s: String) = s.replace(",", "").toLongOrNull()
 
     /** همه‌ی قالب‌ها؛ پیامک رمز و پیامک‌های غیرتراکنشی null */
-    fun parse(body: String, ts: Long): Parsed? {
+    fun parse(body: String, ts: Long, sender: String? = null): Parsed? {
         BluParser.parse(body, ts)?.let { return it }
         val t = BluParser.normalize(body).trim()
-        if (t.contains("رمز")) return null
-        return tejarat(t, ts) ?: mellat(t, ts) ?: en(t, ts) ?: pasargad(t, ts)
+        if (BluParser.hasPassword(t)) return null
+        return tejarat(t, ts) ?: melliSaderat(t, ts, sender) ?: sepah(t, ts) ?: gardeshgari(t, ts) ?:
+            mellat(t, ts) ?: en(t, ts) ?: pasargad(t, ts)
+    }
+
+    // ---- علامت مثبت/منفی قبل یا بعد از عدد (ترتیب نمایش راست‌به‌چپ ممکن است جابه‌جا شود)
+    private val signedAfterColon = Regex(""":\s*([+-])?\s*(\d[\d,]*)\s*([+-])?""")
+
+    /**
+     * ملی و صادرات (قالب مشترک):
+     *   بانک ملی ایران                 (صادرات: «بانک صادرات ایران» — بعضی پیامک‌ها بدون این خط)
+     *   پرداخت قبض:700,000-           (یا انتقالی:340,000,000+ / چک:250,000,000- / نقدی: 2,734,506+)
+     *   حساب:01000
+     *   مانده:30,826,897
+     *   0531-09:09
+     */
+    private fun melliSaderat(t: String, ts: Long, sender: String?): Parsed? {
+        val bank = when {
+            t.contains("بانک ملی") -> MELLI
+            t.contains("بانک صادرات") -> SADERAT
+            sender != null && Learned.normSender(sender).contains("saderat") -> SADERAT
+            else -> return null
+        }
+        val lines = t.lines().map { it.trim() }
+        if (lines.none { Regex("""^حساب\s*:\s*\d+""").containsMatchIn(it) }) return null
+        val bal = lines.firstNotNullOfOrNull { Regex("""^مانده\s*:\s*(\d[\d,]*)""").find(it) }?.let { num(it.groupValues[1]) }
+            ?: return null
+        for (l in lines) {
+            if (l.startsWith("حساب") || l.startsWith("مانده") || l.startsWith("بانک") || !l.contains(':')) continue
+            val m = signedAfterColon.find(l) ?: continue
+            val sign = m.groupValues[1].ifEmpty { m.groupValues[3] }
+            if (sign.isEmpty()) continue
+            val amount = num(m.groupValues[2]) ?: continue
+            return build(sign == "-", amount, bal, t, ts, bank)
+        }
+        return null
+    }
+
+    /**
+     * سپه:
+     *   بانک سپه
+     *   واریز:215,050ریال     /   برداشت:100,000,000
+     *   حساب:160800112209
+     *   مانده:6,032,392
+     *   2/29-12:00
+     */
+    private val spAmt = Regex("""(واریز|برداشت)\s*:\s*(\d[\d,]*)""")
+    private val spAmtRev = Regex("""(\d[\d,]*)\s*:\s*(واریز|برداشت)""")
+    private val spBal = Regex("""مانده\s*:\s*(\d[\d,]*)""")
+
+    private fun sepah(t: String, ts: Long): Parsed? {
+        if (!t.contains("بانک سپه")) return null
+        val (kind, amt) = spAmt.find(t)?.let { it.groupValues[1] to it.groupValues[2] }
+            ?: spAmtRev.find(t)?.let { it.groupValues[2] to it.groupValues[1] }
+            ?: return null
+        val amount = num(amt) ?: return null
+        return build(kind == "برداشت", amount, spBal.find(t)?.let { num(it.groupValues[1]) }, t, ts, SEPAH)
+    }
+
+    /**
+     * گردشگری:
+     *   *بانک گردشگری*
+     *   کارت
+     *   برداشت از: 1017.7000.2296684.1      (یا «واریز به:» / «واریز سود به:»)
+     *   مبلغ: 130,000,000 ریال
+     *   05/07/18_10:52
+     *   موجودی: 8,432,320 ریال
+     */
+    private val gdAmt = Regex("""مبلغ\s*:\s*(\d[\d,]*)""")
+    private val gdBal = Regex("""موجودی\s*:\s*(\d[\d,]*)""")
+
+    private fun gardeshgari(t: String, ts: Long): Parsed? {
+        if (!t.contains("بانک گردشگری")) return null
+        val lines = t.lines().map { it.trim() }
+        val isExpense = when {
+            lines.any { it.startsWith("برداشت") } -> true
+            lines.any { it.startsWith("واریز") } -> false
+            else -> return null
+        }
+        val amount = gdAmt.find(t)?.let { num(it.groupValues[1]) } ?: return null
+        return build(isExpense, amount, gdBal.find(t)?.let { num(it.groupValues[1]) }, t, ts, GARDESHGARI)
     }
 
     /** تاریخ از زمان رسیدن پیامک، ساعت از متن (اگر بود) */
