@@ -1,0 +1,196 @@
+{
+ "version": 1,
+ "updated": "1405/08/18",
+ "banks": [
+  {
+   "id": "BLU",
+   "name": "بلو (سامان)",
+   "builtin": true,
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "MELLAT",
+   "name": "ملت",
+   "builtin": true,
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "EN",
+   "name": "اقتصاد نوین",
+   "builtin": true,
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "PASARGAD",
+   "name": "پاسارگاد / ویپاد",
+   "builtin": true,
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "MELLI",
+   "name": "ملی",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "SEPAH",
+   "name": "سپه",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "SADERAT",
+   "name": "صادرات",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "TEJARAT",
+   "name": "تجارت",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "MASKAN",
+   "name": "مسکن",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "KESHAVARZI",
+   "name": "کشاورزی",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "REFAH",
+   "name": "رفاه کارگران",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "SANAT",
+   "name": "صنعت و معدن",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "TOSEESADERAT",
+   "name": "توسعه صادرات",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "TOSEETAAVON",
+   "name": "توسعه تعاون",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "POST",
+   "name": "پست بانک",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "PARSIAN",
+   "name": "پارسیان",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "SAMAN",
+   "name": "سامان",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "SINA",
+   "name": "سینا",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "KARAFARIN",
+   "name": "کارآفرین",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "SARMAYEH",
+   "name": "سرمایه",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "SHAHR",
+   "name": "شهر",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "DAY",
+   "name": "دی",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "GARDESHGARI",
+   "name": "گردشگری",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "IRANZAMIN",
+   "name": "ایران زمین",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "KHAVARMIANEH",
+   "name": "خاورمیانه / بانکینو",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "MEHRIRAN",
+   "name": "قرض‌الحسنه مهر ایران",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "RESALAT",
+   "name": "قرض‌الحسنه رسالت",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "MELAL",
+   "name": "مؤسسه اعتباری ملل",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "NOOR",
+   "name": "مؤسسه اعتباری نور",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "TOSEE",
+   "name": "مؤسسه اعتباری توسعه",
+   "senders": [],
+   "templates": []
+  },
+  {
+   "id": "IRANVENEZUELA",
+   "name": "ایران و ونزوئلا",
+   "senders": [],
+   "templates": []
+  }
+ ]
+}

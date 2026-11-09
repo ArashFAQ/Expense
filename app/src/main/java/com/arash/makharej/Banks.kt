@@ -25,13 +25,14 @@ object Banks {
 
     /** بانک‌های داخلی + بانک‌هایی که با نمونه آموخته شده‌اند */
     fun all(ctx: Context): List<String> =
-        builtIn + Learned.banks(ctx).map { it.id }.filter { it !in builtIn }
+        (builtIn + Learned.banks(ctx).filter { it.templates.isNotEmpty() }.map { it.id } +
+            RemoteBanks.readable(ctx).map { it.id }).distinct()
 
     fun name(b: String) = when (b) {
         BLU -> "بلو"
         MELLAT -> "ملت"
         EN -> "اقتصاد نوین"
-        PASARGAD -> "ویپاد"
+        PASARGAD -> "پاسارگاد / ویپاد"
         MANUAL -> "دستی"
         else -> Learned.nameOf(b) ?: "بانک"
     }

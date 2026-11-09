@@ -3,7 +3,7 @@ name: Build APK
 on:
   push:
     branches: [main]
-    paths-ignore: ["**.md"]
+    paths-ignore: ["**.md", "app/src/main/assets/banks.json"]
   workflow_dispatch:
 
 permissions:

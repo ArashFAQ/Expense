@@ -255,6 +255,7 @@ class MainActivity : ComponentActivity() {
         Backup.schedule(this)
         ThemeSettings.load(this)
         Learned.banks(this)
+        RemoteBanks.entries(this)
         val startTab = if (intent?.getBooleanExtra("openSettings", false) == true) 3 else 0
         setContent { AppTheme { MainScreen(startTab) } }
     }
@@ -336,6 +337,10 @@ fun MainScreen(startTab: Int = 0) {
             try { InboxImporter.run(ctx) } catch (_: Exception) {}
             pr.edit().putInt("importVer", IMPORT_VERSION).putBoolean("imported", true).apply()
         }
+        // لیست آنلاین بانک‌ها (روزی یک بار)؛ اگر بانک تازه‌ای اضافه شده، پیامک‌های قبلی خوانده می‌شوند
+        try {
+            if (RemoteBanks.refresh(ctx) && hasPerm(ctx, Manifest.permission.READ_SMS)) InboxImporter.run(ctx)
+        } catch (_: Exception) {}
         if (hasPerm(ctx, Manifest.permission.READ_SMS) && !pr.getBoolean("otpNotesCleared", false)) {
             try { OtpNoteCleanup.run(ctx) } catch (_: Exception) {}
             pr.edit().putBoolean("otpNotesCleared", true).apply()

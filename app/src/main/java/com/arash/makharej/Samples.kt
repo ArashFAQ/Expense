@@ -73,6 +73,9 @@ fun SamplesSection() {
     var tick by remember { mutableIntStateOf(0) }
     var removing by remember { mutableStateOf<Pair<String, Int>?>(null) }
     val banks = remember(tick) { Learned.banks(ctx) }
+    val scope = rememberCoroutineScope()
+    var showAll by remember { mutableStateOf(false) }
+    var refreshing by remember { mutableStateOf(false) }
 
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = cardColors()) {
         Column(Modifier.padding(16.dp)) {
@@ -95,6 +98,8 @@ fun SamplesSection() {
                                 append(t.sample.trim()).append("\n\n")
                             }
                         }
+                        append("\n----- JSON -----\n")
+                        append(Learned.toJson(banks).toString(1))
                     }
                     ctx.startActivity(
                         Intent.createChooser(
@@ -105,6 +110,46 @@ fun SamplesSection() {
                     )
                 }) { Text("ارسال نمونه‌ها") }
             }
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("وضعیت همه‌ی بانک‌ها", Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                TextButton(onClick = { showAll = !showAll }) { Text(if (showAll) "بستن" else "نمایش") }
+            }
+            if (showAll) {
+                val learnedIds = banks.filter { it.templates.isNotEmpty() }.associateBy { it.id }
+                val entries = RemoteBanks.entries(ctx)
+                val extra = banks.filter { b -> entries.none { it.bank.id == b.id } }
+                entries.forEach { e ->
+                    val mine = learnedIds[e.bank.id]
+                    val (label, ok) = when {
+                        e.builtIn -> "پشتیبانی کامل" to true
+                        mine != null -> "با نمونه‌ی شما (" + Fa.toFa(mine.templates.size.toString()) + ")" to true
+                        e.bank.templates.isNotEmpty() -> "از لیست آنلاین" to true
+                        else -> "نمونه ندارد" to false
+                    }
+                    BankStatusRow(e.bank.name, label, ok)
+                }
+                extra.forEach { b -> BankStatusRow(b.name, "با نمونه‌ی شما (" + Fa.toFa(b.templates.size.toString()) + ")", true) }
+                Spacer(Modifier.height(6.dp))
+                val at = RemoteBanks.lastFetch(ctx)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (at > 0) "لیست آنلاین به‌روز شده" else "لیست آنلاین هنوز دانلود نشده",
+                        Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    TextButton(enabled = !refreshing, onClick = {
+                        refreshing = true
+                        scope.launch {
+                            val ok = RemoteBanks.refresh(ctx, force = true)
+                            if (ok) try { InboxImporter.run(ctx) } catch (_: Exception) {}
+                            refreshing = false; tick++
+                            Toast.makeText(ctx, if (ok) "لیست بانک‌ها به‌روز شد" else "دریافت نشد؛ اینترنت را بررسی کن", Toast.LENGTH_SHORT).show()
+                        }
+                    }) { Text(if (refreshing) "در حال دریافت…" else "به‌روزرسانی لیست") }
+                }
+            }
+            if (banks.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = 8.dp))
             banks.forEach { b ->
                 Spacer(Modifier.height(10.dp))
                 Text(b.name + "  (" + Fa.toFa(b.templates.size.toString()) + " نمونه)", fontWeight = FontWeight.Bold)
@@ -143,6 +188,18 @@ fun SamplesSection() {
                 }) { Text("حذف", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { removing = null }) { Text("انصراف") } }
+        )
+    }
+}
+
+@Composable
+private fun BankStatusRow(name: String, status: String, ok: Boolean) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(if (ok) "✓" else "–", Modifier.width(20.dp), color = if (ok) IncomeColor else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+        Text(name, Modifier.weight(1f))
+        Text(
+            status, style = MaterialTheme.typography.labelMedium,
+            color = if (ok) IncomeColor else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -202,7 +259,7 @@ fun SampleDialog(onClose: () -> Unit) {
                 }
                 val p = picked
                 if (p != null) {
-                    TemplateEditor(p.body, p.sender, p.known, onSaved = {
+                    TemplateEditor(p.body, p.sender, p.known, inbox.orEmpty(), onSaved = {
                         scope.launch {
                             val n = try { InboxImporter.run(ctx) } catch (_: Exception) { 0 }
                             Toast.makeText(ctx, "نمونه ذخیره شد. " + Fa.toFa(n.toString()) + " تراکنش قبلی ثبت شد", Toast.LENGTH_LONG).show()
@@ -280,14 +337,16 @@ fun SampleDialog(onClose: () -> Unit) {
 }
 
 @Composable
-private fun TemplateEditor(body: String, sender: String, known: String?, onSaved: () -> Unit) {
+private fun TemplateEditor(body: String, sender: String, known: String?, inbox: List<InboxSms>, onSaved: () -> Unit) {
     val ctx = LocalContext.current
     val t = remember(body) { BluParser.normalize(body).trim() }
     val nums = remember(t) { Learned.numbers(t) }
     val words = remember(t) { Learned.words(t) }
 
     // بانک: یکی از موجودها یا جدید
-    val existing = remember { Banks.all(ctx) }
+    val existing = remember {
+        (RemoteBanks.entries(ctx).map { it.bank.id } + Learned.banks(ctx).map { it.id }).distinct()
+    }
     val senderBank = remember {
         val s = Learned.normSender(sender)
         Learned.banks(ctx).firstOrNull { s in it.senders }?.id
@@ -312,6 +371,14 @@ private fun TemplateEditor(body: String, sender: String, known: String?, onSaved
     ) else null
     val preview = template?.let { Learned.apply(t, it) }
     val nameOk = if (isNew) newName.isNotBlank() else bankId != null
+    // آزمایش روی پیامک‌های دیگر همین فرستنده
+    val sameSender = remember(inbox, sender) {
+        val s = Learned.normSender(sender)
+        inbox.filter { Learned.normSender(it.sender) == s }
+    }
+    val test = if (template != null && sameSender.isNotEmpty()) sameSender.map { m ->
+        m to Learned.apply(BluParser.normalize(m.body).trim(), template)
+    } else emptyList()
 
     Column(Modifier.padding(horizontal = 16.dp).verticalScroll(rememberScrollState())) {
         Text("فرستنده: $sender", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -399,14 +466,51 @@ private fun TemplateEditor(body: String, sender: String, known: String?, onSaved
         } else if (amountIdx >= 0) {
             Text("با این تنظیمات مبلغ پیدا نمی‌شود؛ عدد دیگری را امتحان کن.", color = MaterialTheme.colorScheme.error)
         }
+        if (keyword == null && amountIdx >= 0) Text(
+            "یک کلمه‌ی نوع انتخاب کن (مرحله‌ی ۳). بدون آن پیامک‌های «ورود به بانک» و تبلیغ هم ممکن است ثبت شوند.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error
+        )
+        if (test.isNotEmpty()) {
+            val hit = test.count { it.second != null }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "آزمایش روی " + Fa.toFa(test.size.toString()) + " پیامک دیگرِ این فرستنده: " +
+                    Fa.toFa(hit.toString()) + " مورد «" + (if (isExpense) "برداشت" else "واریز") + "» خوانده می‌شود، بقیه نادیده.",
+                style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold
+            )
+            Text(
+                "چند نمونه را نگاه کن که درست باشد (رمز و ورود به بانک باید «نادیده» باشند):",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            test.take(12).forEach { (m, r) ->
+                Column(
+                    Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        if (r == null) "نادیده" else (if (r.first) "برداشت " else "واریز ") + Fa.toman(r.second) +
+                            (r.third?.let { "  ·  مانده " + Fa.toman(it) } ?: ""),
+                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+                        color = when {
+                            r == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                            r.first -> ExpenseColor
+                            else -> IncomeColor
+                        }
+                    )
+                    Text(m.body.trim(), style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
         Spacer(Modifier.height(10.dp))
         Button(
-            enabled = preview != null && nameOk,
+            enabled = preview != null && nameOk && keyword != null,
             modifier = Modifier.fillMaxWidth(),
             onClick = {
                 val tp = template ?: return@Button
                 val id = if (isNew) Learned.newId() else bankId!!
-                val name = if (isNew) newName.trim() else Banks.name(id)
+                val name = if (isNew) newName.trim() else (RemoteBanks.nameOf(id) ?: Banks.name(id))
                 Learned.addTemplate(ctx, id, name, sender, tp)
                 onSaved()
             }

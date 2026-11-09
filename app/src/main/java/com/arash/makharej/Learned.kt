@@ -39,17 +39,22 @@ object Learned {
     fun banks(ctx: Context): List<Bank> = cache ?: load(ctx).also { cache = it }
 
     /** اسم برای نمایش؛ بدون Context از حافظه */
-    fun nameOf(id: String): String? = cache?.firstOrNull { it.id == id }?.name
+    fun nameOf(id: String): String? = cache?.firstOrNull { it.id == id }?.name ?: RemoteBanks.nameOf(id)
 
     private fun load(ctx: Context): List<Bank> = try {
-        val arr = JSONArray(prefs(ctx).getString("learnedBanks", "[]"))
+        fromJson(JSONArray(prefs(ctx).getString("learnedBanks", "[]")))
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    fun fromJson(arr: JSONArray): List<Bank> =
         (0 until arr.length()).map { i ->
             val b = arr.getJSONObject(i)
-            val s = b.getJSONArray("senders")
-            val t = b.getJSONArray("templates")
+            val s = b.optJSONArray("senders") ?: JSONArray()
+            val t = b.optJSONArray("templates") ?: JSONArray()
             Bank(
                 b.getString("id"), b.getString("name"),
-                (0 until s.length()).map { s.getString(it) },
+                (0 until s.length()).map { normSender(s.getString(it)) },
                 (0 until t.length()).map {
                     val o = t.getJSONObject(it)
                     Template(
@@ -60,11 +65,13 @@ object Learned {
                 }
             )
         }
-    } catch (_: Exception) {
-        emptyList()
-    }
 
     fun save(ctx: Context, list: List<Bank>) {
+        prefs(ctx).edit().putString("learnedBanks", toJson(list).toString()).apply()
+        cache = list
+    }
+
+    fun toJson(list: List<Bank>): JSONArray {
         val arr = JSONArray()
         list.forEach { b ->
             arr.put(
@@ -80,8 +87,7 @@ object Learned {
                     })
             )
         }
-        prefs(ctx).edit().putString("learnedBanks", arr.toString()).apply()
-        cache = list
+        return arr
     }
 
     /** افزودن نمونه به یک بانک (اگر نبود ساخته می‌شود) */
@@ -182,12 +188,15 @@ object Learned {
 
     /** پیامک را با یک نمونه می‌خواند (متن نرمال‌شده) */
     fun apply(t: String, tp: Template): Triple<Boolean, Long, Long?>? {
+        // پیامک رمز پویا / رمز ورود هیچ‌وقت تراکنش نیست
         if (t.contains("رمز")) return null
-        if (tp.keyword.isNotEmpty() && !t.contains(tp.keyword)) return null
+        // کلمه‌ی نوع اجباری است (پیامک‌های «ورود به بانک» و تبلیغ آن را ندارند)
+        if (tp.keyword.isEmpty() || !t.contains(tp.keyword)) return null
         val mul = if (tp.toman) 10 else 1
         val amount = numberAfter(t, tp.amountAnchor)?.times(mul) ?: return null
         if (amount <= 0) return null
-        val balance = tp.balanceAnchor?.let { numberAfter(t, it) }?.times(mul)
+        // اگر نمونه مانده داشت، پیامک هم باید مانده داشته باشد (سخت‌گیری برای جلوگیری از اشتباه)
+        val balance = tp.balanceAnchor?.let { numberAfter(t, it)?.times(mul) ?: return null }
         return Triple(tp.isExpense, amount, balance)
     }
 
@@ -196,7 +205,7 @@ object Learned {
         if (sender.isNullOrBlank()) return null
         val s = normSender(sender)
         val t = BluParser.normalize(body).trim()
-        for (b in banks(ctx)) {
+        for (b in banks(ctx) + RemoteBanks.readable(ctx)) {
             if (s !in b.senders) continue
             // کلمه‌ی طولانی‌تر اول (دقیق‌تر)
             for (tp in b.templates.sortedByDescending { it.keyword.length }) {
