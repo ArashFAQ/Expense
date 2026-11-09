@@ -142,7 +142,8 @@ object Notifier {
         }
     }
 
-    suspend fun showExpense(ctx: Context, tx: Tx) {
+    /** silent: دوباره نشان دادن بعد از کنار زدن، بدون صدا */
+    suspend fun showExpense(ctx: Context, tx: Tx, silent: Boolean = false) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
@@ -156,8 +157,18 @@ object Notifier {
             .setContentText("برای ثبت دسته بزن")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .setAutoCancel(true)
+            // تا دسته مشخص نشده روی صفحه می‌ماند؛ اگر کنار زده شود دوباره (بی‌صدا) برمی‌گردد
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
+            .setSilent(silent)
             .setContentIntent(openPicker(ctx, tx.id, 0))
+            .setDeleteIntent(
+                PendingIntent.getBroadcast(
+                    ctx, nid * 10 + 7,
+                    Intent(ctx, ReshowReceiver::class.java).putExtra("tx", tx.id), FLAGS
+                )
+            )
 
         val ownAcc = Intent(ctx, ActionReceiver::class.java)
             .putExtra("tx", tx.id)
@@ -180,6 +191,27 @@ object Notifier {
 
     fun cancel(ctx: Context, txId: Long) {
         NotificationManagerCompat.from(ctx).cancel(txId.toInt())
+    }
+}
+
+/** نوتیفیکیشنی که دسته‌اش مشخص نشده و کاربر کنارش زده، دوباره نشان داده می‌شود */
+class ReshowReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val id = intent.getLongExtra("tx", -1)
+        if (id < 0) return
+        val app = context.applicationContext
+        val pending = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                kotlinx.coroutines.delay(1500)
+                val tx = AppDb.get(app).tx().get(id)
+                if (tx != null && tx.isExpense && tx.categoryId == null && !tx.excluded) {
+                    Notifier.showExpense(app, tx, silent = true)
+                }
+            } finally {
+                pending.finish()
+            }
+        }
     }
 }
 

@@ -48,6 +48,10 @@
             android:name=".ActionReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".ReshowReceiver"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"
