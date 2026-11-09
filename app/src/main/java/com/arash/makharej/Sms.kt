@@ -27,8 +27,9 @@ object Ingest {
     }
 
     /** پیامک را پارس و ذخیره می‌کند. اگر تراکنش جدید بود true برمی‌گرداند. */
-    suspend fun handle(ctx: Context, body: String, ts: Long, notify: Boolean): Boolean {
-        val p = Banks.parse(body, ts) ?: return false
+    suspend fun handle(ctx: Context, body: String, ts: Long, notify: Boolean, sender: String? = null): Boolean {
+        val p = Banks.parseFull(ctx, body, sender, ts) ?: return false
+        if (!Banks.enabled(ctx, p.bank)) return false
         val db = AppDb.get(ctx)
         // همان تراکنش قبلا ثبت شده؟ (همان بانک، نوع، مبلغ، روز، ساعت و موجودی یکسان یا نامعلوم)
         // مبلغ و موجودی از متن اصلی پیامک مقایسه می‌شود، تا اگر مبلغ را دستی ویرایش کرده‌ای باز هم تکراری ثبت نشود
@@ -77,11 +78,12 @@ class SmsReceiver : BroadcastReceiver() {
         if (msgs.isEmpty()) return
         val body = msgs.joinToString("") { it.messageBody ?: "" }
         val ts = msgs[0].timestampMillis.takeIf { it > 0 } ?: System.currentTimeMillis()
+        val sender = msgs[0].originatingAddress
         val app = context.applicationContext
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                Ingest.handle(app, body, ts, notify = true)
+                Ingest.handle(app, body, ts, notify = true, sender = sender)
             } finally {
                 pending.finish()
             }
@@ -115,14 +117,14 @@ object InboxImporter {
         var n = 0
         ctx.contentResolver.query(
             Telephony.Sms.Inbox.CONTENT_URI,
-            arrayOf(Telephony.Sms.BODY, Telephony.Sms.DATE),
+            arrayOf(Telephony.Sms.BODY, Telephony.Sms.DATE, Telephony.Sms.ADDRESS),
             null,
             null,
             "${Telephony.Sms.DATE} ASC"
         )?.use { c ->
             while (c.moveToNext()) {
                 val body = c.getString(0) ?: continue
-                if (Ingest.handle(ctx, body, c.getLong(1), notify = false)) n++
+                if (Ingest.handle(ctx, body, c.getLong(1), notify = false, sender = c.getString(2))) n++
             }
         }
         n

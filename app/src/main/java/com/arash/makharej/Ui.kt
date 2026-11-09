@@ -254,6 +254,7 @@ class MainActivity : ComponentActivity() {
         Notifier.ensureChannel(this)
         Backup.schedule(this)
         ThemeSettings.load(this)
+        Learned.banks(this)
         val startTab = if (intent?.getBooleanExtra("openSettings", false) == true) 3 else 0
         setContent { AppTheme { MainScreen(startTab) } }
     }
@@ -1514,6 +1515,7 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
         item { ThemeSection() }
         item { BackupSection() }
         item { AccountsSection() }
+        item { SamplesSection() }
         item {
             Column {
                 Text(

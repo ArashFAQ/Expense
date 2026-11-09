@@ -21,15 +21,36 @@ object Banks {
     const val PASARGAD = "PASARGAD"
     const val MANUAL = "MANUAL"
 
-    val all = listOf(BLU, MELLAT, EN, PASARGAD)
+    val builtIn = listOf(BLU, MELLAT, EN, PASARGAD)
+
+    /** بانک‌های داخلی + بانک‌هایی که با نمونه آموخته شده‌اند */
+    fun all(ctx: Context): List<String> =
+        builtIn + Learned.banks(ctx).map { it.id }.filter { it !in builtIn }
 
     fun name(b: String) = when (b) {
         BLU -> "بلو"
         MELLAT -> "ملت"
         EN -> "اقتصاد نوین"
         PASARGAD -> "ویپاد"
-        else -> "دستی"
+        MANUAL -> "دستی"
+        else -> Learned.nameOf(b) ?: "بانک"
     }
+
+    fun enabled(ctx: Context, bank: String): Boolean =
+        bank == MANUAL || prefs(ctx).getBoolean("bank_on_$bank", true)
+
+    /** خاموش: تراکنش‌های این بانک حذف می‌شوند. روشن: پیامک‌های قبلی دوباره خوانده می‌شوند */
+    suspend fun setEnabled(ctx: Context, bank: String, on: Boolean) {
+        prefs(ctx).edit().putBoolean("bank_on_$bank", on).apply()
+        if (on) InboxImporter.run(ctx) else AppDb.get(ctx).tx().deleteByBank(bank)
+    }
+
+    /** پیامک با هر روشی: قالب‌های داخلی، بعد نمونه‌های آموخته‌شده (با فرستنده) */
+    fun parseFull(ctx: Context, body: String, sender: String?, ts: Long): Parsed? =
+        parse(body, ts) ?: Learned.parse(ctx, body, sender, ts)
+
+    fun buildFor(isExpense: Boolean, amount: Long, balance: Long?, t: String, ts: Long, bank: String): Parsed? =
+        build(isExpense, amount, balance, t, ts, bank)
 
     private val timeRe = Regex("""(?<![\d/.])(\d{1,2}):(\d{2})(?!\d)""")
     private fun num(s: String) = s.replace(",", "").toLongOrNull()
@@ -157,7 +178,7 @@ object Banks {
     }
 
     suspend fun applyAll(ctx: Context) {
-        all.forEach { b -> apply(ctx, b, true); apply(ctx, b, false) }
+        all(ctx).forEach { b -> apply(ctx, b, true); apply(ctx, b, false) }
     }
 
     fun savingsWords(ctx: Context): List<String> =

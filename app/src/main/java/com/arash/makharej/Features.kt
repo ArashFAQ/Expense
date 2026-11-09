@@ -586,24 +586,45 @@ fun AccountsSection() {
     val scope = rememberCoroutineScope()
     var tick by remember { mutableIntStateOf(0) }
     var words by remember { mutableStateOf(Banks.savingsWords(ctx).joinToString("، ")) }
+    var turningOff by remember { mutableStateOf<String?>(null) }
+    var working by remember { mutableStateOf(false) }
 
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = cardColors()) {
         Column(Modifier.padding(16.dp)) {
             Text("حساب‌ها", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                "برای هر بانک مشخص کن برداشت‌ها خرج و واریزها درآمد حساب شوند یا نه. " +
+                "پیامک‌های کدام بانک‌ها خوانده شود، و برای هر بانک برداشت‌ها خرج و واریزها درآمد حساب شوند یا نه. " +
                     "انتقال بین دو حساب خودت (مثلا ویپاد به بلو) همیشه خودکار تشخیص داده می‌شود و حساب نمی‌شود.",
                 style = MaterialTheme.typography.bodySmall
             )
-            Banks.all.forEach { b ->
+            if (working) Text("در حال انجام…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            Banks.all(ctx).forEach { b ->
                 key(tick, b) {
+                    val on = Banks.enabled(ctx, b)
                     Spacer(Modifier.height(12.dp))
-                    Text(Banks.name(b), fontWeight = FontWeight.Bold)
-                    RoleSwitch("برداشت‌ها خرج حساب شوند", Banks.counts(ctx, b, true)) { on ->
-                        scope.launch { Banks.setCounts(ctx, b, true, on); tick++ }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(Banks.name(b), Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                        Text(
+                            if (on) "خوانده می‌شود" else "خاموش",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Switch(checked = on, enabled = !working, onCheckedChange = { v ->
+                            if (!v) turningOff = b
+                            else {
+                                working = true
+                                scope.launch { Banks.setEnabled(ctx, b, true); working = false; tick++ }
+                            }
+                        })
                     }
-                    RoleSwitch("واریزها درآمد حساب شوند", Banks.counts(ctx, b, false)) { on ->
-                        scope.launch { Banks.setCounts(ctx, b, false, on); tick++ }
+                    if (on) {
+                        RoleSwitch("برداشت‌ها خرج حساب شوند", Banks.counts(ctx, b, true)) { v ->
+                            scope.launch { Banks.setCounts(ctx, b, true, v); tick++ }
+                        }
+                        RoleSwitch("واریزها درآمد حساب شوند", Banks.counts(ctx, b, false)) { v ->
+                            scope.launch { Banks.setCounts(ctx, b, false, v); tick++ }
+                        }
                     }
                 }
             }
@@ -622,6 +643,30 @@ fun AccountsSection() {
             )
         }
     }
+
+    turningOff?.let { b ->
+        TurnOffDialog(b, onConfirm = {
+            turningOff = null
+            working = true
+            scope.launch { Banks.setEnabled(ctx, b, false); working = false; tick++ }
+        }, onDismiss = { turningOff = null })
+    }
+}
+
+@Composable
+private fun TurnOffDialog(bank: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("خاموش کردن «${Banks.name(bank)}»؟") },
+        text = {
+            Text(
+                "پیامک‌های این بانک دیگر خوانده نمی‌شوند و همه‌ی تراکنش‌هایی که از این بانک ثبت شده (همراه با دسته و توضیحشان) حذف می‌شوند.\n" +
+                    "اگر دوباره روشنش کنی، پیامک‌هایی که هنوز در گوشی هست دوباره خوانده می‌شوند ولی دسته‌ها و توضیح‌ها برنمی‌گردند."
+            )
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("خاموش و حذف", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
+    )
 }
 
 @Composable

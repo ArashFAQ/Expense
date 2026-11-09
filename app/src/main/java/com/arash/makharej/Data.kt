@@ -81,6 +81,9 @@ interface TxDao {
     @Query("DELETE FROM tx")
     suspend fun deleteAll()
 
+    @Query("DELETE FROM tx WHERE bank = :bank")
+    suspend fun deleteByBank(bank: String)
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(t: Tx): Long
 
