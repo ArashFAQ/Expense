@@ -78,10 +78,10 @@ object Prices {
         "emami" to "sekee",
         "nim" to "nim",
         "rob" to "rob",
-        "gerami" to "gerami",
+        "gold18" to "geram18",
     )
     val names = mapOf(
-        "usd" to "دلار", "emami" to "سکه امامی", "nim" to "نیم‌سکه", "rob" to "ربع‌سکه", "gerami" to "سکه گرمی",
+        "usd" to "دلار", "emami" to "سکه امامی", "nim" to "نیم‌سکه", "rob" to "ربع‌سکه", "gerami" to "سکه گرمی", "gold18" to "طلای ۱۸ عیار",
         "fund" to "صندوق سرمایه‌گذاری", "cash" to "پول نقد", "other" to "سایر"
     )
     private val urls = listOf(
@@ -241,7 +241,7 @@ private fun ago(ts: Long): String {
 
 private fun kindIcon(kind: String): ImageVector = when (kind) {
     "usd" -> Icons.Outlined.AttachMoney
-    "emami", "nim", "rob", "gerami" -> Icons.Outlined.Toll
+    "emami", "nim", "rob", "gerami", "gold18" -> Icons.Outlined.Toll
     "fund" -> Icons.Outlined.Savings
     "cash" -> Icons.Outlined.Payments
     else -> Icons.Outlined.AccountBalanceWallet
@@ -254,7 +254,7 @@ private val BankColor = Color(0xFF00897B)
 
 private fun kindColor(kind: String) = when (kind) {
     "usd" -> UsdColor
-    "emami", "nim", "rob", "gerami" -> GoldColor
+    "emami", "nim", "rob", "gerami", "gold18" -> GoldColor
     "fund" -> FundColor
     else -> Color(0xFF8D6E63)
 }
@@ -362,7 +362,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb) {
                         val invested = if (a.kind == "fund" && a.buyTotal <= 0) savedFromSms else a.buyTotal
                         val sub = buildString {
                             if (a.kind in Prices.keys.keys) {
-                                append(Fa.toFa(fmtQty(a.qty)) + " عدد")
+                                append(Fa.toFa(fmtQty(a.qty)) + if (a.kind == "gold18") " گرم" else " عدد")
                                 if (Prices.price(ctx, a.kind) == null) append("  ·  قیمت نامعلوم")
                             }
                             if (invested > 0 && v > 0) {
@@ -411,7 +411,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(Prices.names[k] ?: k)
+                                    Text((Prices.names[k] ?: k) + if (k == "gold18") " (هر گرم)" else "")
                                     if (p != null) Text(
                                         (if (Prices.isManual(ctx, k)) "دستی · " else "") + ago(p.second),
                                         style = MaterialTheme.typography.labelSmall,
@@ -579,7 +579,7 @@ private fun AssetEditDialog(
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 if (initial == null) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("usd", "emami", "nim", "rob", "gerami", "fund", "cash", "other").forEach { k ->
+                        listOf("usd", "emami", "nim", "rob", "gold18", "fund", "cash", "other").forEach { k ->
                             FilterChip(selected = kind == k, onClick = { kind = k }, label = { Text(Prices.names[k] ?: k) })
                         }
                     }
@@ -593,7 +593,7 @@ private fun AssetEditDialog(
                 if (priced) {
                     OutlinedTextField(
                         value = qty, onValueChange = { qty = Fa.toEn(it).filter { c -> c.isDigit() || c == '.' }.take(12) },
-                        label = { Text("تعداد") }, singleLine = true,
+                        label = { Text(if (kind == "gold18") "وزن (گرم)" else "تعداد") }, singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth()
                     )
