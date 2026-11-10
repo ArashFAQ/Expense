@@ -25,6 +25,9 @@ object Fa {
         for (c in s) append(if (c in '0'..'9') FA[c - '0'] else c)
     }
 
+    /** عدد کامل تومان با جداکننده، بدون کلمه‌ی «تومان» */
+    fun num(rial: Long): String = toFa(String.format(Locale.US, "%,d", rial / 10))
+
     fun toman(rial: Long): String =
         toFa(String.format(Locale.US, "%,d", rial / 10)) + " تومان"
 

@@ -142,7 +142,13 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
     val monthOut = counted.filter { it.ym == ym && it.isExpense }
     val totalOut = monthOut.sumOf { it.eff }
     val totalIn = counted.filter { it.ym == ym && !it.isExpense }.sumOf { it.eff }
-    val prevOut = counted.filter { it.ym == Jalali.shiftYm(ym, -1) && it.isExpense }.sumOf { it.eff }
+    // مقایسه با ماه قبل: اگر ماه جاری است، تا همین روزِ ماه قبل (مثلا ۱۹ آبان با ۱ تا ۱۹ مهر)
+    val today = Jalali.fromMillis(System.currentTimeMillis())
+    val isCurrent = ym == today[0] * 100 + today[1]
+    val prevOut = counted.filter { t ->
+        t.ym == Jalali.shiftYm(ym, -1) && t.isExpense &&
+            (!isCurrent || (t.jDate.substringAfterLast('/').toIntOrNull() ?: 0) <= today[2])
+    }.sumOf { it.eff }
     val uncat = monthOut.count { it.categoryId == null }
     val uncatColor = Color(0xFF90A4AE)
 
@@ -204,15 +210,22 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                         Donut(slices.map { it.sum.toFloat() to it.color }, Modifier.size(200.dp))
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("خرج " + Fa.monthName(ym), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(Fa.compact(totalOut), fontSize = 26.sp, fontWeight = FontWeight.Black)
+                            Text(Fa.num(totalOut), fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                            Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (prevOut > 0 && totalOut > 0) {
                                 val diff = ((totalOut - prevOut) * 100 / prevOut).toInt()
                                 Text(
-                                    (if (diff > 0) "▲ " else "▼ ") + Fa.toFa(kotlin.math.abs(diff).toString()) + "٪ نسبت به ماه قبل",
-                                    style = MaterialTheme.typography.labelSmall,
+                                    (if (diff > 0) "▲ " else "▼ ") + Fa.toFa(kotlin.math.abs(diff).toString()) + "٪",
+                                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
                                     color = if (diff > 0) ExpenseColor else IncomeColor
                                 )
-                            } else Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    if (isCurrent) "نسبت به ۱ تا " + Fa.toFa(today[2].toString()) + " " + Fa.monthName(Jalali.shiftYm(ym, -1))
+                                    else "نسبت به " + Fa.monthName(Jalali.shiftYm(ym, -1)),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(14.dp))
@@ -294,6 +307,7 @@ private fun SummaryCell(title: String, rial: Long, color: Color, modifier: Modif
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
-        Text(Fa.compact(rial), color = color, fontWeight = FontWeight.Black, fontSize = 18.sp, maxLines = 1)
+        Text(Fa.num(rial), color = color, fontWeight = FontWeight.Black, fontSize = 15.sp, maxLines = 1)
+        Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
