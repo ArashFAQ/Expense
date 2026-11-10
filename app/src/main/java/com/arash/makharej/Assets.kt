@@ -155,15 +155,49 @@ object Wealth {
     fun hidden(ctx: Context, bank: String) = prefs(ctx).getBoolean("hideBal_$bank", false)
     fun setHidden(ctx: Context, bank: String, h: Boolean) = prefs(ctx).edit().putBoolean("hideBal_$bank", h).apply()
 
-    /** آخرین مانده‌ی هر بانک: بانک → (تراکنش آخر) */
-    fun latestBalances(txs: List<Tx>): List<Tx> =
-        txs.filter { it.balance != null && it.bank != Banks.MANUAL }
-            .groupBy { it.bank }
-            .mapNotNull { (bank, l) ->
-                val last = l.maxByOrNull { it.ts } ?: return@mapNotNull null
-                if (bank == Banks.MOFID) mofidBalance(txs, last) else last
+    /** موجودی دستی (وقتی آخرین پیامک قدیمی است): مبلغ و زمان ثبت */
+    fun manual(ctx: Context, bank: String): Pair<Long, Long>? {
+        val p = prefs(ctx)
+        val at = p.getLong("balAt_$bank", 0L)
+        return if (at > 0) p.getLong("bal_$bank", 0L) to at else null
+    }
+
+    fun setManual(ctx: Context, bank: String, rial: Long?) {
+        val e = prefs(ctx).edit()
+        if (rial == null) e.remove("bal_$bank").remove("balAt_$bank")
+        else e.putLong("bal_$bank", rial).putLong("balAt_$bank", System.currentTimeMillis())
+        e.apply()
+    }
+
+    /**
+     * آخرین مانده‌ی هر بانک. اگر موجودی دستی تازه‌تر از آخرین پیامک باشد، همان مبنا می‌شود
+     * و تراکنش‌های بعد از آن (که مانده ندارند) رویش اعمال می‌شوند.
+     */
+    fun latestBalances(ctx: Context, txs: List<Tx>): List<Tx> {
+        val banks = (txs.filter { it.balance != null && it.bank != Banks.MANUAL }.map { it.bank } +
+            Banks.all(ctx).filter { manual(ctx, it) != null }).distinct()
+        return banks.mapNotNull { bank ->
+            val sms = txs.filter { it.bank == bank && it.balance != null }.maxByOrNull { it.ts }
+            val man = manual(ctx, bank)
+            val anchor = when {
+                man != null && (sms == null || man.second > sms.ts) -> Tx(
+                    isExpense = false, amount = 0, balance = man.first, jDate = "", time = "",
+                    ym = 0, ts = man.second, bank = bank
+                )
+                sms != null -> sms
+                else -> return@mapNotNull null
             }
-            .sortedByDescending { it.balance }
+            if (bank == Banks.MOFID) mofidBalance(txs, anchor) else applyAfter(txs, anchor)
+        }.sortedByDescending { it.balance }
+    }
+
+    /** تراکنش‌های بعد از مبنا که مانده ندارند (مثلا ثبت دستی نشده‌اند) روی مبنا اعمال می‌شوند */
+    private fun applyAfter(txs: List<Tx>, anchor: Tx): Tx {
+        val after = txs.filter { it.bank == anchor.bank && it.ts > anchor.ts }
+        if (after.any { it.balance != null }) return after.filter { it.balance != null }.maxBy { it.ts }
+        val delta = after.sumOf { if (it.isExpense) -it.amount else it.amount }
+        return anchor.copy(balance = (anchor.balance ?: 0) + delta, ts = maxOf(anchor.ts, after.maxOfOrNull { it.ts } ?: 0))
+    }
 
     /**
      * مانده‌ی مفید: آخرین مانده‌ی پیامک برداشت، به‌علاوه‌ی رویدادهای بعد از آن:
@@ -244,7 +278,8 @@ fun AssetsTab(txs: List<Tx>, db: AppDb) {
     }
 
     // tick برای خواندن دوباره‌ی قیمت‌ها و تنظیمات
-    val balances = remember(txs, tick) { Wealth.latestBalances(txs) }
+    val balances = remember(txs, tick) { Wealth.latestBalances(ctx, txs) }
+    var balEdit by remember { mutableStateOf<Tx?>(null) }
     val visible = balances.filter { !Wealth.hidden(ctx, it.bank) }
     val hidden = balances.filter { Wealth.hidden(ctx, it.bank) }
     val bankTotal = visible.sumOf { it.balance ?: 0L }
@@ -285,7 +320,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb) {
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
                     Text("موجودی بانک‌ها", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "آخرین مانده‌ای که در پیامک هر بانک آمده. برای پنهان کردن یک بانک از جمع، رویش بزن.",
+                        "آخرین مانده‌ای که در پیامک هر بانک آمده. اگر درست نیست، رویش بزن و موجودی فعلی را وارد کن یا پنهانش کن.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (balances.isEmpty()) Text("هنوز پیامکی با مانده ثبت نشده.", Modifier.padding(top = 8.dp))
@@ -293,7 +328,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb) {
                         AssetRow(
                             Icons.Outlined.AccountBalance, BankColor, Banks.name(t.bank),
                             "به‌روز شده " + ago(t.ts), Fa.toman(t.balance ?: 0)
-                        ) { Wealth.setHidden(ctx, t.bank, true); tick++ }
+                        ) { balEdit = t }
                     }
                     if (hidden.isNotEmpty()) {
                         TextButton(onClick = { showHidden = !showHidden }) {
@@ -406,6 +441,46 @@ fun AssetsTab(txs: List<Tx>, db: AppDb) {
             editing = null
             scope.launch { db.asset().delete(e.id) }
         }, onDismiss = { editing = null })
+    }
+
+    balEdit?.let { t ->
+        var text by remember(t.bank) { mutableStateOf(((t.balance ?: 0L) / 10).toString()) }
+        val v = text.toLongOrNull()
+        val man = Wealth.manual(ctx, t.bank)
+        AlertDialog(
+            onDismissRequest = { balEdit = null },
+            title = { Text("موجودی " + Banks.name(t.bank)) },
+            text = {
+                Column {
+                    Text(
+                        "اگر آخرین پیامک قدیمی است، موجودی فعلی را از اپ بانک ببین و اینجا وارد کن. " +
+                            "از این به بعد هر پیامک تازه‌ای که مانده داشته باشد، دوباره جایگزینش می‌شود.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = text, onValueChange = { text = Fa.toEn(it).filter { c -> c.isDigit() }.take(14) },
+                        label = { Text("موجودی فعلی") }, suffix = { Text("تومان") }, singleLine = true,
+                        supportingText = { if (v != null) Text(Fa.toman(v * 10)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    Row {
+                        TextButton(onClick = { Wealth.setHidden(ctx, t.bank, true); balEdit = null; tick++ }) {
+                            Text("پنهان کردن از جمع")
+                        }
+                        if (man != null) TextButton(onClick = { Wealth.setManual(ctx, t.bank, null); balEdit = null; tick++ }) {
+                            Text("حذف موجودی دستی", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(enabled = v != null, onClick = {
+                    Wealth.setManual(ctx, t.bank, (v ?: 0) * 10); balEdit = null; tick++
+                }) { Text("ذخیره") }
+            },
+            dismissButton = { TextButton(onClick = { balEdit = null }) { Text("انصراف") } }
+        )
     }
 
     pricing?.let { k ->
