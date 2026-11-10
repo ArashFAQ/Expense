@@ -138,6 +138,7 @@ object Prices {
                 }
                 if (got > 0) {
                     e.putLong("pricesFetchedAt", now).apply()
+                    try { PricesWidget.render(ctx) } catch (_: Exception) {}
                     return@withContext true
                 }
             } catch (_: Exception) {

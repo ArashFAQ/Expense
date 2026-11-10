@@ -253,6 +253,13 @@ private const val IMPORT_VERSION = 9
 // ================================================================ Activities
 
 class MainActivity : ComponentActivity() {
+    override fun onStop() {
+        super.onStop()
+        // ویجت‌ها با آخرین تغییرات
+        SummaryWidget.refresh(this)
+        try { PricesWidget.render(this) } catch (_: Exception) {}
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Notifier.ensureChannel(this)
@@ -260,7 +267,10 @@ class MainActivity : ComponentActivity() {
         ThemeSettings.load(this)
         Learned.banks(this)
         RemoteBanks.entries(this)
-        val startTab = if (intent?.getBooleanExtra("openSettings", false) == true) 5 else 0
+        val startTab = when {
+            intent?.getBooleanExtra("openSettings", false) == true -> 5
+            else -> intent?.getIntExtra("openTab", 0) ?: 0
+        }
         setContent { AppTheme { MainScreen(startTab) } }
     }
 }

@@ -92,6 +92,7 @@ class SmsReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 Ingest.handle(app, body, ts, notify = true, sender = sender)
+                SummaryWidget.render(app)
             } finally {
                 pending.finish()
             }
@@ -317,6 +318,7 @@ class ActionReceiver : BroadcastReceiver() {
                 try {
                     AppDb.get(app).tx().setDepositKind(tx, own)
                     Notifier.cancel(app, tx)
+                    SummaryWidget.render(app)
                 } finally {
                     pending.finish()
                 }
