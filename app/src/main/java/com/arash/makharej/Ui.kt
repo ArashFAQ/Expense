@@ -350,6 +350,11 @@ fun MainScreen(startTab: Int = 0) {
     // یک بار بعد از هر اصلاح مهم در خواندن پیامک‌ها، پیامک‌های قبلی دوباره خوانده می‌شوند
     LaunchedEffect(Unit) {
         val pr = prefs(ctx)
+        // یک بار: واریزهای قبلی که کاربر دسته/توضیح نگذاشته «در انتظار تأیید» می‌شوند؛ سود مفید درآمد
+        if (pr.getInt("depositsPending", 0) < 1) {
+            try { db.tx().migrateDepositsToPendingRaw(); db.tx().mofidProfitIncome() } catch (_: Exception) {}
+            pr.edit().putInt("depositsPending", 1).apply()
+        }
         // یک بار: واریزهای بلو، اقتصاد نوین، پاسارگاد و مفید به پیش‌فرض «درآمد نیست» برمی‌گردند
         if (pr.getInt("importVer", 0) < 9) {
             pr.edit().remove("role_d_BLU").remove("role_d_EN").remove("role_d_PASARGAD").remove("role_d_MOFID").apply()
@@ -373,7 +378,7 @@ fun MainScreen(startTab: Int = 0) {
     val tabs = listOf(
         "خانه" to Icons.Filled.Home,
         "خرج‌ها" to Icons.Filled.ShoppingCart,
-        "واریزی" to Icons.Filled.AddCircle,
+        "درآمد" to Icons.Filled.AddCircle,
         "دارایی" to Icons.Filled.AccountBalance,
         "گزارش" to Icons.Filled.DateRange,
         "تنظیمات" to Icons.Filled.Settings
@@ -624,6 +629,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
         t.excluded && t.reason == 3 -> { title = "پس‌انداز"; bg = neutral }
         t.excluded && t.reason == 2 -> { title = "حساب نمی‌شود"; bg = neutral }
         t.excluded && t.reason == 4 -> { title = "بازپرداخت دنگ"; bg = neutral }
+        t.excluded && t.reason == 5 -> { title = "در انتظار تأیید"; bg = neutral }
         t.excluded -> { title = "حساب خودم"; bg = neutral }
         cat != null -> { title = cat.name; bg = cat.uiColor() }
         !t.isExpense -> { title = "واریز"; bg = neutral }
@@ -814,7 +820,7 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                 Column(Modifier.padding(20.dp)) {
                     Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                         Text(
-                            if (isExpense) "خرج جدید" else "واریز جدید",
+                            if (isExpense) "خرج جدید" else "درآمد جدید",
                             style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
                             color = if (isExpense) ExpenseColor else IncomeColor
                         )
@@ -981,14 +987,19 @@ fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: 
 
 @Composable
 fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: () -> Unit, onSearch: () -> Unit, onYm: (Int) -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf<Tx?>(null) }
+    var dangFor by remember { mutableStateOf<Tx?>(null) }
     var showMoves by rememberSaveable { mutableStateOf(false) }
     val catById = cats.associateBy { it.id }
-    // جابه‌جایی بین حساب‌های خودم، پس‌انداز و حساب‌های واسط جزو واریزی‌ها نیستند
     val all = txs.filter { it.ym == ym && !it.isExpense }
-    val moves = all.filter { it.reason == 1 || it.reason == 2 || it.reason == 3 }
-    val month = if (showMoves) all else all - moves.toSet()
-    val counted = month.counted()
+    val pending = all.filter { it.reason == 5 }.sortedByDescending { it.ts }
+    val income = all.filter { !it.excluded }
+    val moves = all.filter { it.excluded && it.reason != 5 }
+    val shown = if (showMoves) income + moves else income
+
+    fun setKind(t: Tx, own: Boolean) = scope.launch { db.tx().setDepositKind(t.id, own); Notifier.cancel(ctx, t.id) }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -997,31 +1008,92 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
         item { MonthRow(txs, false, ym, onYm) }
         item {
             HeroCard(
-                title = "واریزی ${Fa.monthName(ym)}",
-                rial = counted.sumOf { it.eff },
-                subtitle = Fa.toFa(counted.size.toString()) + " واریز",
+                title = "درآمد ${Fa.monthName(ym)}",
+                rial = income.sumOf { it.eff },
+                subtitle = Fa.toFa(income.size.toString()) + " مورد" +
+                    if (pending.isNotEmpty()) "  ·  " + Fa.toFa(pending.size.toString()) + " واریز در انتظار تأیید" else "",
                 gradient = IncomeGradient
             )
         }
         item {
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (moves.isNotEmpty()) FilterChip(
+                    selected = showMoves, onClick = { showMoves = !showMoves },
+                    label = { Text("جابه‌جایی‌ها و دنگ (" + Fa.toFa(moves.size.toString()) + ")") }
+                )
                 Spacer(Modifier.weight(1f))
                 SearchButton(onSearch)
                 Spacer(Modifier.width(8.dp))
-                AddButton("واریز جدید", onAdd)
+                AddButton("درآمد جدید", onAdd)
             }
         }
-        if (moves.isNotEmpty()) item {
-            FilterChip(
-                selected = showMoves, onClick = { showMoves = !showMoves },
-                label = { Text("نمایش جابه‌جایی بین حساب‌ها (" + Fa.toFa(moves.size.toString()) + ")") }
-            )
+
+        // ---- واریزهای در انتظار تأیید
+        if (pending.isNotEmpty()) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                        Text(
+                            "در انتظار تأیید (" + Fa.toFa(pending.size.toString()) + ")",
+                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            "تا مشخص نکنی، جزو درآمد حساب نمی‌شوند.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        pending.forEach { t ->
+                            Spacer(Modifier.height(10.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f).clickable { editing = t }) {
+                                    Text(Fa.toman(t.amount), fontWeight = FontWeight.Bold, color = IncomeColor)
+                                    Text(
+                                        Fa.dayTitle(t.jDate) + "  ·  " + Fa.toFa(t.time) + "  ·  " + Banks.name(t.bank),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+                                SmallChoice("درآمد", true) { setKind(t, false) }
+                                SmallChoice("دنگ", false) { dangFor = t }
+                                SmallChoice("حساب خودم", false) { setKind(t, true) }
+                            }
+                        }
+                        if (pending.size > 1) {
+                            HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("همه:", Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.labelMedium)
+                                SmallChoice("همه درآمد", false) { pending.forEach { setKind(it, false) } }
+                                SmallChoice("همه حساب خودم", false) { pending.forEach { setKind(it, true) } }
+                            }
+                        }
+                    }
+                }
+            }
         }
-        if (month.isEmpty()) item { EmptyNote("این ماه واریزی ثبت نشده.") }
-        dayGroups(month, catById) { editing = it }
+
+        if (shown.isEmpty() && pending.isEmpty()) item { EmptyNote("این ماه درآمدی ثبت نشده.") }
+        dayGroups(shown.sortedByDescending { it.ts }, catById) { editing = it }
     }
 
     editing?.let { t -> EditDialog(t, cats, db) { editing = null } }
+    dangFor?.let { d ->
+        ExpensePickerDialog(d, txs, cats, onPick = { e ->
+            dangFor = null
+            scope.launch { Refunds.link(ctx, d.id, e.id); db.tx().setShared(e.id, true) }
+        }, onDismiss = { dangFor = null })
+    }
+}
+
+@Composable
+private fun SmallChoice(label: String, primary: Boolean, onClick: () -> Unit) {
+    val mod = Modifier.height(32.dp)
+    val pad = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+    if (primary) Button(onClick = onClick, modifier = mod, contentPadding = pad) { Text(label, style = MaterialTheme.typography.labelLarge) }
+    else OutlinedButton(onClick = onClick, modifier = mod, contentPadding = pad) { Text(label, style = MaterialTheme.typography.labelLarge) }
 }
 
 // ================================================================ Report
@@ -1100,7 +1172,7 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
                 Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("آمار ${Fa.monthName(ym)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     StatLine("جمع خرج", Fa.toman(totalOut), ExpenseColor)
-                    StatLine("جمع واریزی", Fa.toman(totalIn), IncomeColor)
+                    StatLine("جمع درآمد", Fa.toman(totalIn), IncomeColor)
                     val saved = txs.filter { it.ym == ym && it.reason == 3 }.sumOf { it.eff }
                     if (saved > 0) StatLine("پس‌انداز (صندوق)", Fa.toman(saved), MaterialTheme.colorScheme.primary)
                     StatLine(
@@ -1308,6 +1380,31 @@ fun TxEditor(
             }
         }
 
+        val pendingDeposit = !tx.isExpense && tx.reason == 5 && db != null
+        if (pendingDeposit) {
+            val ctxP = LocalContext.current
+            val scopeP = rememberCoroutineScope()
+            var pickDang by remember(tx.id) { mutableStateOf(false) }
+            Spacer(Modifier.height(16.dp))
+            Text("این واریز چیه؟", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    scopeP.launch { db!!.tx().setDepositKind(tx.id, false); Notifier.cancel(ctxP, tx.id); onCancel() }
+                }) { Text("درآمد") }
+                OutlinedButton(onClick = { pickDang = true }) { Text("دنگ") }
+                OutlinedButton(onClick = {
+                    scopeP.launch { db!!.tx().setDepositKind(tx.id, true); Notifier.cancel(ctxP, tx.id); onCancel() }
+                }) { Text("حساب خودم") }
+            }
+            if (pickDang) {
+                val all by remember { db!!.tx().all() }.collectAsState(initial = emptyList())
+                ExpensePickerDialog(tx, all, cats, onPick = { e ->
+                    pickDang = false
+                    scopeP.launch { Refunds.link(ctxP, tx.id, e.id); db!!.tx().setShared(e.id, true); onCancel() }
+                }, onDismiss = { pickDang = false })
+            }
+        } else {
         Spacer(Modifier.height(16.dp))
         Row(
             Modifier
@@ -1336,19 +1433,19 @@ fun TxEditor(
             }
             Switch(checked = excluded, onCheckedChange = { excluded = it })
         }
+        }
+
         // توضیح اینکه چرا این واریز درآمد حساب شده
-        if (!tx.isExpense && !tx.excluded && tx.bank != Banks.MANUAL) {
+        if (!tx.isExpense && !tx.excluded && tx.bank != Banks.MANUAL && tx.note != "سود") {
             Text(
-                "این واریز درآمد حساب شده، چون در تنظیمات «واریزهای " + Banks.name(tx.bank) +
-                    " درآمد است» روشن است و برداشتی هم‌مبلغ از حساب دیگرت در همان حوالی پیدا نشد. " +
-                    "اگر جابه‌جایی بین حساب‌های خودت است، کلید بالا را روشن کن.",
+                "این واریز را «درآمد» علامت زده‌ای. اگر جابه‌جایی بین حساب‌های خودت است، کلید بالا را روشن کن.",
                 Modifier.padding(top = 6.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
-        if (!excluded) {
+        if (!excluded && !pendingDeposit) {
             Spacer(Modifier.height(16.dp))
             Text(if (tx.isExpense) "کجا خرج شد؟" else "بابت چی بود؟ (اختیاری)", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))

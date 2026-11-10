@@ -358,6 +358,8 @@ object Banks {
     }
 
     suspend fun apply(ctx: Context, bank: String, isExpense: Boolean) {
+        // واریزها نقش ندارند؛ هر واریز با نوتیفیکیشن تأیید می‌شود
+        if (!isExpense) return
         val dao = AppDb.get(ctx).tx()
         if (counts(ctx, bank, isExpense)) dao.clearRoleIgnore(bank, isExpense) else dao.setRoleIgnore(bank, isExpense)
     }

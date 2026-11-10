@@ -176,7 +176,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
             Card(shape = RoundedCornerShape(20.dp), colors = cardColors()) {
                 Row(Modifier.fillMaxWidth().padding(vertical = 14.dp)) {
                     SummaryCell("خرج", totalOut, ExpenseColor, Modifier.weight(1f))
-                    SummaryCell("واریزی", totalIn, IncomeColor, Modifier.weight(1f))
+                    SummaryCell("درآمد", totalIn, IncomeColor, Modifier.weight(1f))
                     SummaryCell(
                         "مانده", kotlin.math.abs(totalIn - totalOut),
                         if (totalIn >= totalOut) IncomeColor else ExpenseColor, Modifier.weight(1f)

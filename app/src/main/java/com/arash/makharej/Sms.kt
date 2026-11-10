@@ -43,6 +43,8 @@ object Ingest {
         if (same) return false
 
         var reason = if (Banks.counts(ctx, p.bank, p.isExpense)) 0 else 2
+        // هر واریز اول «در انتظار تأیید» است (۵)؛ فقط سود مفید خودکار درآمد است
+        if (!p.isExpense) reason = if (p.tag == "profit") 0 else 5
         // درخواست وجه از مفید = انتقال به حساب خودم
         if (p.tag == "request") reason = 1
         // پرداخت به صندوق / کارگزاری (از روی پیامک رمز پویای قبلش) = پس‌انداز
@@ -72,9 +74,7 @@ object Ingest {
         }
         if (notify && p.isExpense && reason == 0) Notifier.showExpense(ctx, tx)
         // واریزی که شاید بازپرداخت دنگ باشد
-        if (notify && !p.isExpense && p.tag.isEmpty() && (reason == 0 || reason == 2) && Refunds.hasOpenShared(ctx, tx)) {
-            Notifier.showRefundAsk(ctx, tx)
-        }
+        if (notify && !p.isExpense && reason == 5) Notifier.showDepositAsk(ctx, tx)
         return true
     }
 }
@@ -192,6 +192,49 @@ object Notifier {
         }
     }
 
+    /** واریز جدید: درآمد / دنگ / حساب خودم */
+    suspend fun showDepositAsk(ctx: Context, tx: Tx, silent: Boolean = false) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) return
+        ensureChannel(ctx)
+        val nid = tx.id.toInt()
+        fun bc(rc: Int, extra: String) = PendingIntent.getBroadcast(
+            ctx, nid * 10 + rc,
+            Intent(ctx, ActionReceiver::class.java).putExtra("tx", tx.id).putExtra(extra, true), FLAGS
+        )
+        val dang = PendingIntent.getActivity(
+            ctx, nid * 10 + 8,
+            Intent(ctx, CategorizeActivity::class.java).putExtra("tx", tx.id).putExtra("refund", true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            FLAGS
+        )
+        val n = NotificationCompat.Builder(ctx, CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle("${Fa.toman(tx.amount)} به ${Banks.name(tx.bank)} واریز شد")
+            .setContentText("این واریز چیه؟")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
+            .setSilent(silent)
+            .setContentIntent(openPicker(ctx, tx.id, 0))
+            .setDeleteIntent(
+                PendingIntent.getBroadcast(
+                    ctx, nid * 10 + 7, Intent(ctx, ReshowReceiver::class.java).putExtra("tx", tx.id), FLAGS
+                )
+            )
+            .addAction(0, "درآمد", bc(2, "income"))
+            .addAction(0, "دنگ", dang)
+            .addAction(0, "حساب خودم", bc(3, "own"))
+            .build()
+        try {
+            NotificationManagerCompat.from(ctx).notify(nid, n)
+        } catch (_: SecurityException) {
+        }
+    }
+
     fun showRefundAsk(ctx: Context, tx: Tx) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) !=
@@ -247,7 +290,9 @@ class ReshowReceiver : BroadcastReceiver() {
             try {
                 kotlinx.coroutines.delay(1500)
                 val tx = AppDb.get(app).tx().get(id)
-                if (tx != null && tx.isExpense && tx.categoryId == null && !tx.excluded) {
+                if (tx != null && !tx.isExpense && tx.reason == 5) {
+                    Notifier.showDepositAsk(app, tx, silent = true)
+                } else if (tx != null && tx.isExpense && tx.categoryId == null && !tx.excluded) {
                     Notifier.showExpense(app, tx, silent = true)
                 }
             } finally {
@@ -263,6 +308,21 @@ class ActionReceiver : BroadcastReceiver() {
         val tx = intent.getLongExtra("tx", -1)
         val cat = intent.getLongExtra("cat", -1)
         val exclude = intent.getBooleanExtra("exclude", false)
+        val income = intent.getBooleanExtra("income", false)
+        val own = intent.getBooleanExtra("own", false)
+        if ((income || own) && tx >= 0) {
+            val app = context.applicationContext
+            val pending = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    AppDb.get(app).tx().setDepositKind(tx, own)
+                    Notifier.cancel(app, tx)
+                } finally {
+                    pending.finish()
+                }
+            }
+            return
+        }
         if (intent.getBooleanExtra("dismiss", false)) {
             if (tx >= 0) Notifier.cancel(context.applicationContext, tx)
             return

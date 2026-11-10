@@ -120,6 +120,22 @@ interface TxDao {
     @Query("UPDATE tx SET excluded = 1, reason = 1 WHERE id IN (:ids)")
     suspend fun markTransfer(ids: List<Long>)
 
+    /** نوع واریز: درآمد (۰، حساب می‌شود) یا حساب خودم (۰، حساب نمی‌شود) */
+    @Query("UPDATE tx SET reason = 0, excluded = :own WHERE id = :id")
+    suspend fun setDepositKind(id: Long, own: Boolean)
+
+    @Query("SELECT * FROM tx WHERE isExpense = 0 AND reason = 5 AND ym = :ym")
+    suspend fun pendingIn(ym: Int): List<Tx>
+
+    @Query(
+        "UPDATE tx SET reason = 5, excluded = 1 WHERE isExpense = 0 AND bank NOT IN ('MANUAL', 'MOFID') " +
+            "AND reason IN (0, 2) AND categoryId IS NULL AND TRIM(note) = ''"
+    )
+    suspend fun migrateDepositsToPendingRaw()
+
+    @Query("UPDATE tx SET reason = 0, excluded = 0 WHERE isExpense = 0 AND bank = 'MOFID' AND note = 'سود'")
+    suspend fun mofidProfitIncome()
+
     @Query("SELECT * FROM tx WHERE isExpense = 0 AND bank != :notBank AND amount = :amount AND ts BETWEEN :from AND :to")
     suspend fun depositsWithAmount(amount: Long, notBank: String, from: Long, to: Long): List<Tx>
 

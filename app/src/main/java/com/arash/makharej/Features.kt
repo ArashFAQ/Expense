@@ -638,8 +638,7 @@ fun AccountsSection() {
                                 Text(Banks.name(b), fontWeight = FontWeight.Bold)
                                 Text(
                                     if (!on) "خاموش"
-                                    else "برداشت: " + (if (Banks.counts(ctx, b, true)) "خرج" else "حساب نمی‌شود") +
-                                        "  ·  واریز: " + (if (Banks.counts(ctx, b, false)) "درآمد" else "حساب نمی‌شود"),
+                                    else "برداشت‌ها: " + (if (Banks.counts(ctx, b, true)) "خرج" else "حساب نمی‌شود"),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -684,12 +683,10 @@ fun AccountsSection() {
                     RoleSwitch("برداشت‌ها خرج حساب شوند", Banks.counts(ctx, b, true)) { v ->
                         scope.launch { Banks.setCounts(ctx, b, true, v) }
                     }
-                    RoleSwitch("واریزها درآمد حساب شوند", Banks.counts(ctx, b, false)) { v ->
-                        scope.launch { Banks.setCounts(ctx, b, false, v) }
-                    }
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "انتقال بین دو حساب خودت در دو بانک مختلف همیشه خودکار تشخیص داده می‌شود و حساب نمی‌شود.",
+                        "برای هر واریز نوتیفیکیشن می‌آید که درآمد است، دنگ یا حساب خودت. " +
+                            "انتقال بین دو حساب خودت در دو بانک مختلف خودکار تشخیص داده می‌شود و سؤال نمی‌شود.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
