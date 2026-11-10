@@ -115,7 +115,10 @@ data class Parsed(
     val jDate: String,
     val time: String,
     val ym: Int,
-    val bank: String = Banks.BLU
+    val bank: String = Banks.BLU,
+    /** «request»: درخواست وجه مفید (انتقال به حساب خودم)، «profit»: سود */
+    val tag: String = "",
+    val note: String = ""
 )
 
 /**

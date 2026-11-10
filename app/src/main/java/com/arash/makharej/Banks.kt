@@ -24,9 +24,10 @@ object Banks {
     const val SADERAT = "SADERAT"
     const val SEPAH = "SEPAH"
     const val GARDESHGARI = "GARDESHGARI"
+    const val MOFID = "MOFID"
     const val MANUAL = "MANUAL"
 
-    val builtIn = listOf(BLU, MELLAT, EN, PASARGAD, TEJARAT, MELLI, SADERAT, SEPAH, GARDESHGARI)
+    val builtIn = listOf(BLU, MELLAT, EN, PASARGAD, TEJARAT, MELLI, SADERAT, SEPAH, GARDESHGARI, MOFID)
 
     /** بانک‌های داخلی + بانک‌هایی که با نمونه آموخته شده‌اند */
     fun all(ctx: Context): List<String> =
@@ -43,6 +44,7 @@ object Banks {
         SADERAT -> "صادرات"
         SEPAH -> "سپه"
         GARDESHGARI -> "گردشگری"
+        MOFID -> "کارگزاری مفید"
         MANUAL -> "دستی"
         else -> Learned.nameOf(b) ?: "بانک"
     }
@@ -71,7 +73,7 @@ object Banks {
         BluParser.parse(body, ts)?.let { return it }
         val t = BluParser.normalize(body).trim()
         if (BluParser.hasPassword(t)) return null
-        return tejarat(t, ts) ?: melliSaderat(t, ts, sender) ?: sepah(t, ts) ?: gardeshgari(t, ts) ?:
+        return mofid(t, ts) ?: tejarat(t, ts) ?: melliSaderat(t, ts, sender) ?: sepah(t, ts) ?: gardeshgari(t, ts) ?:
             mellat(t, ts) ?: en(t, ts) ?: pasargad(t, ts)
     }
 
@@ -175,6 +177,63 @@ object Banks {
             jDate = String.format(Locale.US, "%04d/%02d/%02d", j[0], j[1], j[2]),
             time = time, ym = j[0] * 100 + j[1], bank = bank
         )
+    }
+
+    /**
+     * کارگزاری مفید (حساب حامی):
+     *   برداشت:  «کارگزاری مفید / برداشت مبلغ 50,010,000 ریال / کارمزد بانک به مبلغ 10,000 ریال / از حساب حامی / مانده: … / تاریخ / ساعت»
+     *   درخواست وجه: «… درخواست وجه شما برای روز 1405/08/10 ثبت شد. / مبلغ: 3,000,000,000 ریال / شماره شبا … / بانک مقصد: بلو»
+     *   سود: «… مبلغ ۲۱۸,۲۱۶,۲۹۹ ریال بابت مازاد سود … به قدرت خرید شما اضافه گردید.»
+     * واریز با کارت پیامک ندارد؛ از رمز پویای «کارگزاری مفید» به‌عنوان پس‌انداز ثبت می‌شود.
+     */
+    private val mfWithdraw = Regex("""برداشت مبلغ\s*(\d[\d,]*)""")
+    private val mfBal = Regex("""مانده\s*:\s*(\d[\d,]*)""")
+    private val mfReqAmt = Regex("""مبلغ\s*:\s*(\d[\d,]*)""")
+    private val mfDest = Regex("""بانک مقصد\s*:\s*(.+)""")
+    private val mfProfit = Regex("""مبلغ\s*(\d[\d,]*)\s*ریال\s*بابت""")
+
+    private fun mofid(t: String, ts: Long): Parsed? {
+        if (!t.contains("کارگزاری مفید")) return null
+        mfWithdraw.find(t)?.let { m ->
+            val amount = num(m.groupValues[1]) ?: return null
+            return build(true, amount, mfBal.find(t)?.let { num(it.groupValues[1]) }, t, ts, MOFID)
+        }
+        if (t.contains("درخواست وجه")) {
+            val amount = mfReqAmt.find(t)?.let { num(it.groupValues[1]) } ?: return null
+            val dest = mfDest.find(t)?.groupValues?.get(1)?.trim().orEmpty()
+            return build(true, amount, null, t, ts, MOFID)
+                ?.copy(tag = "request", note = "درخواست وجه" + if (dest.isNotEmpty()) " به $dest" else "")
+        }
+        if (t.contains("سود") && t.contains("اضافه")) {
+            val amount = mfProfit.find(t)?.let { num(it.groupValues[1]) } ?: return null
+            return build(false, amount, null, t, ts, MOFID)?.copy(tag = "profit", note = "سود")
+        }
+        return null
+    }
+
+    /**
+     * درخواست وجه مفید ↔ واریزی که چند روز بعد در بانک مقصد می‌نشیند (هر دو «انتقال بین حساب‌ها»).
+     * true اگر جفت پیدا و علامت زده شد.
+     */
+    suspend fun matchMofidRequest(ctx: Context, t: Tx): Boolean {
+        val dao = AppDb.get(ctx).tx()
+        val window = 4 * 24 * 60 * 60_000L
+        if (t.bank == MOFID && t.isExpense && t.note.startsWith("درخواست وجه")) {
+            val dep = dao.depositsWithAmount(t.amount, MOFID, t.ts - 60 * 60_000L, t.ts + window)
+                .filter { it.reason != 1 && it.reason != 4 }.minByOrNull { it.ts } ?: return false
+            dao.markTransfer(listOf(dep.id))
+            Notifier.cancel(ctx, dep.id)
+            return true
+        }
+        if (!t.isExpense && t.bank != MOFID && t.reason != 1) {
+            val req = dao.mofidRequests(t.amount, t.ts - window, t.ts + 60 * 60_000L).maxByOrNull { it.ts } ?: return false
+            // اگر این درخواست قبلا با واریز دیگری جفت شده، دوباره استفاده نشود
+            val already = dao.depositsWithAmount(t.amount, MOFID, req.ts - 60 * 60_000L, t.ts - 1).any { it.reason == 1 && it.id != t.id }
+            if (already) return false
+            dao.markTransfer(listOf(t.id))
+            return true
+        }
+        return false
     }
 
     /**

@@ -159,8 +159,24 @@ object Wealth {
     fun latestBalances(txs: List<Tx>): List<Tx> =
         txs.filter { it.balance != null && it.bank != Banks.MANUAL }
             .groupBy { it.bank }
-            .mapNotNull { (_, l) -> l.maxByOrNull { it.ts } }
+            .mapNotNull { (bank, l) ->
+                val last = l.maxByOrNull { it.ts } ?: return@mapNotNull null
+                if (bank == Banks.MOFID) mofidBalance(txs, last) else last
+            }
             .sortedByDescending { it.balance }
+
+    /**
+     * مانده‌ی مفید: آخرین مانده‌ی پیامک برداشت، به‌علاوه‌ی رویدادهای بعد از آن:
+     * + واریز با کارت (پس‌انداز از روی رمز پویا)، + سود، − درخواست وجه
+     */
+    private fun mofidBalance(txs: List<Tx>, anchor: Tx): Tx {
+        val after = txs.filter { it.ts > anchor.ts }
+        val deposits = after.filter { it.reason == 3 }.sumOf { it.amount }
+        val profit = after.filter { it.bank == Banks.MOFID && !it.isExpense }.sumOf { it.amount }
+        val requests = after.filter { it.bank == Banks.MOFID && it.isExpense && it.balance == null }.sumOf { it.amount }
+        val lastTs = (after.filter { it.reason == 3 || it.bank == Banks.MOFID }.maxOfOrNull { it.ts } ?: anchor.ts)
+        return anchor.copy(balance = (anchor.balance ?: 0) + deposits + profit - requests, ts = lastTs)
+    }
 
     fun assetValue(ctx: Context, a: Asset): Long = when (a.kind) {
         in Prices.keys.keys -> ((Prices.price(ctx, a.kind)?.first ?: 0L) * a.qty).toLong()

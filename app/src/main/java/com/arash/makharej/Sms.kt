@@ -43,6 +43,8 @@ object Ingest {
         if (same) return false
 
         var reason = if (Banks.counts(ctx, p.bank, p.isExpense)) 0 else 2
+        // درخواست وجه از مفید = انتقال به حساب خودم
+        if (p.tag == "request") reason = 1
         // پرداخت به صندوق / کارگزاری (از روی پیامک رمز پویای قبلش) = پس‌انداز
         if (p.isExpense) {
             val merchant = Banks.merchantFor(ctx, p.amount, ts)
@@ -52,14 +54,16 @@ object Ingest {
             Tx(
                 isExpense = p.isExpense, amount = p.amount, balance = p.balance,
                 jDate = p.jDate, time = p.time, ym = p.ym, ts = ts, raw = body,
-                dedupKey = dedupKey(body), bank = p.bank, reason = reason, excluded = reason != 0
+                dedupKey = dedupKey(body), bank = p.bank, reason = reason, excluded = reason != 0,
+                note = p.note
             )
         )
         if (id <= 0) return false // تکراری
 
         // انتقال بین حساب‌های خودم؟
         val tx = db.tx().get(id) ?: return true
-        if (reason != 3) {
+        if (Banks.matchMofidRequest(ctx, tx)) return true
+        if (reason != 3 && reason != 1) {
             val other = Banks.matchTransfer(ctx, tx)
             if (other != null) {
                 Notifier.cancel(ctx, other)
@@ -68,7 +72,7 @@ object Ingest {
         }
         if (notify && p.isExpense && reason == 0) Notifier.showExpense(ctx, tx)
         // واریزی که شاید بازپرداخت دنگ باشد
-        if (notify && !p.isExpense && (reason == 0 || reason == 2) && Refunds.hasOpenShared(ctx, tx)) {
+        if (notify && !p.isExpense && p.tag.isEmpty() && (reason == 0 || reason == 2) && Refunds.hasOpenShared(ctx, tx)) {
             Notifier.showRefundAsk(ctx, tx)
         }
         return true

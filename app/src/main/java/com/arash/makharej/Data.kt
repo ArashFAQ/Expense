@@ -120,6 +120,12 @@ interface TxDao {
     @Query("UPDATE tx SET excluded = 1, reason = 1 WHERE id IN (:ids)")
     suspend fun markTransfer(ids: List<Long>)
 
+    @Query("SELECT * FROM tx WHERE isExpense = 0 AND bank != :notBank AND amount = :amount AND ts BETWEEN :from AND :to")
+    suspend fun depositsWithAmount(amount: Long, notBank: String, from: Long, to: Long): List<Tx>
+
+    @Query("SELECT * FROM tx WHERE bank = 'MOFID' AND isExpense = 1 AND amount = :amount AND ts BETWEEN :from AND :to AND note LIKE 'درخواست وجه%'")
+    suspend fun mofidRequests(amount: Long, from: Long, to: Long): List<Tx>
+
     @Query(
         "UPDATE tx SET categoryId = :cat, note = :note, amount = :amount, " +
             "reason = CASE WHEN excluded = :ex THEN reason ELSE 0 END, excluded = :ex WHERE id = :id"
