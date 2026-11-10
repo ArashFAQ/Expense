@@ -247,7 +247,7 @@ private fun openAppSettings(ctx: Context) {
 
 internal fun List<Tx>.counted() = filter { !it.excluded }
 
-private const val IMPORT_VERSION = 8
+private const val IMPORT_VERSION = 9
 
 // ================================================================ Activities
 
@@ -350,6 +350,10 @@ fun MainScreen(startTab: Int = 0) {
     // یک بار بعد از هر اصلاح مهم در خواندن پیامک‌ها، پیامک‌های قبلی دوباره خوانده می‌شوند
     LaunchedEffect(Unit) {
         val pr = prefs(ctx)
+        // یک بار: واریزهای بلو، اقتصاد نوین، پاسارگاد و مفید به پیش‌فرض «درآمد نیست» برمی‌گردند
+        if (pr.getInt("importVer", 0) < 9) {
+            pr.edit().remove("role_d_BLU").remove("role_d_EN").remove("role_d_PASARGAD").remove("role_d_MOFID").apply()
+        }
         if (hasPerm(ctx, Manifest.permission.READ_SMS) && pr.getInt("importVer", 0) < IMPORT_VERSION) {
             try { Banks.applyAll(ctx) } catch (_: Exception) {}
             try { InboxImporter.run(ctx) } catch (_: Exception) {}
@@ -1331,6 +1335,17 @@ fun TxEditor(
                 )
             }
             Switch(checked = excluded, onCheckedChange = { excluded = it })
+        }
+        // توضیح اینکه چرا این واریز درآمد حساب شده
+        if (!tx.isExpense && !tx.excluded && tx.bank != Banks.MANUAL) {
+            Text(
+                "این واریز درآمد حساب شده، چون در تنظیمات «واریزهای " + Banks.name(tx.bank) +
+                    " درآمد است» روشن است و برداشتی هم‌مبلغ از حساب دیگرت در همان حوالی پیدا نشد. " +
+                    "اگر جابه‌جایی بین حساب‌های خودت است، کلید بالا را روشن کن.",
+                Modifier.padding(top = 6.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         if (!excluded) {
