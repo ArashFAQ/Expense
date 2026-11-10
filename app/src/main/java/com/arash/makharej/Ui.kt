@@ -247,7 +247,7 @@ private fun openAppSettings(ctx: Context) {
 
 internal fun List<Tx>.counted() = filter { !it.excluded }
 
-private const val IMPORT_VERSION = 7
+private const val IMPORT_VERSION = 8
 
 // ================================================================ Activities
 
@@ -353,6 +353,7 @@ fun MainScreen(startTab: Int = 0) {
         if (hasPerm(ctx, Manifest.permission.READ_SMS) && pr.getInt("importVer", 0) < IMPORT_VERSION) {
             try { Banks.applyAll(ctx) } catch (_: Exception) {}
             try { InboxImporter.run(ctx) } catch (_: Exception) {}
+            try { Banks.rematchAll(ctx) } catch (_: Exception) {}
             pr.edit().putInt("importVer", IMPORT_VERSION).putBoolean("imported", true).apply()
         }
         // لیست آنلاین بانک‌ها (روزی یک بار)؛ اگر بانک تازه‌ای اضافه شده، پیامک‌های قبلی خوانده می‌شوند
@@ -977,8 +978,12 @@ fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: 
 @Composable
 fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: () -> Unit, onSearch: () -> Unit, onYm: (Int) -> Unit) {
     var editing by remember { mutableStateOf<Tx?>(null) }
+    var showMoves by rememberSaveable { mutableStateOf(false) }
     val catById = cats.associateBy { it.id }
-    val month = txs.filter { it.ym == ym && !it.isExpense && it.reason != 2 }
+    // جابه‌جایی بین حساب‌های خودم، پس‌انداز و حساب‌های واسط جزو واریزی‌ها نیستند
+    val all = txs.filter { it.ym == ym && !it.isExpense }
+    val moves = all.filter { it.reason == 1 || it.reason == 2 || it.reason == 3 }
+    val month = if (showMoves) all else all - moves.toSet()
     val counted = month.counted()
 
     LazyColumn(
@@ -1001,6 +1006,12 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
                 Spacer(Modifier.width(8.dp))
                 AddButton("واریز جدید", onAdd)
             }
+        }
+        if (moves.isNotEmpty()) item {
+            FilterChip(
+                selected = showMoves, onClick = { showMoves = !showMoves },
+                label = { Text("نمایش جابه‌جایی بین حساب‌ها (" + Fa.toFa(moves.size.toString()) + ")") }
+            )
         }
         if (month.isEmpty()) item { EmptyNote("این ماه واریزی ثبت نشده.") }
         dayGroups(month, catById) { editing = it }

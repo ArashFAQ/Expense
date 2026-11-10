@@ -328,7 +328,23 @@ object Banks {
         EN -> isExpense
         MELLAT -> true
         PASARGAD -> false
+        MOFID -> isExpense   // سود و پول برگشتی مفید درآمد حساب نمی‌شود
         else -> true
+    }
+
+    /**
+     * یک بار روی همه‌ی واریزهای قبلی: جفت کردن دوباره با برداشت‌ها و درخواست‌های وجه
+     * (برای داده‌هایی که قبل از اضافه شدن بانک‌های جدید ثبت شده‌اند).
+     */
+    suspend fun rematchAll(ctx: Context) {
+        val dao = AppDb.get(ctx).tx()
+        dao.list().filter { !it.isExpense && it.reason != 1 && it.reason != 3 && it.reason != 4 && it.bank != MANUAL }
+            .sortedBy { it.ts }
+            .forEach { d ->
+                val fresh = dao.get(d.id) ?: return@forEach
+                if (fresh.reason == 1) return@forEach
+                if (!matchMofidRequest(ctx, fresh)) matchTransfer(ctx, fresh)
+            }
     }
 
     /** برداشت‌های این حساب خرج حساب شود؟ / واریزهایش درآمد؟ */
