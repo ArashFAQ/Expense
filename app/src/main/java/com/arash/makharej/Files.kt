@@ -188,10 +188,18 @@ object Backup {
         JSONObject()
             .put("app", "makharej").put("format", 1).put("created", System.currentTimeMillis())
             .put("categories", cats).put("tx", txs)
+            .put("assets", JSONArray().apply {
+                db.asset().list().forEach { a ->
+                    put(
+                        JSONObject().put("id", a.id).put("kind", a.kind).put("name", a.name).put("qty", a.qty)
+                            .put("buyTotal", a.buyTotal).put("value", a.value).put("sort", a.sort)
+                    )
+                }
+            })
             .toString().toByteArray(Charsets.UTF_8)
     }
 
-    data class Content(val cats: List<Category>, val txs: List<Tx>)
+    data class Content(val cats: List<Category>, val txs: List<Tx>, val assets: List<Asset> = emptyList())
 
     fun parse(bytes: ByteArray): Content {
         val o = JSONObject(String(bytes, Charsets.UTF_8))
@@ -227,7 +235,15 @@ object Backup {
                 shared = t.optBoolean("shared")
             )
         }
-        return Content(cats, txs)
+        val aa = o.optJSONArray("assets") ?: JSONArray()
+        val assets = (0 until aa.length()).map { i ->
+            val a = aa.getJSONObject(i)
+            Asset(
+                a.getLong("id"), a.getString("kind"), a.getString("name"), a.optDouble("qty", 0.0),
+                a.optLong("buyTotal"), a.optLong("value"), a.optInt("sort")
+            )
+        }
+        return Content(cats, txs, assets)
     }
 
     /** همه‌ی داده‌های فعلی با محتوای پشتیبان جایگزین می‌شود */
@@ -238,6 +254,8 @@ object Backup {
             db.cat().deleteAll()
             db.cat().insertAll(c.cats)
             db.tx().insertAll(c.txs)
+            db.asset().deleteAll()
+            db.asset().insertAll(c.assets)
         }
     }
 

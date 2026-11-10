@@ -357,10 +357,58 @@ private val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
-@Database(entities = [Tx::class, Category::class], version = 8, exportSchema = false)
+/**
+ * دارایی غیربانکی: دلار، سکه، صندوق، پول نقد، …
+ * kind: usd / emami / nim / rob / gerami / fund / cash / other
+ * qty برای دلار و سکه؛ value (ریال) برای صندوق/نقد/سایر؛ buyTotal (ریال) بهای خرید برای حساب سود (۰ = نامعلوم)
+ */
+@Entity
+data class Asset(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val kind: String,
+    val name: String,
+    val qty: Double = 0.0,
+    val buyTotal: Long = 0,
+    val value: Long = 0,
+    val sort: Int = 0
+)
+
+@Dao
+interface AssetDao {
+    @Query("SELECT * FROM Asset ORDER BY sort, id")
+    fun all(): Flow<List<Asset>>
+
+    @Query("SELECT * FROM Asset ORDER BY sort, id")
+    suspend fun list(): List<Asset>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(a: Asset): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(list: List<Asset>)
+
+    @Query("DELETE FROM Asset WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM Asset")
+    suspend fun deleteAll()
+}
+
+/** نسخه‌ی ۸ ← ۹: جدول دارایی‌ها */
+private val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `Asset` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `kind` TEXT NOT NULL, " +
+                "`name` TEXT NOT NULL, `qty` REAL NOT NULL, `buyTotal` INTEGER NOT NULL, `value` INTEGER NOT NULL, `sort` INTEGER NOT NULL)"
+        )
+    }
+}
+
+@Database(entities = [Tx::class, Category::class, Asset::class], version = 9, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun tx(): TxDao
     abstract fun cat(): CatDao
+    abstract fun asset(): AssetDao
 
     companion object {
         val DEFAULT_CATS = listOf(
@@ -373,7 +421,7 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "makharej.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         DEFAULT_CATS.forEachIndexed { i, n ->

@@ -52,6 +52,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.ui.focus.FocusRequester
@@ -258,7 +259,7 @@ class MainActivity : ComponentActivity() {
         ThemeSettings.load(this)
         Learned.banks(this)
         RemoteBanks.entries(this)
-        val startTab = if (intent?.getBooleanExtra("openSettings", false) == true) 4 else 0
+        val startTab = if (intent?.getBooleanExtra("openSettings", false) == true) 5 else 0
         setContent { AppTheme { MainScreen(startTab) } }
     }
 }
@@ -367,7 +368,8 @@ fun MainScreen(startTab: Int = 0) {
     val tabs = listOf(
         "خانه" to Icons.Filled.Home,
         "خرج‌ها" to Icons.Filled.ShoppingCart,
-        "واریزی‌ها" to Icons.Filled.AddCircle,
+        "واریزی" to Icons.Filled.AddCircle,
+        "دارایی" to Icons.Filled.AccountBalance,
         "گزارش" to Icons.Filled.DateRange,
         "تنظیمات" to Icons.Filled.Settings
     )
@@ -386,7 +388,7 @@ fun MainScreen(startTab: Int = 0) {
                         selected = tab == i,
                         onClick = { tab = i },
                         icon = { Icon(icon, contentDescription = label) },
-                        label = { Text(label) }
+                        label = { Text(label, maxLines = 1, style = MaterialTheme.typography.labelSmall) }
                     )
                 }
             }
@@ -397,7 +399,8 @@ fun MainScreen(startTab: Int = 0) {
                 0 -> HomeTab(txs, cats, ym, onYm = { ym = it }, onOpenExpenses = { tab = 1 })
                 1 -> ExpensesTab(txs, cats, db, ym, onAdd = { adding = 1 }, onSearch = { searching = true }) { ym = it }
                 2 -> IncomeTab(txs, cats, db, ym, onAdd = { adding = 2 }, onSearch = { searching = true }) { ym = it }
-                3 -> ReportTab(txs, cats, ym) { ym = it }
+                3 -> AssetsTab(txs, db)
+                4 -> ReportTab(txs, cats, ym) { ym = it }
                 else -> SettingsScreen(cats, db)
             }
         }
