@@ -268,6 +268,7 @@ class CategorizeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val txId = intent.getLongExtra("tx", -1)
+        val refundMode = intent.getBooleanExtra("refund", false)
         ThemeSettings.load(this)
         setContent {
             AppTheme {
@@ -276,6 +277,19 @@ class CategorizeActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
                 val tx by produceState<Tx?>(null) { value = db.tx().get(txId) }
                 val cats by remember { db.cat().all() }.collectAsState(initial = emptyList())
+                if (refundMode) {
+                    val all by remember { db.tx().all() }.collectAsState(initial = emptyList())
+                    Refunds.update(all)
+                    val d = tx
+                    if (d != null) ExpensePickerDialog(d, all, cats, onPick = { e ->
+                        scope.launch {
+                            Refunds.link(ctx, d.id, e.id)
+                            db.tx().setShared(e.id, true)
+                            finish()
+                        }
+                    }, onDismiss = { finish() })
+                    return@AppTheme
+                }
                 val notes by remember { db.tx().noteStats() }.collectAsState(initial = emptyList())
                 Box(
                     Modifier
@@ -300,7 +314,7 @@ class CategorizeActivity : ComponentActivity() {
                         Text("در حال بارگذاری…", Modifier.padding(24.dp))
                     } else {
                         TxEditor(
-                            tx = t, cats = cats, notes = notes,
+                            tx = t, cats = cats, notes = notes, db = db,
                             onSave = { cat, note, ex, amount ->
                                 scope.launch {
                                     db.tx().update(t.id, cat, note, ex, amount)
@@ -325,6 +339,7 @@ fun MainScreen(startTab: Int = 0) {
     val ctx = LocalContext.current
     val db = remember { AppDb.get(ctx) }
     val txs by remember { db.tx().all() }.collectAsState(initial = emptyList())
+    Refunds.update(txs)
     val cats by remember { db.cat().all() }.collectAsState(initial = emptyList())
     var tab by rememberSaveable { mutableIntStateOf(startTab) }
     var ym by rememberSaveable { mutableIntStateOf(Jalali.currentYm()) }
@@ -472,7 +487,7 @@ fun MonthGrid(txs: List<Tx>, isExpense: Boolean, ym: Int, onYm: (Int) -> Unit) {
     val maxYear = now / 100
     val sums = remember(txs, year, isExpense) {
         (1..12).map { m ->
-            txs.filter { it.ym == year * 100 + m && it.isExpense == isExpense && !it.excluded }.sumOf { it.amount }
+            txs.filter { it.ym == year * 100 + m && it.isExpense == isExpense && !it.excluded }.sumOf { it.eff }
         }
     }
     val accent = if (isExpense) ExpenseColor else IncomeColor
@@ -600,6 +615,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
         t.excluded && t.reason == 1 -> { title = "انتقال بین حساب‌ها"; bg = neutral }
         t.excluded && t.reason == 3 -> { title = "پس‌انداز"; bg = neutral }
         t.excluded && t.reason == 2 -> { title = "حساب نمی‌شود"; bg = neutral }
+        t.excluded && t.reason == 4 -> { title = "بازپرداخت دنگ"; bg = neutral }
         t.excluded -> { title = "حساب خودم"; bg = neutral }
         cat != null -> { title = cat.name; bg = cat.uiColor() }
         !t.isExpense -> { title = "واریز"; bg = neutral }
@@ -624,6 +640,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
             val icon = when {
                 t.excluded && t.reason == 1 -> CatIcons.transfer
                 t.excluded && t.reason == 3 -> CatIcons.savingsIcon
+                t.excluded && t.reason == 4 -> CatIcons.dang
                 t.excluded -> CatIcons.transfer
                 cat != null -> cat.uiIcon()
                 else -> CatIcons.unknown
@@ -639,7 +656,9 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.Bold, color = titleColor)
                 Text(
-                    Fa.toFa(t.time) + "  ·  " + Banks.name(t.bank) + if (t.note.isNotEmpty()) "  ·  ${t.note}" else "",
+                    Fa.toFa(t.time) + "  ·  " + Banks.name(t.bank) +
+                        (if (t.refunded > 0) "  ·  سهم من " + Fa.toman(t.eff) else if (t.shared) "  ·  دنگی" else "") +
+                        if (t.note.isNotEmpty()) "  ·  ${t.note}" else "",
                     style = MaterialTheme.typography.bodySmall,
                     color = fgSub,
                     maxLines = 1, overflow = TextOverflow.Ellipsis
@@ -668,7 +687,7 @@ internal fun LazyListScope.dayGroups(
 ) {
     list.groupBy { it.jDate }.forEach { (date, dayTx) ->
         item(key = "h$date") {
-            val sum = dayTx.counted().filter { it.isExpense }.sumOf { it.amount }
+            val sum = dayTx.counted().filter { it.isExpense }.sumOf { it.eff }
             Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp, start = 4.dp, end = 4.dp)) {
                 Text(
                     Fa.dayTitle(date) + if (showYear) " " + Fa.toFa(date.take(4)) else "", Modifier.weight(1f),
@@ -724,7 +743,7 @@ fun EditDialog(t: Tx, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
             modifier = Modifier.widthIn(max = 560.dp)
         ) {
             TxEditor(
-                tx = t, cats = cats, notes = notes,
+                tx = t, cats = cats, notes = notes, db = db,
                 onSave = { cat, note, ex, amount ->
                     scope.launch {
                         db.tx().update(t.id, cat, note, ex, amount)
@@ -734,7 +753,10 @@ fun EditDialog(t: Tx, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
                 },
                 onCancel = onClose,
                 onDelete = {
-                    scope.launch { db.tx().delete(t.id) }
+                    scope.launch {
+                        if (t.isExpense) Refunds.releaseAll(ctx, t.id)
+                        db.tx().delete(t.id)
+                    }
                     onClose()
                 }
             )
@@ -922,7 +944,7 @@ fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: 
         item {
             HeroCard(
                 title = "خرج ${Fa.monthName(ym)}",
-                rial = counted.sumOf { it.amount },
+                rial = counted.sumOf { it.eff },
                 subtitle = Fa.toFa(counted.size.toString()) + " تراکنش" +
                     if (uncat > 0) "  ·  " + Fa.toFa(uncat.toString()) + " بدون دسته" else "",
                 gradient = ExpenseGradient
@@ -964,7 +986,7 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
         item {
             HeroCard(
                 title = "واریزی ${Fa.monthName(ym)}",
-                rial = counted.sumOf { it.amount },
+                rial = counted.sumOf { it.eff },
                 subtitle = Fa.toFa(counted.size.toString()) + " واریز",
                 gradient = IncomeGradient
             )
@@ -991,8 +1013,8 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
     val catById = cats.associateBy { it.id }
     val counted = txs.counted()
     val monthOut = counted.filter { it.ym == ym && it.isExpense }
-    val totalOut = monthOut.sumOf { it.amount }
-    val totalIn = counted.filter { it.ym == ym && !it.isExpense }.sumOf { it.amount }
+    val totalOut = monthOut.sumOf { it.eff }
+    val totalIn = counted.filter { it.ym == ym && !it.isExpense }.sumOf { it.eff }
     val uncatColor = Color(0xFFB0BEC5)
 
     data class Slice(val key: Long, val name: String, val color: Color, val sum: Long, val items: List<Tx>)
@@ -1000,7 +1022,7 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
     val slices = monthOut.groupBy { it.categoryId }
         .map { (id, l) ->
             val c = id?.let { catById[it] }
-            Slice(id ?: -1L, c?.name ?: "بدون دسته", c?.uiColor() ?: uncatColor, l.sumOf { it.amount }, l)
+            Slice(id ?: -1L, c?.name ?: "بدون دسته", c?.uiColor() ?: uncatColor, l.sumOf { it.eff }, l)
         }
         .sortedByDescending { it.sum }
     var openCat by rememberSaveable(ym) { mutableStateOf<Long?>(null) }
@@ -1017,7 +1039,7 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
         item {
             val nowYm = Jalali.currentYm()
             val yearMonths = (1..12).map { year * 100 + it }
-            val yearOut = yearMonths.map { m -> counted.filter { it.ym == m && it.isExpense }.sumOf { it.amount } }
+            val yearOut = yearMonths.map { m -> counted.filter { it.ym == m && it.isExpense }.sumOf { it.eff } }
             val lastIdx = if (year == nowYm / 100) nowYm % 100 - 1 else 11
             val minYear = (counted.minOfOrNull { it.ym } ?: nowYm) / 100
             val shown = yearOut.take(lastIdx + 1)
@@ -1061,7 +1083,7 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
                     Text("آمار ${Fa.monthName(ym)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     StatLine("جمع خرج", Fa.toman(totalOut), ExpenseColor)
                     StatLine("جمع واریزی", Fa.toman(totalIn), IncomeColor)
-                    val saved = txs.filter { it.ym == ym && it.reason == 3 }.sumOf { it.amount }
+                    val saved = txs.filter { it.ym == ym && it.reason == 3 }.sumOf { it.eff }
                     if (saved > 0) StatLine("پس‌انداز (صندوق)", Fa.toman(saved), MaterialTheme.colorScheme.primary)
                     StatLine(
                         "مانده‌ی ماه (واریزی − خرج)",
@@ -1201,7 +1223,8 @@ fun TxEditor(
     onSave: (Long?, String, Boolean, Long) -> Unit,
     onCancel: () -> Unit,
     onDelete: (() -> Unit)? = null,
-    notes: List<NoteStat> = emptyList()
+    notes: List<NoteStat> = emptyList(),
+    db: AppDb? = null
 ) {
     var sel by remember(tx.id) { mutableStateOf(tx.categoryId) }
     var note by remember(tx.id) { mutableStateOf(tx.note) }
@@ -1323,6 +1346,8 @@ fun TxEditor(
             note = n
             if (sel == null && c != null) sel = c
         }
+        // دنگ: برای خرج‌ها و واریزهایی که انتقال/پس‌انداز نیستند
+        if (db != null && tx.reason != 1 && tx.reason != 3 && (!tx.isExpense || !excluded)) DangSection(tx, db, cats)
     }
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

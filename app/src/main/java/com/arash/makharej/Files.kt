@@ -182,6 +182,7 @@ object Backup {
                     .put("note", t.note).put("raw", t.raw).put("excluded", t.excluded)
                     .put("dedupKey", t.dedupKey ?: JSONObject.NULL)
                     .put("bank", t.bank).put("reason", t.reason)
+                    .put("refundOf", t.refundOf ?: JSONObject.NULL).put("shared", t.shared)
             )
         }
         JSONObject()
@@ -221,7 +222,9 @@ object Backup {
                 excluded = t.optBoolean("excluded"),
                 dedupKey = if (t.isNull("dedupKey")) null else t.getString("dedupKey"),
                 bank = t.optString("bank", Banks.BLU).ifEmpty { Banks.BLU },
-                reason = t.optInt("reason", 0)
+                reason = t.optInt("reason", 0),
+                refundOf = if (t.isNull("refundOf")) null else t.optLong("refundOf"),
+                shared = t.optBoolean("shared")
             )
         }
         return Content(cats, txs)
@@ -383,16 +386,16 @@ object Excel {
         val inc = counted.filter { !it.isExpense }
         val rows2 = mutableListOf(
             listOf(Cell(title, 2)), emptyList(),
-            listOf(Cell("جمع خرج", 2), Cell(out.sumOf { it.amount } / 10, 1)),
-            listOf(Cell("جمع واریزی", 2), Cell(inc.sumOf { it.amount } / 10, 1)),
-            listOf(Cell("پس‌انداز", 2), Cell(sorted.filter { it.reason == 3 }.sumOf { it.amount } / 10, 1)),
+            listOf(Cell("جمع خرج", 2), Cell(out.sumOf { it.eff } / 10, 1)),
+            listOf(Cell("جمع واریزی", 2), Cell(inc.sumOf { it.eff } / 10, 1)),
+            listOf(Cell("پس‌انداز", 2), Cell(sorted.filter { it.reason == 3 }.sumOf { it.eff } / 10, 1)),
             emptyList(),
             listOf(Cell("دسته", 2), Cell("مبلغ (تومان)", 2), Cell("تعداد", 2))
         )
         out.groupBy { it.categoryId }
             .map { (id, l) -> (id?.let { catName[it] } ?: "بدون دسته") to l }
-            .sortedByDescending { p -> p.second.sumOf { it.amount } }
-            .forEach { (name, l) -> rows2.add(listOf(Cell(name), Cell(l.sumOf { it.amount } / 10, 1), Cell(l.size.toLong()))) }
+            .sortedByDescending { p -> p.second.sumOf { it.eff } }
+            .forEach { (name, l) -> rows2.add(listOf(Cell(name), Cell(l.sumOf { it.eff } / 10, 1), Cell(l.size.toLong()))) }
 
         val bos = ByteArrayOutputStream()
         ZipOutputStream(bos).use { z ->

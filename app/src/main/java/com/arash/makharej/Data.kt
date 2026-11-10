@@ -40,7 +40,11 @@ data class Tx(
     /** BLU / MELLAT / EN / PASARGAD / MANUAL */
     val bank: String = Banks.BLU,
     /** ۰ عادی، ۱ انتقال بین حساب‌ها، ۲ طبق نقش حساب، ۳ پس‌انداز — ببین Banks */
-    @ColumnInfo(defaultValue = "0") val reason: Int = 0
+    @ColumnInfo(defaultValue = "0") val reason: Int = 0,
+    /** این واریز بازپرداخت دنگِ کدام خرج است (reason = 4) */
+    val refundOf: Long? = null,
+    /** خرج دنگی (با دیگران تقسیم شده) */
+    @ColumnInfo(defaultValue = "0") val shared: Boolean = false
 )
 
 @Entity
@@ -124,6 +128,24 @@ interface TxDao {
 
     @Query("DELETE FROM tx WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Query("UPDATE tx SET refundOf = :expenseId, excluded = 1, reason = 4 WHERE id = :id")
+    suspend fun setRefund(id: Long, expenseId: Long)
+
+    @Query("UPDATE tx SET refundOf = NULL, excluded = 0, reason = 0 WHERE id = :id")
+    suspend fun clearRefund(id: Long)
+
+    @Query("UPDATE tx SET shared = :shared WHERE id = :id")
+    suspend fun setShared(id: Long, shared: Boolean)
+
+    @Query("SELECT * FROM tx WHERE refundOf = :expenseId")
+    suspend fun refundsOf(expenseId: Long): List<Tx>
+
+    @Query("SELECT * FROM tx WHERE isExpense = 1 AND shared = 1 AND ts >= :since")
+    suspend fun sharedSince(since: Long): List<Tx>
+
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM tx WHERE refundOf = :expenseId")
+    suspend fun refundSum(expenseId: Long): Long
 
     @Query("UPDATE tx SET note = '' WHERE isExpense = 1 AND note = :merchant AND amount = :amount AND ts BETWEEN :from AND :to")
     suspend fun clearAutoNote(merchant: String, amount: Long, from: Long, to: Long)
@@ -327,7 +349,15 @@ private val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
-@Database(entities = [Tx::class, Category::class], version = 7, exportSchema = false)
+/** نسخه‌ی ۷ ← ۸: دنگ (اتصال بازپرداخت به خرج) */
+private val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE tx ADD COLUMN refundOf INTEGER")
+        db.execSQL("ALTER TABLE tx ADD COLUMN shared INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+@Database(entities = [Tx::class, Category::class], version = 8, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun tx(): TxDao
     abstract fun cat(): CatDao
@@ -343,7 +373,7 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "makharej.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         DEFAULT_CATS.forEachIndexed { i, n ->

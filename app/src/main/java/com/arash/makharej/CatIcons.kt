@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.DirectionsBus
 import androidx.compose.material.icons.outlined.DirectionsCar
 import androidx.compose.material.icons.outlined.Fastfood
 import androidx.compose.material.icons.outlined.FitnessCenter
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Flight
 import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Home
@@ -105,6 +106,7 @@ object CatIcons {
     val unknown: ImageVector = Icons.Outlined.HelpOutline
     val transfer: ImageVector = Icons.Outlined.SyncAlt
     val savingsIcon: ImageVector = Icons.Outlined.Savings
+    val dang: ImageVector = Icons.Outlined.Groups
 
     fun of(key: String?): ImageVector? = key?.let { byKey[it]?.icon }
 

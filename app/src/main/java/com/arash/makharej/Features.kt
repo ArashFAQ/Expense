@@ -231,8 +231,8 @@ fun SearchDialog(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onClos
         }
     }
     val counted = results.counted()
-    val sumOut = counted.filter { it.isExpense }.sumOf { it.amount }
-    val sumIn = counted.filter { !it.isExpense }.sumOf { it.amount }
+    val sumOut = counted.filter { it.isExpense }.sumOf { it.eff }
+    val sumIn = counted.filter { !it.isExpense }.sumOf { it.eff }
 
     Dialog(
         onDismissRequest = onClose,

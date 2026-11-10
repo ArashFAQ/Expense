@@ -71,7 +71,7 @@ fun MonthRow(txs: List<Tx>, isExpense: Boolean, ym: Int, onYm: (Int) -> Unit) {
     val year = ym / 100
     val minYear = minOf((txs.minOfOrNull { it.ym } ?: now) / 100, now / 100)
     val sums = remember(txs, year, isExpense) {
-        (1..12).map { m -> txs.filter { it.ym == year * 100 + m && it.isExpense == isExpense && !it.excluded }.sumOf { it.amount } }
+        (1..12).map { m -> txs.filter { it.ym == year * 100 + m && it.isExpense == isExpense && !it.excluded }.sumOf { it.eff } }
     }
     val state = rememberLazyListState()
     LaunchedEffect(ym) { state.animateScrollToItem(((ym % 100) - 3).coerceAtLeast(0)) }
@@ -140,9 +140,9 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
     val catById = cats.associateBy { it.id }
     val counted = txs.counted()
     val monthOut = counted.filter { it.ym == ym && it.isExpense }
-    val totalOut = monthOut.sumOf { it.amount }
-    val totalIn = counted.filter { it.ym == ym && !it.isExpense }.sumOf { it.amount }
-    val prevOut = counted.filter { it.ym == Jalali.shiftYm(ym, -1) && it.isExpense }.sumOf { it.amount }
+    val totalOut = monthOut.sumOf { it.eff }
+    val totalIn = counted.filter { it.ym == ym && !it.isExpense }.sumOf { it.eff }
+    val prevOut = counted.filter { it.ym == Jalali.shiftYm(ym, -1) && it.isExpense }.sumOf { it.eff }
     val uncat = monthOut.count { it.categoryId == null }
     val uncatColor = Color(0xFF90A4AE)
 
@@ -153,7 +153,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
             val c = id?.let { catById[it] }
             Slice(
                 id ?: -1L, c?.name ?: "بدون دسته", c?.uiColor() ?: uncatColor,
-                c?.uiIcon() ?: CatIcons.unknown, l.sumOf { it.amount }, l
+                c?.uiIcon() ?: CatIcons.unknown, l.sumOf { it.eff }, l
             )
         }
         .sortedByDescending { it.sum }
@@ -262,7 +262,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                             if (open) {
                                 Spacer(Modifier.height(8.dp))
                                 s.items.groupBy { it.note.trim() }
-                                    .map { (note, l) -> Triple(note.ifEmpty { "بدون توضیح" }, l.sumOf { it.amount }, l.size) }
+                                    .map { (note, l) -> Triple(note.ifEmpty { "بدون توضیح" }, l.sumOf { it.eff }, l.size) }
                                     .sortedWith(compareBy<Triple<String, Long, Int>> { it.first == "بدون توضیح" }.thenByDescending { it.second })
                                     .forEach { (note, sum, n) ->
                                         Row(

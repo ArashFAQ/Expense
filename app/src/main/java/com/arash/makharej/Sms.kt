@@ -67,6 +67,10 @@ object Ingest {
             }
         }
         if (notify && p.isExpense && reason == 0) Notifier.showExpense(ctx, tx)
+        // واریزی که شاید بازپرداخت دنگ باشد
+        if (notify && !p.isExpense && (reason == 0 || reason == 2) && Refunds.hasOpenShared(ctx, tx)) {
+            Notifier.showRefundAsk(ctx, tx)
+        }
         return true
     }
 }
@@ -184,6 +188,38 @@ object Notifier {
         }
     }
 
+    fun showRefundAsk(ctx: Context, tx: Tx) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) return
+        ensureChannel(ctx)
+        val nid = tx.id.toInt()
+        val pick = PendingIntent.getActivity(
+            ctx, nid * 10 + 8,
+            Intent(ctx, CategorizeActivity::class.java).putExtra("tx", tx.id).putExtra("refund", true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            FLAGS
+        )
+        val no = PendingIntent.getBroadcast(
+            ctx, nid * 10 + 6,
+            Intent(ctx, ActionReceiver::class.java).putExtra("tx", tx.id).putExtra("dismiss", true), FLAGS
+        )
+        val n = NotificationCompat.Builder(ctx, CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle("${Fa.toman(tx.amount)} به ${Banks.name(tx.bank)} واریز شد")
+            .setContentText("بازپرداخت دنگ بود؟ بزن و خرجش را انتخاب کن")
+            .setAutoCancel(true)
+            .setContentIntent(pick)
+            .addAction(0, "انتخاب خرج", pick)
+            .addAction(0, "نه", no)
+            .build()
+        try {
+            NotificationManagerCompat.from(ctx).notify(nid, n)
+        } catch (_: SecurityException) {
+        }
+    }
+
     private fun openPicker(ctx: Context, txId: Long, rc: Int): PendingIntent {
         val i = Intent(ctx, CategorizeActivity::class.java)
             .putExtra("tx", txId)
@@ -223,6 +259,10 @@ class ActionReceiver : BroadcastReceiver() {
         val tx = intent.getLongExtra("tx", -1)
         val cat = intent.getLongExtra("cat", -1)
         val exclude = intent.getBooleanExtra("exclude", false)
+        if (intent.getBooleanExtra("dismiss", false)) {
+            if (tx >= 0) Notifier.cancel(context.applicationContext, tx)
+            return
+        }
         if (tx < 0 || (cat < 0 && !exclude)) return
         val app = context.applicationContext
         val pending = goAsync()
