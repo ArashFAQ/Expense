@@ -19,7 +19,7 @@
             android:layout_weight="1"
             android:text="قیمت روز (تومان)"
             android:textColor="@color/w_text"
-            android:textSize="17sp"
+            android:textSize="25sp"
             android:textStyle="bold" />
         <TextView
             android:id="@+id/p_time"
@@ -27,15 +27,15 @@
             android:layout_height="wrap_content"
             android:layout_marginEnd="8dp"
             android:textColor="@color/w_sub"
-            android:textSize="13sp" />
+            android:textSize="19sp" />
         <TextView
             android:id="@+id/p_refresh"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:gravity="center"
             android:text="↻"
             android:textColor="@color/w_text"
-            android:textSize="22sp"
+            android:textSize="32sp"
             android:textStyle="bold" />
     </LinearLayout>
     <LinearLayout
@@ -53,7 +53,7 @@
             android:layout_weight="1"
             android:text="دلار"
             android:textColor="@color/w_usd"
-            android:textSize="16sp"
+            android:textSize="24sp"
             android:textStyle="bold" />
         <LinearLayout
             android:layout_width="wrap_content"
@@ -66,14 +66,14 @@
                 android:layout_height="wrap_content"
                 android:text="—"
                 android:textColor="@color/w_text"
-                android:textSize="19sp"
+                android:textSize="28sp"
                 android:textStyle="bold" />
             <TextView
                 android:id="@+id/c_usd"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/w_sub"
-                android:textSize="12sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
@@ -93,7 +93,7 @@
             android:layout_weight="1"
             android:text="سکه امامی"
             android:textColor="@color/w_emami"
-            android:textSize="16sp"
+            android:textSize="24sp"
             android:textStyle="bold" />
         <LinearLayout
             android:layout_width="wrap_content"
@@ -106,14 +106,14 @@
                 android:layout_height="wrap_content"
                 android:text="—"
                 android:textColor="@color/w_text"
-                android:textSize="19sp"
+                android:textSize="28sp"
                 android:textStyle="bold" />
             <TextView
                 android:id="@+id/c_emami"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/w_sub"
-                android:textSize="12sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
@@ -122,7 +122,7 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:layout_marginTop="5dp"
-        android:background="@drawable/w_row_nim"
+        android:background="@drawable/w_row_emami"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="12dp"
@@ -132,8 +132,8 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="نیم‌سکه"
-            android:textColor="@color/w_nim"
-            android:textSize="16sp"
+            android:textColor="@color/w_emami"
+            android:textSize="24sp"
             android:textStyle="bold" />
         <LinearLayout
             android:layout_width="wrap_content"
@@ -146,14 +146,14 @@
                 android:layout_height="wrap_content"
                 android:text="—"
                 android:textColor="@color/w_text"
-                android:textSize="19sp"
+                android:textSize="28sp"
                 android:textStyle="bold" />
             <TextView
                 android:id="@+id/c_nim"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/w_sub"
-                android:textSize="12sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
@@ -162,7 +162,7 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:layout_marginTop="5dp"
-        android:background="@drawable/w_row_rob"
+        android:background="@drawable/w_row_emami"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="12dp"
@@ -172,8 +172,8 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="ربع‌سکه"
-            android:textColor="@color/w_rob"
-            android:textSize="16sp"
+            android:textColor="@color/w_emami"
+            android:textSize="24sp"
             android:textStyle="bold" />
         <LinearLayout
             android:layout_width="wrap_content"
@@ -186,14 +186,14 @@
                 android:layout_height="wrap_content"
                 android:text="—"
                 android:textColor="@color/w_text"
-                android:textSize="19sp"
+                android:textSize="28sp"
                 android:textStyle="bold" />
             <TextView
                 android:id="@+id/c_rob"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/w_sub"
-                android:textSize="12sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
@@ -213,7 +213,7 @@
             android:layout_weight="1"
             android:text="طلای ۱۸ (گرم)"
             android:textColor="@color/w_gold18"
-            android:textSize="16sp"
+            android:textSize="24sp"
             android:textStyle="bold" />
         <LinearLayout
             android:layout_width="wrap_content"
@@ -226,14 +226,14 @@
                 android:layout_height="wrap_content"
                 android:text="—"
                 android:textColor="@color/w_text"
-                android:textSize="19sp"
+                android:textSize="28sp"
                 android:textStyle="bold" />
             <TextView
                 android:id="@+id/c_gold18"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/w_sub"
-                android:textSize="12sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
