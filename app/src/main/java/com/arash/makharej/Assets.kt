@@ -106,6 +106,15 @@ object Prices {
 
     fun isManual(ctx: Context, kind: String) = prefs(ctx).getBoolean("priceManual_$kind", false)
 
+    /** تغییر نسبت به روز قبل به درصد (مثبت = گران‌تر)؛ null اگر معلوم نیست */
+    fun change(ctx: Context, kind: String): Float? {
+        val p = prefs(ctx)
+        if (p.contains("priceDp_$kind")) return p.getFloat("priceDp_$kind", 0f)
+        val prev = p.getLong("pricePrev_$kind", 0L)
+        val cur = p.getLong("price_$kind", 0L)
+        return if (prev > 0 && cur > 0) ((cur - prev) * 100f / prev) else null
+    }
+
     /** از tgju؛ اگر نشد false (قیمت‌های قبلی/دستی می‌مانند) */
     suspend fun refresh(ctx: Context, force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         val last = prefs(ctx).getLong("pricesFetchedAt", 0L)
@@ -128,11 +137,24 @@ object Prices {
                 val now = System.currentTimeMillis()
                 val e = prefs(ctx).edit()
                 var got = 0
+                val today = Jalali.fromMillis(now).let { it[0] * 10000 + it[1] * 100 + it[2] }
+                val p0 = prefs(ctx)
                 keys.forEach { (kind, key) ->
                     val o = cur.optJSONObject(key) ?: return@forEach
                     val v = o.optString("p").replace(",", "").substringBefore('.').toLongOrNull() ?: return@forEach
                     if (v > 0) {
+                        // قیمت روز قبل برای مقایسه (اگر tgju درصد تغییر نداد)
+                        val oldDay = p0.getInt("priceDay_$kind", 0)
+                        val old = p0.getLong("price_$kind", 0L)
+                        if (oldDay != 0 && oldDay != today && old > 0) e.putLong("pricePrev_$kind", old)
+                        e.putInt("priceDay_$kind", today)
                         e.putLong("price_$kind", v).putLong("priceAt_$kind", now).putBoolean("priceManual_$kind", false)
+                        // درصد و جهت تغییر روزانه از خود tgju
+                        val dp = o.optString("dp").replace(",", "").toFloatOrNull()
+                        val dt = o.optString("dt")
+                        if (dp != null && (dt == "high" || dt == "low")) e.putFloat("priceDp_$kind", if (dt == "low") -dp else dp)
+                        else if (dp != null && dp == 0f) e.putFloat("priceDp_$kind", 0f)
+                        else e.remove("priceDp_$kind")
                         got++
                     }
                 }

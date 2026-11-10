@@ -24,6 +24,24 @@ private fun openApp(ctx: Context, tab: Int, rc: Int): PendingIntent =
 
 /** ویجت قیمت روز دلار، سکه و طلا */
 class PricesWidget : AppWidgetProvider() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_REFRESH) {
+            val app = context.applicationContext
+            render(app, busy = true)
+            val pending = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    Prices.refresh(app, force = true)
+                } finally {
+                    render(app)
+                    pending.finish()
+                }
+            }
+            return
+        }
+        super.onReceive(context, intent)
+    }
+
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         val app = context.applicationContext
         render(app)
@@ -39,25 +57,60 @@ class PricesWidget : AppWidgetProvider() {
     }
 
     companion object {
+        const val ACTION_REFRESH = "com.arash.makharej.PRICES_REFRESH"
+        private val changeIds = mapOf(
+            "usd" to R.id.c_usd, "emami" to R.id.c_emami, "nim" to R.id.c_nim,
+            "rob" to R.id.c_rob, "gold18" to R.id.c_gold18
+        )
         private val ids = mapOf(
             "usd" to R.id.p_usd, "emami" to R.id.p_emami, "nim" to R.id.p_nim,
             "rob" to R.id.p_rob, "gold18" to R.id.p_gold18
         )
 
-        fun render(ctx: Context) {
+        fun render(ctx: Context, busy: Boolean = false) {
             val mgr = AppWidgetManager.getInstance(ctx)
             val wids = mgr.getAppWidgetIds(ComponentName(ctx, PricesWidget::class.java))
             if (wids.isEmpty()) return
             val v = RemoteViews(ctx.packageName, R.layout.widget_prices)
             var last = 0L
+            val up = ctx.getColor(R.color.w_green)
+            val down = ctx.getColor(R.color.w_red)
+            val flat = ctx.getColor(R.color.w_text)
             ids.forEach { (kind, id) ->
                 val p = Prices.price(ctx, kind)
                 v.setTextViewText(id, p?.let { Fa.num(it.first) } ?: "—")
                 if (p != null) last = maxOf(last, p.second)
+                val ch = Prices.change(ctx, kind)
+                val color = when {
+                    ch == null || kotlin.math.abs(ch) < 0.005f -> flat
+                    ch > 0 -> up
+                    else -> down
+                }
+                v.setTextColor(id, color)
+                val cid = changeIds.getValue(kind)
+                v.setTextViewText(
+                    cid,
+                    when {
+                        ch == null -> ""
+                        kotlin.math.abs(ch) < 0.005f -> "بدون تغییر"
+                        else -> (if (ch > 0) "▲ " else "▼ ") +
+                            Fa.toFa(String.format(Locale.US, "%.2f", kotlin.math.abs(ch))).replace('.', '٫') + "٪"
+                    }
+                )
+                v.setTextColor(cid, if (ch == null || kotlin.math.abs(ch) < 0.005f) ctx.getColor(R.color.w_sub) else color)
             }
             v.setTextViewText(
                 R.id.p_time,
-                if (last > 0) Fa.toFa(SimpleDateFormat("HH:mm", Locale.US).format(Date(last))) else ""
+                if (busy) "در حال به‌روزرسانی…"
+                else if (last > 0) Fa.toFa(SimpleDateFormat("HH:mm", Locale.US).format(Date(last))) else ""
+            )
+            v.setOnClickPendingIntent(
+                R.id.p_refresh,
+                PendingIntent.getBroadcast(
+                    ctx, 9103,
+                    Intent(ctx, PricesWidget::class.java).setAction(ACTION_REFRESH),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
             )
             v.setOnClickPendingIntent(R.id.w_root, openApp(ctx, 3, 9101))
             mgr.updateAppWidget(wids, v)

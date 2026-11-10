@@ -6,4 +6,14 @@
     <color name="w_red">#FFE53935</color>
     <color name="w_green">#FF16A34A</color>
     <color name="w_line">#1F000000</color>
+    <color name="w_usd">#FF15803D</color>
+    <color name="w_usd_bg">#1F15803D</color>
+    <color name="w_emami">#FFB45309</color>
+    <color name="w_emami_bg">#1FB45309</color>
+    <color name="w_nim">#FFC2410C</color>
+    <color name="w_nim_bg">#1FC2410C</color>
+    <color name="w_rob">#FF7C3AED</color>
+    <color name="w_rob_bg">#1F7C3AED</color>
+    <color name="w_gold18">#FFA16207</color>
+    <color name="w_gold18_bg">#1FA16207</color>
 </resources>
