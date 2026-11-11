@@ -352,10 +352,17 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
 @Composable
 private fun SummaryCell(title: String, rial: Long, color: Color, modifier: Modifier, extra: String? = null, extraColor: Color = Color.Unspecified) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(Fa.num(rial), color = color, fontWeight = FontWeight.Black, fontSize = 15.sp, maxLines = 1)
+            val num = Fa.num(rial)
+            // عدد بزرگ‌تر؛ برای عددهای خیلی طولانی کمی کوچک‌تر تا در یک خط جا شود
+            val size = when {
+                num.length + (extra?.length ?: 0) > 16 -> 15.sp
+                num.length > 10 -> 17.sp
+                else -> 19.sp
+            }
+            Text(num, color = color, fontWeight = FontWeight.Black, fontSize = size, maxLines = 1, softWrap = false)
             if (extra != null) Text(" " + extra, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = extraColor, maxLines = 1)
         }
         Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
