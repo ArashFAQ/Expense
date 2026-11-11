@@ -162,6 +162,58 @@ object FileOut {
 
 // ================================================================ Backup
 
+/**
+ * تنظیمات و داده‌هایی که در SharedPreferences هستند (مانده‌ی دستی بانک‌ها و مفید، بانک‌های پنهان،
+ * نقش حساب‌ها، بانک‌های خاموش، کلمه‌های پس‌انداز، تم، قیمت دستی، نمونه‌پیامک‌های یادگرفته، نمودار دارایی …)
+ * پرچم‌های یک‌باره‌ی همین گوشی و اتصال گوگل‌درایو منتقل نمی‌شوند.
+ */
+object Prefs {
+    private fun skip(k: String) =
+        k in setOf("importVer", "imported", "depositsPending", "otpNotesCleared", "lastBackup") ||
+            k.startsWith("logoFail_") || k.startsWith("drive")
+
+    fun export(ctx: Context): JSONObject {
+        val o = JSONObject()
+        ctx.getSharedPreferences("app", Context.MODE_PRIVATE).all.forEach { (k, v) ->
+            if (skip(k) || v == null) return@forEach
+            val e = when (v) {
+                is Boolean -> JSONObject().put("t", "b").put("v", v)
+                is Int -> JSONObject().put("t", "i").put("v", v)
+                is Long -> JSONObject().put("t", "l").put("v", v)
+                is Float -> JSONObject().put("t", "f").put("v", v.toDouble())
+                is String -> JSONObject().put("t", "s").put("v", v)
+                is Set<*> -> JSONObject().put("t", "set").put("v", JSONArray(v.map { it.toString() }))
+                else -> null
+            }
+            if (e != null) o.put(k, e)
+        }
+        return o
+    }
+
+    fun restore(ctx: Context, o: JSONObject) {
+        val p = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+        val ed = p.edit()
+        // مقدارهای قبلی (به‌جز پرچم‌های همین گوشی) پاک می‌شوند تا دقیقا مثل پشتیبان شود
+        p.all.keys.filter { !skip(it) }.forEach { ed.remove(it) }
+        o.keys().forEach { k ->
+            if (skip(k)) return@forEach
+            val e = o.optJSONObject(k) ?: return@forEach
+            when (e.optString("t")) {
+                "b" -> ed.putBoolean(k, e.optBoolean("v"))
+                "i" -> ed.putInt(k, e.optInt("v"))
+                "l" -> ed.putLong(k, e.optLong("v"))
+                "f" -> ed.putFloat(k, e.optDouble("v").toFloat())
+                "s" -> ed.putString(k, e.optString("v"))
+                "set" -> {
+                    val a = e.optJSONArray("v") ?: JSONArray()
+                    ed.putStringSet(k, (0 until a.length()).map { a.getString(it) }.toSet())
+                }
+            }
+        }
+        ed.commit()
+    }
+}
+
 object Backup {
     const val MIME = "application/json"
 
@@ -197,6 +249,7 @@ object Backup {
                     )
                 }
             })
+            .put("prefs", Prefs.export(ctx))
             .put("stocks", JSONArray().apply {
                 db.stock().list().forEach { s ->
                     put(JSONObject().put("id", s.id).put("insCode", s.insCode).put("symbol", s.symbol).put("name", s.name).put("sort", s.sort))
@@ -216,7 +269,8 @@ object Backup {
 
     data class Content(
         val cats: List<Category>, val txs: List<Tx>, val assets: List<Asset> = emptyList(),
-        val stocks: List<Stock> = emptyList(), val trades: List<StockTrade> = emptyList()
+        val stocks: List<Stock> = emptyList(), val trades: List<StockTrade> = emptyList(),
+        val prefs: JSONObject? = null
     )
 
     fun parse(bytes: ByteArray): Content {
@@ -281,7 +335,7 @@ object Backup {
                 if (t.isNull("txId")) null else t.optLong("txId")
             )
         }
-        return Content(cats, txs, assets, stocks, trades)
+        return Content(cats, txs, assets, stocks, trades, o.optJSONObject("prefs"))
     }
 
     /** همه‌ی داده‌های فعلی با محتوای پشتیبان جایگزین می‌شود */
@@ -299,6 +353,9 @@ object Backup {
             db.stock().insertAll(c.stocks)
             db.stock().insertTrades(c.trades)
         }
+        c.prefs?.let { Prefs.restore(ctx, it) }
+        Learned.reset()
+        RemoteBanks.reset()
     }
 
     /** پشتیبان در Download/Makharej و یک نسخه برای ارسال */

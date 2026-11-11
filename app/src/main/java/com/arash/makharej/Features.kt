@@ -389,6 +389,9 @@ fun BackupSection() {
                         try {
                             Backup.restore(ctx, content)
                             Toast.makeText(ctx, "بازگردانی انجام شد", Toast.LENGTH_LONG).show()
+                            // تم و تنظیمات تازه اعمال شوند
+                            ThemeSettings.load(ctx)
+                            (ctx as? android.app.Activity)?.recreate()
                         } catch (e: Exception) {
                             Toast.makeText(ctx, "خطا: " + e.message, Toast.LENGTH_LONG).show()
                         }

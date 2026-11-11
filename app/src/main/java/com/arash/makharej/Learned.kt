@@ -38,6 +38,9 @@ object Learned {
 
     fun banks(ctx: Context): List<Bank> = cache ?: load(ctx).also { cache = it }
 
+    /** بعد از بازگردانی پشتیبان */
+    fun reset() { cache = null }
+
     /** اسم برای نمایش؛ بدون Context از حافظه */
     fun nameOf(id: String): String? = cache?.firstOrNull { it.id == id }?.name ?: RemoteBanks.nameOf(id)
 

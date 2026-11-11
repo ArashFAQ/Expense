@@ -25,6 +25,9 @@ object RemoteBanks {
 
     fun entries(ctx: Context): List<Entry> = cache ?: load(ctx).also { cache = it }
 
+    /** بعد از بازگردانی پشتیبان */
+    fun reset() { cache = null }
+
     /** بانک‌هایی که نمونه دارند و فرستنده‌شان معلوم است */
     fun readable(ctx: Context): List<Learned.Bank> =
         entries(ctx).filter { !it.builtIn && it.bank.templates.isNotEmpty() && it.bank.senders.isNotEmpty() }.map { it.bank }
