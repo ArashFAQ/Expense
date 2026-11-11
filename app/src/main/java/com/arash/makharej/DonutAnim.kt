@@ -38,18 +38,45 @@ fun AnimatedDonut(
     onSelect: (Int) -> Unit,
     animKey: Any,
     modifier: Modifier,
-    track: Color
+    track: Color,
+    /** حلقه‌ی دوم (مثلا دسته‌های درآمد) */
+    outer: List<Pair<Float, Color>> = emptyList(),
+    /** حلقه‌ی بیرونی: نسبت خرج به درآمد (null = نباشد) */
+    ratio: Float? = null
 ) {
     val n = values.size
+    val m = outer.size
     val enter = remember(animKey, n) { List(n) { Animatable(0f) } }
-    LaunchedEffect(animKey, n) {
-        val order = (0 until n).shuffled()
-        order.forEachIndexed { k, idx ->
+    val enterO = remember(animKey, m) { List(m) { Animatable(0f) } }
+    val prog = remember(animKey) { Animatable(0f) }
+    LaunchedEffect(animKey, n, m) {
+        (0 until n).shuffled().forEachIndexed { k, idx ->
             launch {
                 delay(k * 90L)
                 enter[idx].animateTo(1f, tween(550, easing = EaseOutCubic))
             }
         }
+        (0 until m).shuffled().forEachIndexed { k, idx ->
+            launch {
+                delay(250L + k * 90L)
+                enterO[idx].animateTo(1f, tween(550, easing = EaseOutCubic))
+            }
+        }
+        launch {
+            delay(450)
+            prog.animateTo(1f, tween(900, easing = EaseOutCubic))
+        }
+    }
+    val totalO = outer.sumOf { it.first.toDouble() }.toFloat()
+
+    /** شعاع‌ها: بیرونی‌ترین، حلقه‌ی دوم، حلقه‌ی اصلی */
+    fun radii(w: Float, h: Float, gapPx: Float, pad: Float): FloatArray {
+        val r = minOf(w, h) / 2f - pad
+        val pth = if (ratio != null) r * 0.055f else 0f
+        val r1 = if (ratio != null) r - pth - gapPx else r
+        val ith = if (m > 0) r1 * 0.13f else 0f
+        val r2 = if (m > 0) r1 - ith - gapPx else r1
+        return floatArrayOf(r, pth, r1, ith, r2)
     }
     val pops = (0 until n).map { i ->
         animateFloatAsState(if (i == selected) 1f else 0f, tween(220), label = "pop$i").value
@@ -62,9 +89,10 @@ fun AnimatedDonut(
             detectTapGestures { p ->
                 val cx = size.width / 2f
                 val cy = size.height / 2f
-                val r = minOf(size.width, size.height) / 2f
+                val rr = radii(size.width.toFloat(), size.height.toFloat(), 7.dp.toPx(), 10.dp.toPx())
+                val r = rr[4]
                 val d = hypot(p.x - cx, p.y - cy)
-                if (total <= 0f || d < r * 0.5f || d > r + 12.dp.toPx()) {
+                if (total <= 0f || d < r * 0.5f || d > r + 8.dp.toPx()) {
                     onSelect(-1); return@detectTapGestures
                 }
                 var ang = Math.toDegrees(atan2((p.y - cy).toDouble(), (p.x - cx).toDouble())).toFloat() + 90f
@@ -80,11 +108,42 @@ fun AnimatedDonut(
             }
         }
     ) {
-        val pad = 10.dp.toPx()
-        val stroke = (minOf(size.width, size.height) / 2f - pad) * 0.28f
-        val outer = minOf(size.width, size.height) / 2f - pad
-        val mid = outer - stroke / 2
+        val rr = radii(size.width, size.height, 7.dp.toPx(), 10.dp.toPx())
         val c = Offset(size.width / 2f, size.height / 2f)
+        // ---- حلقه‌ی بیرونی: سهم خرج از درآمد
+        if (ratio != null) {
+            val pmid = rr[0] - rr[1] / 2
+            val over = ratio > 1f
+            val col = if (over) Color(0xFFE53935) else Color(0xFF00897B)
+            drawCircle(if (over) col.copy(alpha = 0.25f) else track, pmid, c, style = Stroke(rr[1]))
+            val sw = 360f * ratio.coerceIn(0f, 1f) * prog.value
+            if (sw > 0f) drawArc(
+                col, -90f, sw, false, Offset(c.x - pmid, c.y - pmid), Size(pmid * 2, pmid * 2),
+                style = Stroke(rr[1], cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            )
+        }
+        // ---- حلقه‌ی دوم: دسته‌های درآمد
+        if (m > 0 && totalO > 0f) {
+            val imid = rr[2] - rr[3] / 2
+            var st = -90f
+            outer.forEachIndexed { i, (v, color) ->
+                val sweep = v / totalO * 360f
+                val e = enterO.getOrNull(i)?.value ?: 1f
+                if (e > 0f) {
+                    val mm = Math.toRadians((st + sweep / 2).toDouble())
+                    val off = (1f - e) * 60.dp.toPx()
+                    val cc = Offset(c.x + cos(mm).toFloat() * off, c.y + sin(mm).toFloat() * off)
+                    drawArc(
+                        color.copy(alpha = e * dim), st + 1f, (sweep - 2f).coerceAtLeast(0.5f), false,
+                        Offset(cc.x - imid, cc.y - imid), Size(imid * 2, imid * 2), style = Stroke(rr[3])
+                    )
+                }
+                st += sweep
+            }
+        }
+        val outerR = rr[4]
+        val stroke = outerR * 0.30f
+        val mid = outerR - stroke / 2
         if (total <= 0f) {
             drawCircle(track, mid, c, style = Stroke(stroke))
             return@Canvas

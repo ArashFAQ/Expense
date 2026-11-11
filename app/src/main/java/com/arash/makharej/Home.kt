@@ -176,7 +176,12 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
         item {
             Card(shape = RoundedCornerShape(20.dp), colors = cardColors()) {
                 Row(Modifier.fillMaxWidth().padding(vertical = 14.dp)) {
-                    SummaryCell("خرج", totalOut, ExpenseColor, Modifier.weight(1f))
+                    val diff = if (prevOut > 0 && totalOut > 0) ((totalOut - prevOut) * 100 / prevOut).toInt() else null
+                    SummaryCell(
+                        "خرج", totalOut, ExpenseColor, Modifier.weight(1f),
+                        extra = diff?.let { "(" + (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪)" },
+                        extraColor = if ((diff ?: 0) > 0) ExpenseColor else IncomeColor
+                    )
                     SummaryCell("درآمد", totalIn, IncomeColor, Modifier.weight(1f))
                     SummaryCell(
                         "مانده", kotlin.math.abs(totalIn - totalOut),
@@ -209,11 +214,18 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                 Column(Modifier.fillMaxWidth().padding(18.dp)) {
                     val selIdx = slices.indexOfFirst { it.key == openCat }
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        // حلقه‌ی دوم: دسته‌های درآمد؛ حلقه‌ی بیرونی: چقدر از درآمد خرج شده
+                        val incSlices = counted.filter { it.ym == ym && !it.isExpense }
+                            .groupBy { it.categoryId }
+                            .map { (id, l) -> l.sumOf { it.eff }.toFloat() to (id?.let { catById[it] }?.uiColor() ?: Color(0xFFB0BEC5)) }
+                            .sortedByDescending { it.first }
                         AnimatedDonut(
                             slices.map { it.sum.toFloat() to it.color }, selIdx,
                             onSelect = { i -> openCat = slices.getOrNull(i)?.key },
-                            animKey = ym, modifier = Modifier.size(220.dp),
-                            track = MaterialTheme.colorScheme.surfaceVariant
+                            animKey = ym, modifier = Modifier.size(270.dp),
+                            track = MaterialTheme.colorScheme.surfaceVariant,
+                            outer = incSlices,
+                            ratio = if (totalIn > 0) totalOut.toFloat() / totalIn else if (totalOut > 0) 2f else null
                         )
                         val selS = slices.getOrNull(selIdx)
                         if (selS != null) Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -225,22 +237,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                             )
                         } else Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("خرج " + Fa.monthName(ym), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(Fa.num(totalOut), fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1)
-                            Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (prevOut > 0 && totalOut > 0) {
-                                val diff = ((totalOut - prevOut) * 100 / prevOut).toInt()
-                                Text(
-                                    (if (diff > 0) "▲ " else "▼ ") + Fa.toFa(kotlin.math.abs(diff).toString()) + "٪",
-                                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
-                                    color = if (diff > 0) ExpenseColor else IncomeColor
-                                )
-                                Text(
-                                    if (isCurrent) "نسبت به ۱ تا " + Fa.toFa(today[2].toString()) + " " + Fa.monthName(Jalali.shiftYm(ym, -1))
-                                    else "نسبت به " + Fa.monthName(Jalali.shiftYm(ym, -1)),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Text(Fa.num(totalOut), fontSize = 18.sp, fontWeight = FontWeight.Black, maxLines = 1)
                         }
                     }
                     Spacer(Modifier.height(14.dp))
@@ -324,9 +321,12 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
 }
 
 @Composable
-private fun SummaryCell(title: String, rial: Long, color: Color, modifier: Modifier) {
+private fun SummaryCell(title: String, rial: Long, color: Color, modifier: Modifier, extra: String? = null, extraColor: Color = Color.Unspecified) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (extra != null) Text(" " + extra, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = extraColor)
+        }
         Spacer(Modifier.height(4.dp))
         Text(Fa.num(rial), color = color, fontWeight = FontWeight.Black, fontSize = 15.sp, maxLines = 1)
         Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
