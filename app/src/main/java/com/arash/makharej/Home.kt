@@ -177,24 +177,24 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
     ) {
         item { MonthRow(txs, true, ym, onYm) }
 
-        // ---- خرج / واریزی / مانده
+        // ---- دو کارت خرج و درآمد
         item {
-            Card(shape = RoundedCornerShape(20.dp), colors = cardColors()) {
-                Row(Modifier.fillMaxWidth().padding(vertical = 14.dp)) {
-                    val diff = if (prevOut > 0 && totalOut > 0) ((totalOut - prevOut) * 100 / prevOut).toInt() else null
-                    SummaryCell(
-                        "خرج", totalOut, ExpenseColor, Modifier.weight(1f),
-                        extra = diff?.let { "(" + (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪)" },
-                        extraColor = if ((diff ?: 0) > 0) ExpenseColor else IncomeColor
-                    )
-                    // درآمد بیشتر از ماه قبل = سبز
-                    val diffIn = if (prevIn > 0 && totalIn > 0) ((totalIn - prevIn) * 100 / prevIn).toInt() else null
-                    SummaryCell(
-                        "درآمد", totalIn, IncomeColor, Modifier.weight(1f),
-                        extra = diffIn?.let { "(" + (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪)" },
-                        extraColor = if ((diffIn ?: 0) >= 0) IncomeColor else ExpenseColor
-                    )
-                }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val diff = if (prevOut > 0 && totalOut > 0) ((totalOut - prevOut) * 100 / prevOut).toInt() else null
+                SummaryCell(
+                    "خرج", totalOut, ExpenseColor, Modifier.weight(1f),
+                    extra = diff?.let { "(" + (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪)" },
+                    extraColor = if ((diff ?: 0) > 0) ExpenseColor else IncomeColor,
+                    tint = if (LocalDark.current) ExpenseColor.copy(alpha = 0.16f) else Color(0xFFFFEBEE)
+                )
+                // درآمد بیشتر از ماه قبل = سبز
+                val diffIn = if (prevIn > 0 && totalIn > 0) ((totalIn - prevIn) * 100 / prevIn).toInt() else null
+                SummaryCell(
+                    "درآمد", totalIn, IncomeColor, Modifier.weight(1f),
+                    extra = diffIn?.let { "(" + (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪)" },
+                    extraColor = if ((diffIn ?: 0) >= 0) IncomeColor else ExpenseColor,
+                    tint = if (LocalDark.current) IncomeColor.copy(alpha = 0.16f) else Color(0xFFE8F5E9)
+                )
             }
         }
 
@@ -359,22 +359,38 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun SummaryCell(title: String, rial: Long, color: Color, modifier: Modifier, extra: String? = null, extraColor: Color = Color.Unspecified) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(4.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // عدد دو برابر؛ اگر جا نشد خودش کوچک می‌شود تا در یک خط بماند
-            var size by remember(rial, extra) { mutableStateOf(38f) }
-            Text(
-                Fa.num(rial), Modifier.weight(1f, fill = false),
-                color = color, fontWeight = FontWeight.Black, fontSize = size.sp, maxLines = 1, softWrap = false,
-                onTextLayout = { if (it.hasVisualOverflow && size > 14f) size *= 0.92f }
-            )
-            if (extra != null) Text(" " + extra, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = extraColor, maxLines = 1, softWrap = false)
+private fun SummaryCell(
+    title: String, rial: Long, color: Color, modifier: Modifier,
+    extra: String? = null, extraColor: Color = Color.Unspecified, tint: Color = Color.Transparent
+) {
+    androidx.compose.material3.Card(
+        modifier, shape = RoundedCornerShape(20.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = tint)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(title, style = MaterialTheme.typography.labelMedium, color = color.copy(alpha = 0.85f), fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            val num = Fa.num(rial)
+            // اگر درصد کنار عدد جا نشود، زیرش می‌رود
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.Center,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    num, color = color, fontWeight = FontWeight.Black,
+                    fontSize = if (num.length > 10) 22.sp else 26.sp, maxLines = 1, softWrap = false,
+                    modifier = Modifier.align(Alignment.CenterVertically)
+                )
+                if (extra != null) Text(
+                    " " + extra, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = extraColor,
+                    maxLines = 1, softWrap = false, modifier = Modifier.align(Alignment.CenterVertically)
+                )
+            }
+            Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
