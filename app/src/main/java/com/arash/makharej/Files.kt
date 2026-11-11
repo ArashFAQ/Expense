@@ -250,6 +250,15 @@ object Backup {
                 }
             })
             .put("prefs", Prefs.export(ctx))
+            .put("dues", JSONArray().apply {
+                db.due().list().forEach { d ->
+                    put(
+                        JSONObject().put("id", d.id).put("kind", d.kind).put("title", d.title).put("amount", d.amount)
+                            .put("bank", d.bank ?: JSONObject.NULL).put("startJDate", d.startJDate).put("count", d.count)
+                            .put("period", d.period).put("paid", d.paid).put("note", d.note).put("done", d.done)
+                    )
+                }
+            })
             .put("stocks", JSONArray().apply {
                 db.stock().list().forEach { s ->
                     put(JSONObject().put("id", s.id).put("insCode", s.insCode).put("symbol", s.symbol).put("name", s.name).put("sort", s.sort))
@@ -270,7 +279,8 @@ object Backup {
     data class Content(
         val cats: List<Category>, val txs: List<Tx>, val assets: List<Asset> = emptyList(),
         val stocks: List<Stock> = emptyList(), val trades: List<StockTrade> = emptyList(),
-        val prefs: JSONObject? = null
+        val prefs: JSONObject? = null,
+        val dues: List<Due> = emptyList()
     )
 
     fun parse(bytes: ByteArray): Content {
@@ -335,7 +345,16 @@ object Backup {
                 if (t.isNull("txId")) null else t.optLong("txId")
             )
         }
-        return Content(cats, txs, assets, stocks, trades, o.optJSONObject("prefs"))
+        val da = o.optJSONArray("dues") ?: JSONArray()
+        val dues = (0 until da.length()).map { i ->
+            val d = da.getJSONObject(i)
+            Due(
+                d.getLong("id"), d.getInt("kind"), d.getString("title"), d.getLong("amount"),
+                if (d.isNull("bank")) null else d.optString("bank"), d.getString("startJDate"),
+                d.optInt("count", 1), d.optInt("period", 1), d.optInt("paid"), d.optString("note"), d.optBoolean("done")
+            )
+        }
+        return Content(cats, txs, assets, stocks, trades, o.optJSONObject("prefs"), dues)
     }
 
     /** همه‌ی داده‌های فعلی با محتوای پشتیبان جایگزین می‌شود */
@@ -352,6 +371,8 @@ object Backup {
             db.stock().deleteAll()
             db.stock().insertAll(c.stocks)
             db.stock().insertTrades(c.trades)
+            db.due().deleteAll()
+            db.due().insertAll(c.dues)
         }
         c.prefs?.let { Prefs.restore(ctx, it) }
         Learned.reset()

@@ -32,6 +32,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -137,7 +138,8 @@ fun MonthRow(txs: List<Tx>, isExpense: Boolean, ym: Int, onYm: (Int) -> Unit) {
 // ================================================================ Home
 
 @Composable
-fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, onOpenExpenses: () -> Unit) {
+fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, onOpenExpenses: () -> Unit, onOpenAssets: () -> Unit = {}) {
+    val dues by remember { AppDb.get(androidx.compose.ui.platform.LocalContext.current).due().all() }.collectAsState(initial = emptyList())
     val catById = cats.associateBy { it.id }
     val counted = txs.counted()
     val monthOut = counted.filter { it.ym == ym && it.isExpense }
@@ -197,6 +199,8 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                 )
             }
         }
+
+        if (dues.any { Dues.open(it) && (Dues.daysTo(it) ?: 99) <= 7 }) item { UpcomingDuesCard(dues, onOpenAssets) }
 
         if (uncat > 0) item {
             Card(

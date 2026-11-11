@@ -314,9 +314,12 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
     val savedFromSms = txs.filter { it.reason == 3 }.sumOf { it.amount }
     val values = assets.associate { it.id to Wealth.assetValue(ctx, it) }
     val investTotal = values.values.sum()
-    val loanTotal = Loans.total(txs)
-    val debtTotal = Loans.total(txs, debt = true)
+    val loanTotalRaw = Loans.total(txs)
+    // چک و قسط: اقساط باقی‌مانده و چک‌های صادره بدهی‌اند، چک‌های دریافتی طلب
+    val dues by remember { db.due().all() }.collectAsState(initial = emptyList())
+    val debtTotal = Loans.total(txs, debt = true) + Dues.liabilities(dues)
     val stockTotal = remember(holdings, tick) { Stocks.total(ctx, holdings) }
+    val loanTotal = loanTotalRaw + Dues.receivables(dues)
     val total = bankTotal + investTotal + stockTotal + loanTotal - debtTotal
     LaunchedEffect(total) { Wealth.saveSnapshot(ctx, total) }
 
@@ -383,6 +386,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
         item { StocksCard(db, holdings, tick) { tick++ } }
 
         // ---- طلب‌ها
+        item { DuesCard(db, dues) }
         item { LoansCard(txs, db, cats, debt = false) }
         item { LoansCard(txs, db, cats, debt = true) }
 

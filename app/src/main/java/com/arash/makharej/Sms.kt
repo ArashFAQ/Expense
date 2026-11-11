@@ -76,6 +76,13 @@ object Ingest {
                 return true
             }
         }
+        // قسط یا چکی که سررسیدش نزدیک است؟ (فقط پیامک تازه، نه خواندن پیامک‌های قبلی)
+        if (notify) {
+            val due = try { Dues.matchPayment(ctx, tx) } catch (_: Exception) { null }
+            if (due != null && p.isExpense && (due.kind == 0 || due.kind == 3) &&
+                AppDb.get(ctx).cat().list().any { !it.income && it.icon == "installment" }
+            ) return true
+        }
         if (notify && p.isExpense && reason == 0) Notifier.showExpense(ctx, tx)
         // واریزی که شاید بازپرداخت دنگ باشد
         if (notify && !p.isExpense && reason == 5) Notifier.showDepositAsk(ctx, tx)

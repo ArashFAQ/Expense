@@ -394,6 +394,7 @@ fun MainScreen(startTab: Int = 0) {
         try {
             if (RemoteBanks.refresh(ctx) && hasPerm(ctx, Manifest.permission.READ_SMS)) InboxImporter.run(ctx)
         } catch (_: Exception) {}
+        try { DueReminder.check(ctx) } catch (_: Exception) {}
         if (hasPerm(ctx, Manifest.permission.READ_SMS) && !pr.getBoolean("otpNotesCleared", false)) {
             try { OtpNoteCleanup.run(ctx) } catch (_: Exception) {}
             pr.edit().putBoolean("otpNotesCleared", true).apply()
@@ -435,7 +436,7 @@ fun MainScreen(startTab: Int = 0) {
             key = { it }
         ) { page ->
             when (page) {
-                0 -> HomeTab(txs, cats, ym, onYm = { ym = it }, onOpenExpenses = { goTab(1) })
+                0 -> HomeTab(txs, cats, ym, onYm = { ym = it }, onOpenExpenses = { goTab(1) }, onOpenAssets = { goTab(3) })
                 1 -> ExpensesTab(txs, cats, db, ym, onAdd = { adding = 1 }, onSearch = { searching = true }) { ym = it }
                 2 -> IncomeTab(txs, cats, db, ym, onAdd = { adding = 2 }, onSearch = { searching = true }) { ym = it }
                 3 -> AssetsTab(txs, db, cats)
