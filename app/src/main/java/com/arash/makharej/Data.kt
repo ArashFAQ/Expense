@@ -118,7 +118,7 @@ interface TxDao {
     suspend fun clearRoleIgnore(bank: String, e: Boolean)
 
     @Query(
-        "SELECT * FROM tx WHERE isExpense = :e AND bank != :notBank AND bank != 'MANUAL' AND reason NOT IN (1, 3, 6, 7) " +
+        "SELECT * FROM tx WHERE isExpense = :e AND bank != :notBank AND bank != 'MANUAL' AND reason NOT IN (1, 3, 6, 7, 8, 9) " +
             "AND ts BETWEEN :from AND :to"
     )
     suspend fun transferCandidates(e: Boolean, notBank: String, from: Long, to: Long): List<Tx>
@@ -170,6 +170,22 @@ interface TxDao {
 
     @Query("UPDATE tx SET reason = 0, excluded = 0, person = NULL WHERE id = :id")
     suspend fun clearLoan(id: Long)
+
+    /** قرض گرفتم (reason = 8): واریز درآمد نیست، بدهی است */
+    @Query("UPDATE tx SET reason = 8, excluded = 1, person = :person, categoryId = NULL, refundOf = NULL WHERE id = :id")
+    suspend fun setDebt(id: Long, person: String)
+
+    /** «قرض نگرفتم»: واریز دوباره در انتظار تأیید */
+    @Query("UPDATE tx SET reason = 5, excluded = 1, person = NULL WHERE id = :id")
+    suspend fun clearDebt(id: Long)
+
+    /** پرداخت بدهی (reason = 9) */
+    @Query("UPDATE tx SET refundOf = :debtId, excluded = 1, reason = 9, categoryId = NULL WHERE id = :id")
+    suspend fun setDebtRepay(id: Long, debtId: Long)
+
+    /** برداشتی که دیگر پرداخت بدهی نیست، خرج عادی می‌شود */
+    @Query("UPDATE tx SET refundOf = NULL, excluded = 0, reason = 0 WHERE id = :id")
+    suspend fun clearRepayOut(id: Long)
 
     /** بازپرداخت قرض (reason = 7) */
     @Query("UPDATE tx SET refundOf = :loanId, excluded = 1, reason = 7 WHERE id = :id")

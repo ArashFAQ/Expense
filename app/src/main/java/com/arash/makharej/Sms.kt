@@ -187,7 +187,7 @@ object Notifier {
         b.addAction(0, "کجا خرج شد؟", openPicker(ctx, tx.id, 9))
         b.addAction(0, "حساب خودم", PendingIntent.getBroadcast(ctx, nid * 10 + 5, ownAcc, FLAGS))
         b.addAction(
-            0, "قرض دادم",
+            0, "قرض / بدهی",
             PendingIntent.getActivity(
                 ctx, nid * 10 + 4,
                 Intent(ctx, CategorizeActivity::class.java).putExtra("tx", tx.id).putExtra("loan", true)
@@ -236,7 +236,7 @@ object Notifier {
                 )
             )
             .addAction(0, "درآمد", bc(2, "income"))
-            .addAction(0, "بازپرداخت", dang)
+            .addAction(0, "بازپرداخت / قرض", dang)
             .addAction(0, "حساب خودم", bc(3, "own"))
             .build()
         try {

@@ -300,11 +300,8 @@ class CategorizeActivity : ComponentActivity() {
                 if (loanMode) {
                     val all by remember { db.tx().all() }.collectAsState(initial = emptyList())
                     val d = tx
-                    if (d != null) LoanPersonDialog(
-                        Fa.toman(d.amount) + " قرض به چه کسی؟", Loans.persons(all),
-                        onOk = { p, _, _ -> scope.launch { Loans.mark(ctx, d.id, p); finish() } },
-                        onDismiss = { finish() }
-                    )
+                    Refunds.update(all)
+                    if (d != null) OutPicker(d, all, onDone = { finish() }, onDismiss = { finish() })
                     return@AppTheme
                 }
                 val notes by remember { db.tx().noteStats() }.collectAsState(initial = emptyList())
@@ -648,6 +645,8 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
         t.excluded && t.reason == 5 -> { title = "در انتظار تأیید"; bg = neutral }
         t.reason == 6 -> { title = "قرض به " + (t.person ?: ""); bg = neutral }
         t.excluded && t.reason == 7 -> { title = if (t.note == "بخشیده شد") "قرض بخشیده شد" else "بازپرداخت قرض"; bg = neutral }
+        t.reason == 8 -> { title = "قرض از " + (t.person ?: ""); bg = neutral }
+        t.excluded && t.reason == 9 -> { title = if (t.note == "بخشیده شد") "بدهی بخشیده شد" else "پرداخت بدهی"; bg = neutral }
         t.excluded -> { title = "حساب خودم"; bg = neutral }
         cat != null -> { title = cat.name; bg = cat.uiColor() }
         !t.isExpense -> { title = "واریز"; bg = neutral }
@@ -673,7 +672,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
                 t.excluded && t.reason == 1 -> CatIcons.transfer
                 t.excluded && t.reason == 3 -> CatIcons.savingsIcon
                 t.excluded && t.reason == 4 -> CatIcons.dang
-                t.reason == 6 || t.reason == 7 -> CatIcons.loan
+                t.reason in 6..9 -> CatIcons.loan
                 t.excluded -> CatIcons.transfer
                 cat != null -> cat.uiIcon()
                 else -> CatIcons.unknown
@@ -690,7 +689,10 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
                 Text(title, fontWeight = FontWeight.Bold, color = titleColor)
                 Text(
                     Fa.toFa(t.time) + "  ·  " + Banks.name(t.bank) +
-                        (if (t.reason == 6) (if (t.eff > 0) "  ·  مانده " + Fa.toman(t.eff) else "  ·  تسویه شد")
+                        (if (t.reason == 6 || t.reason == 8) {
+                            val left = t.amount - (Refunds.byExpense[t.id] ?: 0L)
+                            if (left > 0) "  ·  مانده " + Fa.toman(left) else "  ·  تسویه شد"
+                        }
                         else if (t.refunded > 0) "  ·  سهم من " + Fa.toman(t.eff) else if (t.shared) "  ·  دنگی" else "") +
                         if (t.note.isNotEmpty()) "  ·  ${t.note}" else "",
                     style = MaterialTheme.typography.bodySmall,
@@ -1078,7 +1080,7 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
                                 SmallChoice("درآمد", true) { setKind(t, false) }
-                                SmallChoice("بازپرداخت", false) { dangFor = t }
+                                SmallChoice("بازپرداخت / قرض", false) { dangFor = t }
                                 SmallChoice("حساب خودم", false) { setKind(t, true) }
                             }
                         }
@@ -1409,7 +1411,7 @@ fun TxEditor(
                 Button(onClick = {
                     scopeP.launch { db!!.tx().setDepositKind(tx.id, false); Notifier.cancel(ctxP, tx.id); onCancel() }
                 }) { Text("درآمد") }
-                OutlinedButton(onClick = { pickDang = true }) { Text("بازپرداخت") }
+                OutlinedButton(onClick = { pickDang = true }) { Text("بازپرداخت / قرض") }
                 OutlinedButton(onClick = {
                     scopeP.launch { db!!.tx().setDepositKind(tx.id, true); Notifier.cancel(ctxP, tx.id); onCancel() }
                 }) { Text("حساب خودم") }
@@ -1418,7 +1420,7 @@ fun TxEditor(
                 val all by remember { db!!.tx().all() }.collectAsState(initial = emptyList())
                 RepayPicker(tx, all, cats, onDone = { pickDang = false; onCancel() }, onDismiss = { pickDang = false })
             }
-        } else if (tx.reason !in listOf(4, 6, 7)) {
+        } else if (tx.reason !in 4..9) {
         Spacer(Modifier.height(16.dp))
         Row(
             Modifier
@@ -1487,7 +1489,7 @@ fun TxEditor(
             if (sel == null && c != null) sel = c
         }
         // دنگ: برای خرج‌ها و واریزهایی که انتقال/پس‌انداز نیستند
-        if (db != null && tx.reason != 1 && tx.reason != 3 && (!tx.isExpense || !excluded || tx.reason == 6)) DangSection(tx, db, cats, onCancel)
+        if (db != null && tx.reason != 1 && tx.reason != 3 && (!tx.isExpense || !excluded || tx.reason == 6 || tx.reason == 9)) DangSection(tx, db, cats, onCancel)
     }
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

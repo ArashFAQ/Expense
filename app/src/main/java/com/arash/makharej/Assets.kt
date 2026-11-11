@@ -310,7 +310,8 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
     val values = assets.associate { it.id to Wealth.assetValue(ctx, it) }
     val investTotal = values.values.sum()
     val loanTotal = Loans.total(txs)
-    val total = bankTotal + investTotal + loanTotal
+    val debtTotal = Loans.total(txs, debt = true)
+    val total = bankTotal + investTotal + loanTotal - debtTotal
     LaunchedEffect(total) { Wealth.saveSnapshot(ctx, total) }
 
     LazyColumn(
@@ -329,6 +330,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                         MiniStat("بانک‌ها", bankTotal, BankColor, Modifier.weight(1f))
                         MiniStat("سرمایه‌گذاری و سایر", investTotal, GoldColor, Modifier.weight(1f))
                         if (loanTotal > 0) MiniStat("طلب‌ها", loanTotal, LoanColor, Modifier.weight(1f))
+                        if (debtTotal > 0) MiniStat("بدهی‌ها (−)", debtTotal, DebtColor, Modifier.weight(1f))
                     }
                     val snaps = Wealth.snapshots(ctx)
                     if (snaps.size >= 2) {
@@ -371,7 +373,8 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
         }
 
         // ---- طلب‌ها
-        item { LoansCard(txs, db, cats) }
+        item { LoansCard(txs, db, cats, debt = false) }
+        item { LoansCard(txs, db, cats, debt = true) }
 
         // ---- سرمایه‌گذاری
         item {
