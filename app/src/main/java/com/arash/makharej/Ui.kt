@@ -281,6 +281,7 @@ class CategorizeActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val txId = intent.getLongExtra("tx", -1)
         val refundMode = intent.getBooleanExtra("refund", false)
+        val loanMode = intent.getBooleanExtra("loan", false)
         ThemeSettings.load(this)
         setContent {
             AppTheme {
@@ -295,11 +296,20 @@ class CategorizeActivity : ComponentActivity() {
                     val d = tx
                     if (d != null) ExpensePickerDialog(d, all, cats, onPick = { e ->
                         scope.launch {
-                            Refunds.link(ctx, d.id, e.id)
-                            db.tx().setShared(e.id, true)
+                            Refunds.linkAny(ctx, d, e)
                             finish()
                         }
                     }, onDismiss = { finish() })
+                    return@AppTheme
+                }
+                if (loanMode) {
+                    val all by remember { db.tx().all() }.collectAsState(initial = emptyList())
+                    val d = tx
+                    if (d != null) LoanPersonDialog(
+                        Fa.toman(d.amount) + " قرض به چه کسی؟", Loans.persons(all),
+                        onOk = { p, _, _ -> scope.launch { Loans.mark(ctx, d.id, p); finish() } },
+                        onDismiss = { finish() }
+                    )
                     return@AppTheme
                 }
                 val notes by remember { db.tx().noteStats() }.collectAsState(initial = emptyList())
@@ -420,7 +430,7 @@ fun MainScreen(startTab: Int = 0) {
                 0 -> HomeTab(txs, cats, ym, onYm = { ym = it }, onOpenExpenses = { tab = 1 })
                 1 -> ExpensesTab(txs, cats, db, ym, onAdd = { adding = 1 }, onSearch = { searching = true }) { ym = it }
                 2 -> IncomeTab(txs, cats, db, ym, onAdd = { adding = 2 }, onSearch = { searching = true }) { ym = it }
-                3 -> AssetsTab(txs, db)
+                3 -> AssetsTab(txs, db, cats)
                 4 -> ReportTab(txs, cats, ym) { ym = it }
                 else -> SettingsScreen(cats, db)
             }
@@ -641,6 +651,8 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
         t.excluded && t.reason == 2 -> { title = "حساب نمی‌شود"; bg = neutral }
         t.excluded && t.reason == 4 -> { title = "بازپرداخت دنگ"; bg = neutral }
         t.excluded && t.reason == 5 -> { title = "در انتظار تأیید"; bg = neutral }
+        t.reason == 6 -> { title = "قرض به " + (t.person ?: ""); bg = neutral }
+        t.excluded && t.reason == 7 -> { title = if (t.note == "بخشیده شد") "قرض بخشیده شد" else "بازپرداخت قرض"; bg = neutral }
         t.excluded -> { title = "حساب خودم"; bg = neutral }
         cat != null -> { title = cat.name; bg = cat.uiColor() }
         !t.isExpense -> { title = "واریز"; bg = neutral }
@@ -666,6 +678,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
                 t.excluded && t.reason == 1 -> CatIcons.transfer
                 t.excluded && t.reason == 3 -> CatIcons.savingsIcon
                 t.excluded && t.reason == 4 -> CatIcons.dang
+                t.reason == 6 || t.reason == 7 -> CatIcons.loan
                 t.excluded -> CatIcons.transfer
                 cat != null -> cat.uiIcon()
                 else -> CatIcons.unknown
@@ -682,7 +695,8 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
                 Text(title, fontWeight = FontWeight.Bold, color = titleColor)
                 Text(
                     Fa.toFa(t.time) + "  ·  " + Banks.name(t.bank) +
-                        (if (t.refunded > 0) "  ·  سهم من " + Fa.toman(t.eff) else if (t.shared) "  ·  دنگی" else "") +
+                        (if (t.reason == 6) (if (t.eff > 0) "  ·  مانده " + Fa.toman(t.eff) else "  ·  تسویه شد")
+                        else if (t.refunded > 0) "  ·  سهم من " + Fa.toman(t.eff) else if (t.shared) "  ·  دنگی" else "") +
                         if (t.note.isNotEmpty()) "  ·  ${t.note}" else "",
                     style = MaterialTheme.typography.bodySmall,
                     color = fgSub,
@@ -1030,7 +1044,7 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (moves.isNotEmpty()) FilterChip(
                     selected = showMoves, onClick = { showMoves = !showMoves },
-                    label = { Text("جابه‌جایی‌ها و دنگ (" + Fa.toFa(moves.size.toString()) + ")") }
+                    label = { Text("جابه‌جایی‌ها و بازپرداخت‌ها (" + Fa.toFa(moves.size.toString()) + ")") }
                 )
                 Spacer(Modifier.weight(1f))
                 SearchButton(onSearch)
@@ -1069,7 +1083,7 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
                                 SmallChoice("درآمد", true) { setKind(t, false) }
-                                SmallChoice("دنگ", false) { dangFor = t }
+                                SmallChoice("بازپرداخت", false) { dangFor = t }
                                 SmallChoice("حساب خودم", false) { setKind(t, true) }
                             }
                         }
@@ -1094,7 +1108,7 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
     dangFor?.let { d ->
         ExpensePickerDialog(d, txs, cats, onPick = { e ->
             dangFor = null
-            scope.launch { Refunds.link(ctx, d.id, e.id); db.tx().setShared(e.id, true) }
+            scope.launch { Refunds.linkAny(ctx, d, e) }
         }, onDismiss = { dangFor = null })
     }
 }
@@ -1403,7 +1417,7 @@ fun TxEditor(
                 Button(onClick = {
                     scopeP.launch { db!!.tx().setDepositKind(tx.id, false); Notifier.cancel(ctxP, tx.id); onCancel() }
                 }) { Text("درآمد") }
-                OutlinedButton(onClick = { pickDang = true }) { Text("دنگ") }
+                OutlinedButton(onClick = { pickDang = true }) { Text("بازپرداخت") }
                 OutlinedButton(onClick = {
                     scopeP.launch { db!!.tx().setDepositKind(tx.id, true); Notifier.cancel(ctxP, tx.id); onCancel() }
                 }) { Text("حساب خودم") }
@@ -1412,10 +1426,10 @@ fun TxEditor(
                 val all by remember { db!!.tx().all() }.collectAsState(initial = emptyList())
                 ExpensePickerDialog(tx, all, cats, onPick = { e ->
                     pickDang = false
-                    scopeP.launch { Refunds.link(ctxP, tx.id, e.id); db!!.tx().setShared(e.id, true); onCancel() }
+                    scopeP.launch { Refunds.linkAny(ctxP, tx, e); onCancel() }
                 }, onDismiss = { pickDang = false })
             }
-        } else {
+        } else if (tx.reason !in listOf(4, 6, 7)) {
         Spacer(Modifier.height(16.dp))
         Row(
             Modifier
@@ -1484,7 +1498,7 @@ fun TxEditor(
             if (sel == null && c != null) sel = c
         }
         // دنگ: برای خرج‌ها و واریزهایی که انتقال/پس‌انداز نیستند
-        if (db != null && tx.reason != 1 && tx.reason != 3 && (!tx.isExpense || !excluded)) DangSection(tx, db, cats)
+        if (db != null && tx.reason != 1 && tx.reason != 3 && (!tx.isExpense || !excluded || tx.reason == 6)) DangSection(tx, db, cats, onCancel)
     }
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

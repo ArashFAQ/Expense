@@ -107,6 +107,7 @@ object CatIcons {
     val transfer: ImageVector = Icons.Outlined.SyncAlt
     val savingsIcon: ImageVector = Icons.Outlined.Savings
     val dang: ImageVector = Icons.Outlined.Groups
+    val loan: ImageVector = Icons.Outlined.Payments
 
     fun of(key: String?): ImageVector? = key?.let { byKey[it]?.icon }
 

@@ -183,6 +183,7 @@ object Backup {
                     .put("dedupKey", t.dedupKey ?: JSONObject.NULL)
                     .put("bank", t.bank).put("reason", t.reason)
                     .put("refundOf", t.refundOf ?: JSONObject.NULL).put("shared", t.shared)
+                    .put("person", t.person ?: JSONObject.NULL)
             )
         }
         JSONObject()
@@ -232,7 +233,8 @@ object Backup {
                 bank = t.optString("bank", Banks.BLU).ifEmpty { Banks.BLU },
                 reason = t.optInt("reason", 0),
                 refundOf = if (t.isNull("refundOf")) null else t.optLong("refundOf"),
-                shared = t.optBoolean("shared")
+                shared = t.optBoolean("shared"),
+                person = if (t.isNull("person")) null else t.optString("person")
             )
         }
         val aa = o.optJSONArray("assets") ?: JSONArray()
@@ -394,6 +396,8 @@ object Excel {
                             t.reason == 3 -> "پس‌انداز"
                             t.reason == 4 -> "بازپرداخت دنگ"
                             t.reason == 5 -> "در انتظار تأیید"
+                            t.reason == 6 -> "قرض به " + (t.person ?: "")
+                            t.reason == 7 -> "بازپرداخت قرض"
                             else -> "حساب خودم"
                         }
                     )

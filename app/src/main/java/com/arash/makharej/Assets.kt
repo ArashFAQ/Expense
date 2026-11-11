@@ -285,7 +285,7 @@ private fun kindColor(kind: String) = when (kind) {
 // ================================================================ tab
 
 @Composable
-fun AssetsTab(txs: List<Tx>, db: AppDb) {
+fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val assets by remember { db.asset().all() }.collectAsState(initial = emptyList())
@@ -309,7 +309,8 @@ fun AssetsTab(txs: List<Tx>, db: AppDb) {
     val savedFromSms = txs.filter { it.reason == 3 }.sumOf { it.amount }
     val values = assets.associate { it.id to Wealth.assetValue(ctx, it) }
     val investTotal = values.values.sum()
-    val total = bankTotal + investTotal
+    val loanTotal = Loans.total(txs)
+    val total = bankTotal + investTotal + loanTotal
     LaunchedEffect(total) { Wealth.saveSnapshot(ctx, total) }
 
     LazyColumn(
@@ -327,6 +328,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb) {
                     Row(Modifier.fillMaxWidth()) {
                         MiniStat("بانک‌ها", bankTotal, BankColor, Modifier.weight(1f))
                         MiniStat("سرمایه‌گذاری و سایر", investTotal, GoldColor, Modifier.weight(1f))
+                        if (loanTotal > 0) MiniStat("طلب‌ها", loanTotal, LoanColor, Modifier.weight(1f))
                     }
                     val snaps = Wealth.snapshots(ctx)
                     if (snaps.size >= 2) {
@@ -367,6 +369,9 @@ fun AssetsTab(txs: List<Tx>, db: AppDb) {
                 }
             }
         }
+
+        // ---- طلب‌ها
+        item { LoansCard(txs, db, cats) }
 
         // ---- سرمایه‌گذاری
         item {

@@ -186,6 +186,15 @@ object Notifier {
             .putExtra("exclude", true)
         b.addAction(0, "کجا خرج شد؟", openPicker(ctx, tx.id, 9))
         b.addAction(0, "حساب خودم", PendingIntent.getBroadcast(ctx, nid * 10 + 5, ownAcc, FLAGS))
+        b.addAction(
+            0, "قرض دادم",
+            PendingIntent.getActivity(
+                ctx, nid * 10 + 4,
+                Intent(ctx, CategorizeActivity::class.java).putExtra("tx", tx.id).putExtra("loan", true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                FLAGS
+            )
+        )
 
         try {
             NotificationManagerCompat.from(ctx).notify(nid, b.build())
@@ -193,7 +202,7 @@ object Notifier {
         }
     }
 
-    /** واریز جدید: درآمد / دنگ / حساب خودم */
+    /** واریز جدید: درآمد / بازپرداخت (قرض یا دنگ) / حساب خودم */
     suspend fun showDepositAsk(ctx: Context, tx: Tx, silent: Boolean = false) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) !=
@@ -227,7 +236,7 @@ object Notifier {
                 )
             )
             .addAction(0, "درآمد", bc(2, "income"))
-            .addAction(0, "دنگ", dang)
+            .addAction(0, "بازپرداخت", dang)
             .addAction(0, "حساب خودم", bc(3, "own"))
             .build()
         try {

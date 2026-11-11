@@ -44,7 +44,9 @@ data class Tx(
     /** این واریز بازپرداخت دنگِ کدام خرج است (reason = 4) */
     val refundOf: Long? = null,
     /** خرج دنگی (با دیگران تقسیم شده) */
-    @ColumnInfo(defaultValue = "0") val shared: Boolean = false
+    @ColumnInfo(defaultValue = "0") val shared: Boolean = false,
+    /** قرض: به چه کسی (reason = 6) */
+    val person: String? = null
 )
 
 @Entity
@@ -112,7 +114,7 @@ interface TxDao {
     suspend fun clearRoleIgnore(bank: String, e: Boolean)
 
     @Query(
-        "SELECT * FROM tx WHERE isExpense = :e AND bank != :notBank AND bank != 'MANUAL' AND reason NOT IN (1, 3) " +
+        "SELECT * FROM tx WHERE isExpense = :e AND bank != :notBank AND bank != 'MANUAL' AND reason NOT IN (1, 3, 6, 7) " +
             "AND ts BETWEEN :from AND :to"
     )
     suspend fun transferCandidates(e: Boolean, notBank: String, from: Long, to: Long): List<Tx>
@@ -154,8 +156,20 @@ interface TxDao {
     @Query("UPDATE tx SET refundOf = :expenseId, excluded = 1, reason = 4 WHERE id = :id")
     suspend fun setRefund(id: Long, expenseId: Long)
 
-    @Query("UPDATE tx SET refundOf = NULL, excluded = 0, reason = 0 WHERE id = :id")
+    /** اتصال واریز برداشته می‌شود و دوباره «در انتظار تأیید» است */
+    @Query("UPDATE tx SET refundOf = NULL, excluded = 1, reason = 5 WHERE id = :id")
     suspend fun clearRefund(id: Long)
+
+    /** قرض دادم (reason = 6): خرج حساب نمی‌شود، طلب است */
+    @Query("UPDATE tx SET reason = 6, excluded = 1, person = :person, categoryId = NULL WHERE id = :id")
+    suspend fun setLoan(id: Long, person: String)
+
+    @Query("UPDATE tx SET reason = 0, excluded = 0, person = NULL WHERE id = :id")
+    suspend fun clearLoan(id: Long)
+
+    /** بازپرداخت قرض (reason = 7) */
+    @Query("UPDATE tx SET refundOf = :loanId, excluded = 1, reason = 7 WHERE id = :id")
+    suspend fun setLoanRepay(id: Long, loanId: Long)
 
     @Query("UPDATE tx SET shared = :shared WHERE id = :id")
     suspend fun setShared(id: Long, shared: Boolean)
@@ -426,7 +440,14 @@ private val MIGRATION_8_9 = object : Migration(8, 9) {
     }
 }
 
-@Database(entities = [Tx::class, Category::class, Asset::class], version = 9, exportSchema = false)
+/** نسخه‌ی ۹ ← ۱۰: قرض (طرف قرض) */
+private val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE tx ADD COLUMN person TEXT")
+    }
+}
+
+@Database(entities = [Tx::class, Category::class, Asset::class], version = 10, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun tx(): TxDao
     abstract fun cat(): CatDao
@@ -443,7 +464,7 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "makharej.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         DEFAULT_CATS.forEachIndexed { i, n ->
