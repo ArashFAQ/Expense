@@ -248,7 +248,7 @@ private fun openAppSettings(ctx: Context) {
 
 internal fun List<Tx>.counted() = filter { !it.excluded }
 
-private const val IMPORT_VERSION = 10
+private const val IMPORT_VERSION = 11
 
 // ================================================================ Activities
 
@@ -641,6 +641,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
         t.excluded && t.reason == 1 && t.bank == Banks.MOFID -> { title = if (t.isExpense) "برداشت از مفید" else "واریز به مفید"; bg = neutral }
         t.excluded && t.reason == 1 -> { title = "انتقال بین حساب‌ها"; bg = neutral }
         t.excluded && t.reason == 3 -> { title = "انتقال به مفید"; bg = neutral }
+        t.reason == 10 -> { title = "درخواست وجه (برگشت خورد)"; bg = neutral }
         t.excluded && t.reason == 2 -> { title = "حساب نمی‌شود"; bg = neutral }
         t.excluded && t.reason == 4 -> { title = "بازپرداخت دنگ"; bg = neutral }
         t.excluded && t.reason == 5 -> { title = "در انتظار تأیید"; bg = neutral }
@@ -1440,7 +1441,7 @@ fun TxEditor(
                 val all by remember { db!!.tx().all() }.collectAsState(initial = emptyList())
                 RepayPicker(tx, all, cats, onDone = { pickDang = false; onCancel() }, onDismiss = { pickDang = false })
             }
-        } else if (tx.reason !in 4..9) {
+        } else if (tx.reason !in 4..10) {
         Spacer(Modifier.height(16.dp))
         Row(
             Modifier

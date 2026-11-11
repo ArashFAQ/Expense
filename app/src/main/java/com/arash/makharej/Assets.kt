@@ -230,7 +230,7 @@ object Wealth {
         val after = txs.filter { it.ts > anchor.ts }
         val deposits = after.filter { it.reason == 3 }.sumOf { it.amount }
         val profit = after.filter { it.bank == Banks.MOFID && !it.isExpense }.sumOf { it.amount }
-        val requests = after.filter { it.bank == Banks.MOFID && it.isExpense && it.balance == null }.sumOf { it.amount }
+        val requests = after.filter { it.bank == Banks.MOFID && it.isExpense && it.balance == null && it.reason != 10 }.sumOf { it.amount }
         val lastTs = (after.filter { it.reason == 3 || it.bank == Banks.MOFID }.maxOfOrNull { it.ts } ?: anchor.ts)
         return anchor.copy(balance = (anchor.balance ?: 0) + deposits + profit - requests, ts = lastTs)
     }

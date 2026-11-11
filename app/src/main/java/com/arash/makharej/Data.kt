@@ -123,6 +123,10 @@ interface TxDao {
     )
     suspend fun transferCandidates(e: Boolean, notBank: String, from: Long, to: Long): List<Tx>
 
+    /** درخواست وجه مفید که برگشت خورد (reason = 10): هیچ‌جا حساب نمی‌شود */
+    @Query("UPDATE tx SET reason = 10, excluded = 1, refundOf = NULL WHERE id = :id")
+    suspend fun markBounced(id: Long)
+
     /** برداشت‌های «پس‌انداز» (پرداخت با رمز پویا به مفید) در یک بازه */
     @Query("SELECT * FROM tx WHERE isExpense = 1 AND reason = 3 AND ts BETWEEN :from AND :to")
     suspend fun savingsOut(from: Long, to: Long): List<Tx>
@@ -149,7 +153,7 @@ interface TxDao {
     @Query("SELECT * FROM tx WHERE isExpense = 0 AND bank != :notBank AND amount = :amount AND ts BETWEEN :from AND :to")
     suspend fun depositsWithAmount(amount: Long, notBank: String, from: Long, to: Long): List<Tx>
 
-    @Query("SELECT * FROM tx WHERE bank = 'MOFID' AND isExpense = 1 AND amount = :amount AND ts BETWEEN :from AND :to AND note LIKE 'درخواست وجه%'")
+    @Query("SELECT * FROM tx WHERE bank = 'MOFID' AND isExpense = 1 AND amount = :amount AND ts BETWEEN :from AND :to AND reason != 10 AND note LIKE 'درخواست وجه%'")
     suspend fun mofidRequests(amount: Long, from: Long, to: Long): List<Tx>
 
     @Query(

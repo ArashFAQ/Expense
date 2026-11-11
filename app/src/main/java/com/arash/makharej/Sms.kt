@@ -28,6 +28,7 @@ object Ingest {
 
     /** پیامک را پارس و ذخیره می‌کند. اگر تراکنش جدید بود true برمی‌گرداند. */
     suspend fun handle(ctx: Context, body: String, ts: Long, notify: Boolean, sender: String? = null): Boolean {
+        if (Banks.handleMofidBounce(ctx, body, ts)) return false
         val p = Banks.parseFull(ctx, body, sender, ts) ?: return false
         if (!Banks.enabled(ctx, p.bank)) return false
         val db = AppDb.get(ctx)

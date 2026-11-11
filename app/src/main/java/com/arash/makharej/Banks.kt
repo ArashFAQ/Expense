@@ -239,6 +239,33 @@ object Banks {
 
     private fun Tx.tag() = if (note == "سود") "profit" else ""
 
+    /**
+     * «درخواست وجه شما به تاریخ … به شماره شبای IR… بانک … برگشت خورده و مبلغ … به قدرت خرید شما اضافه شد»
+     * مبلغ ندارد؛ با تاریخ و شبا آخرین درخواست وجهِ قبل از آن پیدا و «برگشت خورد» (reason = 10) می‌شود.
+     * true اگر این پیامک برگشت درخواست وجه بود (چه جفتش پیدا شد چه نه).
+     */
+    suspend fun handleMofidBounce(ctx: Context, body: String, ts: Long): Boolean {
+        val t = Fa.toEn(BluParser.normalize(body))
+        if (!t.contains("مفید") || !t.contains("درخواست وجه") || !t.contains("برگشت")) return false
+        val key = Ingest.dedupKey(body)
+        val done = prefs(ctx).getStringSet("mofidBounces", emptySet()) ?: emptySet()
+        if (key in done) return true
+        val date = Regex("""(\d{4}/\d{2}/\d{2})""").find(t)?.groupValues?.get(1)
+        val sheba = Regex("""IR\d{24}""").find(t)?.value
+        val dao = AppDb.get(ctx).tx()
+        val req = dao.list().filter {
+            it.bank == MOFID && it.isExpense && it.note.startsWith("درخواست وجه") && it.reason != 10 && it.ts <= ts
+        }.filter { r ->
+            val raw = Fa.toEn(BluParser.normalize(r.raw))
+            (sheba == null || raw.contains(sheba)) && (date == null || raw.contains(date))
+        }.maxByOrNull { it.ts }
+        if (req != null) {
+            dao.markBounced(req.id)
+            prefs(ctx).edit().putStringSet("mofidBounces", done + key).apply()
+        }
+        return true
+    }
+
     suspend fun matchMofidRequest(ctx: Context, t: Tx): Boolean {
         val dao = AppDb.get(ctx).tx()
         val window = 4 * 24 * 60 * 60_000L

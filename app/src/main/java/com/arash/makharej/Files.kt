@@ -400,6 +400,7 @@ object Excel {
                             t.reason == 7 -> "بازپرداخت قرض"
                             t.reason == 8 -> "قرض از " + (t.person ?: "")
                             t.reason == 9 -> "پرداخت بدهی"
+                            t.reason == 10 -> "برگشت خورد"
                             else -> "حساب خودم"
                         }
                     )
