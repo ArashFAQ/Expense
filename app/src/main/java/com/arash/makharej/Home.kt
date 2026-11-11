@@ -149,6 +149,13 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
     // مقایسه با ماه قبل: اگر ماه جاری است، تا همین روزِ ماه قبل (مثلا ۱۹ آبان با ۱ تا ۱۹ مهر)
     val today = Jalali.fromMillis(System.currentTimeMillis())
     val isCurrent = ym == today[0] * 100 + today[1]
+    // همان بازه‌ی روزهای ماه قبل، به تفکیک دسته (برای درصد تغییر هر دسته)
+    val prevRange = counted.filter { t ->
+        t.ym == Jalali.shiftYm(ym, -1) &&
+            (!isCurrent || (t.jDate.substringAfterLast('/').toIntOrNull() ?: 0) <= today[2])
+    }
+    val prevOutByCat = prevRange.filter { it.isExpense }.expandSplits().groupBy { it.categoryId ?: -1L }.mapValues { (_, l) -> l.sumOf { it.eff } }
+    val prevInByCat = prevRange.filter { !it.isExpense }.groupBy { it.categoryId ?: -1L }.mapValues { (_, l) -> l.sumOf { it.eff } }
     val prevOut = counted.filter { t ->
         t.ym == Jalali.shiftYm(ym, -1) && t.isExpense &&
             (!isCurrent || (t.jDate.substringAfterLast('/').toIntOrNull() ?: 0) <= today[2])
@@ -280,7 +287,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                     // درآمد انتخاب‌شده: فهرست درآمدها بالا می‌آید
                     if (openInc != null && incSlices.isNotEmpty()) {
                         Text("درآمدها", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
-                        CatBreakdown(incSlices, totalIn, openInc, IncomeColor) { k -> openInc = if (openInc == k) null else k }
+                        CatBreakdown(incSlices, totalIn, openInc, IncomeColor, prev = prevInByCat) { k -> openInc = if (openInc == k) null else k }
                         Spacer(Modifier.height(10.dp))
                         Text("خرج‌ها", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
                     }
@@ -307,6 +314,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                                 Column(Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(s.name, Modifier.weight(1f), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        ChangeTag(s.sum, prevOutByCat[s.key], expense = true)
                                         Text(Fa.toman(s.sum), fontWeight = FontWeight.Bold, color = ExpenseColor)
                                     }
                                     Spacer(Modifier.height(6.dp))
@@ -356,7 +364,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                     if (openInc == null && incSlices.isNotEmpty()) {
                         Spacer(Modifier.height(10.dp))
                         Text("درآمدها", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
-                        CatBreakdown(incSlices, totalIn, openInc, IncomeColor) { k -> openInc = k; openCat = null }
+                        CatBreakdown(incSlices, totalIn, openInc, IncomeColor, prev = prevInByCat) { k -> openInc = k; openCat = null }
                     }
                 }
             }
@@ -399,12 +407,29 @@ private fun SummaryCell(
     }
 }
 
+/** درصد تغییر نسبت به ماه قبل؛ برای خرج افزایش قرمز است، برای درآمد سبز */
+@Composable
+fun ChangeTag(cur: Long, prev: Long?, expense: Boolean) {
+    if (prev == null || prev <= 0 || cur <= 0) return
+    val d = ((cur - prev) * 100 / prev).toInt()
+    if (d == 0) return
+    val up = d > 0
+    Text(
+        (if (up) "▲" else "▼") + Fa.toFa(kotlin.math.abs(d).toString()) + "٪  ",
+        fontSize = 11.sp, fontWeight = FontWeight.Bold,
+        color = if (up == expense) ExpenseColor else IncomeColor
+    )
+}
+
 /** یک ردیف از فهرست دسته‌ها (زیر نمودار دایره‌ای) */
 class CatSlice(val key: Long, val name: String, val color: Color, val icon: ImageVector, val sum: Long, val items: List<Tx>)
 
 /** فهرست دسته‌ها با نوار درصد؛ انتخاب‌شده بالا می‌آید و بقیه کم‌رنگ می‌شوند، ریز توضیحاتش باز می‌شود */
 @Composable
-fun CatBreakdown(slices: List<CatSlice>, total: Long, openKey: Long?, amountColor: Color, onToggle: (Long) -> Unit) {
+fun CatBreakdown(
+    slices: List<CatSlice>, total: Long, openKey: Long?, amountColor: Color,
+    prev: Map<Long, Long>? = null, expense: Boolean = false, onToggle: (Long) -> Unit
+) {
     val ordered = if (openKey != null) slices.sortedByDescending { it.key == openKey } else slices
     ordered.forEach { s ->
         val frac = if (total > 0) s.sum.toFloat() / total else 0f
@@ -427,6 +452,7 @@ fun CatBreakdown(slices: List<CatSlice>, total: Long, openKey: Long?, amountColo
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(s.name, Modifier.weight(1f), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (prev != null) ChangeTag(s.sum, prev[s.key], expense)
                         Text(Fa.toman(s.sum), fontWeight = FontWeight.Bold, color = amountColor)
                     }
                     Spacer(Modifier.height(6.dp))
