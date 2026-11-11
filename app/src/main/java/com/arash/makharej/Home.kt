@@ -206,9 +206,23 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
         item {
             Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
                 Column(Modifier.fillMaxWidth().padding(18.dp)) {
+                    val selIdx = slices.indexOfFirst { it.key == openCat }
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Donut(slices.map { it.sum.toFloat() to it.color }, Modifier.size(200.dp))
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        AnimatedDonut(
+                            slices.map { it.sum.toFloat() to it.color }, selIdx,
+                            onSelect = { i -> openCat = slices.getOrNull(i)?.key },
+                            animKey = ym, modifier = Modifier.size(220.dp),
+                            track = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                        val selS = slices.getOrNull(selIdx)
+                        if (selS != null) Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(selS.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            Text(Fa.num(selS.sum), fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1, color = selS.color)
+                            Text(
+                                Fa.toFa(if (totalOut > 0) (selS.sum * 100 / totalOut).toString() else "0") + "٪ از کل خرج",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("خرج " + Fa.monthName(ym), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(Fa.num(totalOut), fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1)
                             Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
