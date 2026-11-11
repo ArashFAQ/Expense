@@ -95,6 +95,10 @@ interface TxDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(t: Tx): Long
 
+    /** ردیف‌های دستی ساخته‌شده از اضافه‌ی یک واریز (dedupKey = excess-<id>-…) */
+    @Query("DELETE FROM tx WHERE dedupKey LIKE :prefix || '%'")
+    suspend fun deleteByKeyPrefix(prefix: String)
+
     @Query("SELECT * FROM tx ORDER BY ts DESC")
     fun all(): Flow<List<Tx>>
 

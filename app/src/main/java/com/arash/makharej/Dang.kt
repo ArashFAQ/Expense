@@ -69,6 +69,7 @@ object Refunds {
     /** اتصال را برمی‌دارد؛ دریافت نقدی پاک می‌شود، واریز بانکی به حالت عادی (طبق نقش حساب) برمی‌گردد */
     suspend fun unlink(ctx: Context, deposit: Tx) {
         val dao = AppDb.get(ctx).tx()
+        dao.deleteByKeyPrefix("excess-${deposit.id}-")
         if (deposit.bank == Banks.MANUAL) dao.delete(deposit.id)
         else {
             dao.clearRefund(deposit.id)
@@ -363,15 +364,14 @@ fun DangSection(tx: Tx, db: AppDb, cats: List<Category>, onClose: () -> Unit = {
         }
     }
 
+    var linking by remember { mutableStateOf<Tx?>(null) }
     if (pickDeposit) DepositPickerDialog(me, all, onPick = { d ->
         pickDeposit = false
-        scope.launch { Refunds.link(ctx, d.id, me.id); db.tx().setShared(me.id, true) }
+        linking = d
     }, onDismiss = { pickDeposit = false })
+    linking?.let { d -> LinkFlow(d, me, all) { linking = null } }
 
-    if (pickExpense) ExpensePickerDialog(me, all, cats, onPick = { e ->
-        pickExpense = false
-        scope.launch { Refunds.linkAny(ctx, me, e); onClose() }
-    }, onDismiss = { pickExpense = false })
+    if (pickExpense) RepayPicker(me, all, cats, onDone = { pickExpense = false; onClose() }, onDismiss = { pickExpense = false })
 
     if (lend) LoanPersonDialog("قرض به چه کسی؟", Loans.persons(all), onOk = { p, _, _ ->
         lend = false
@@ -648,10 +648,12 @@ fun LoanDetails(loan: Tx, all: List<Tx>, cats: List<Category>, onClose: () -> Un
         )
     }
 
+    var linking by remember { mutableStateOf<Tx?>(null) }
     if (pickDeposit) DepositPickerDialog(loan, all, onPick = { d ->
         pickDeposit = false
-        scope.launch { Refunds.linkAny(ctx, d, loan) }
+        linking = d
     }, onDismiss = { pickDeposit = false }, window = Long.MAX_VALUE / 4)
+    linking?.let { d -> LinkFlow(d, loan, all) { linking = null } }
     if (cash) AmountDialog("دریافت نقدی از " + (loan.person ?: ""), o.left, onOk = { r ->
         cash = false
         scope.launch { Loans.addCashRepay(ctx, loan, r) }
@@ -754,3 +756,90 @@ fun LoansCard(txs: List<Tx>, db: AppDb, cats: List<Category>) {
 }
 
 val LoanColor = androidx.compose.ui.graphics.Color(0xFF7E57C2)
+
+// ================================================================ بازپرداخت بیشتر از مانده
+
+/** انتخاب قرض/خرج برای یک واریز، با رسیدگی به مبلغ اضافه */
+@Composable
+fun RepayPicker(deposit: Tx, txs: List<Tx>, cats: List<Category>, onDone: () -> Unit, onDismiss: () -> Unit) {
+    var target by remember { mutableStateOf<Tx?>(null) }
+    val t = target
+    if (t == null) ExpensePickerDialog(deposit, txs, cats, onPick = { target = it }, onDismiss = onDismiss)
+    else LinkFlow(deposit, t, txs, onDone)
+}
+
+/** مانده‌ی یک قرض یا خرج دنگی (بدون این واریز) */
+private fun remainingOf(target: Tx, txs: List<Tx>, exceptDeposit: Long): Long {
+    val back = txs.filter { it.refundOf == target.id && it.id != exceptDeposit && !it.isExpense }.sumOf { it.amount }
+    return (target.amount - back).coerceAtLeast(0L)
+}
+
+/**
+ * واریز را وصل می‌کند؛ اگر از مانده بیشتر باشد می‌پرسد اضافه‌اش چه بوده:
+ * درآمد، بازپرداخت قرض‌های دیگرِ همان شخص، یا حساب خودم.
+ */
+@Composable
+fun LinkFlow(deposit: Tx, target: Tx, txs: List<Tx>, onDone: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val excess = deposit.amount - remainingOf(target, txs, deposit.id)
+    val isLoan = target.reason == 6
+    val others = if (isLoan) Loans.open(txs).filter {
+        it.loan.id != target.id && it.loan.person?.trim() == target.person?.trim()
+    }.sortedBy { it.loan.ts } else emptyList()
+
+    fun finish(mode: Int) = scope.launch {
+        Refunds.linkAny(ctx, deposit, target)
+        if (excess > 0) Refunds.handleExcess(ctx, deposit, target, excess, mode, others)
+        onDone()
+    }
+
+    if (excess <= 0) {
+        androidx.compose.runtime.LaunchedEffect(Unit) { finish(0) }
+        return
+    }
+    AlertDialog(
+        onDismissRequest = onDone,
+        title = { Text(Fa.toman(excess) + " بیشتر از مانده است") },
+        text = {
+            Column {
+                Text(
+                    "این واریز " + Fa.toman(deposit.amount) + " است ولی مانده‌ی " +
+                        (if (isLoan) "قرض " + (target.person ?: "") else "این خرج") + " " +
+                        Fa.toman(remainingOf(target, txs, deposit.id)) + " بود. اضافه‌اش چه بود؟",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(onClick = { finish(1) }, modifier = Modifier.fillMaxWidth()) { Text("درآمد (سود، هدیه…)") }
+                if (others.isNotEmpty()) OutlinedButton(onClick = { finish(2) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("بازپرداخت قرض‌های دیگر " + (target.person ?: "") + " (" + Fa.toman(others.sumOf { it.left }) + ")")
+                }
+                OutlinedButton(onClick = { finish(3) }, modifier = Modifier.fillMaxWidth()) { Text("حساب خودم (حساب نشود)") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDone) { Text("انصراف") } }
+    )
+}
+
+/** mode: ۱ درآمد، ۲ قرض‌های دیگر (باقی‌اش درآمد)، ۳ هیچ */
+suspend fun Refunds.handleExcess(ctx: Context, deposit: Tx, target: Tx, excess: Long, mode: Int, others: List<Loans.Open>) {
+    if (mode == 3) return
+    val dao = AppDb.get(ctx).tx()
+    var rest = excess
+    var n = 0
+    fun row(rial: Long, note: String, reason: Int, excluded: Boolean, refundOf: Long?) = deposit.copy(
+        id = 0, amount = rial, balance = null, bank = Banks.MANUAL, raw = "", note = note, categoryId = null,
+        reason = reason, excluded = excluded, refundOf = refundOf, shared = false, person = null,
+        dedupKey = "excess-${deposit.id}-" + (n++)
+    )
+    if (mode == 2) others.forEach { o ->
+        if (rest <= 0) return@forEach
+        val part = minOf(rest, o.left)
+        dao.insert(row(part, "از واریز " + Fa.toman(deposit.amount), 7, true, o.loan.id))
+        rest -= part
+    }
+    if (rest > 0) dao.insert(
+        row(rest, "اضافه‌ی بازپرداخت" + (target.person?.let { " از $it" } ?: ""), 0, false, null)
+    )
+    SummaryWidget.refresh(ctx)
+}

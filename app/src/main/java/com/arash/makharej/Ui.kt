@@ -294,12 +294,7 @@ class CategorizeActivity : ComponentActivity() {
                     val all by remember { db.tx().all() }.collectAsState(initial = emptyList())
                     Refunds.update(all)
                     val d = tx
-                    if (d != null) ExpensePickerDialog(d, all, cats, onPick = { e ->
-                        scope.launch {
-                            Refunds.linkAny(ctx, d, e)
-                            finish()
-                        }
-                    }, onDismiss = { finish() })
+                    if (d != null) RepayPicker(d, all, cats, onDone = { finish() }, onDismiss = { finish() })
                     return@AppTheme
                 }
                 if (loanMode) {
@@ -1106,10 +1101,7 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
 
     editing?.let { t -> EditDialog(t, cats, db) { editing = null } }
     dangFor?.let { d ->
-        ExpensePickerDialog(d, txs, cats, onPick = { e ->
-            dangFor = null
-            scope.launch { Refunds.linkAny(ctx, d, e) }
-        }, onDismiss = { dangFor = null })
+        RepayPicker(d, txs, cats, onDone = { dangFor = null }, onDismiss = { dangFor = null })
     }
 }
 
@@ -1424,10 +1416,7 @@ fun TxEditor(
             }
             if (pickDang) {
                 val all by remember { db!!.tx().all() }.collectAsState(initial = emptyList())
-                ExpensePickerDialog(tx, all, cats, onPick = { e ->
-                    pickDang = false
-                    scopeP.launch { Refunds.linkAny(ctxP, tx, e); onCancel() }
-                }, onDismiss = { pickDang = false })
+                RepayPicker(tx, all, cats, onDone = { pickDang = false; onCancel() }, onDismiss = { pickDang = false })
             }
         } else if (tx.reason !in listOf(4, 6, 7)) {
         Spacer(Modifier.height(16.dp))
