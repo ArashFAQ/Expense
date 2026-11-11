@@ -184,9 +184,11 @@ object Banks {
      *   برداشت:  «کارگزاری مفید / برداشت مبلغ 50,010,000 ریال / کارمزد بانک به مبلغ 10,000 ریال / از حساب حامی / مانده: … / تاریخ / ساعت»
      *   درخواست وجه: «… درخواست وجه شما برای روز 1405/08/10 ثبت شد. / مبلغ: 3,000,000,000 ریال / شماره شبا … / بانک مقصد: بلو»
      *   سود: «… مبلغ ۲۱۸,۲۱۶,۲۹۹ ریال بابت مازاد سود … به قدرت خرید شما اضافه گردید.»
+     *   واریز: «کارگزاری مفید / واریز مبلغ 1,000,000 ریال / به حساب حامی / مانده: … / تاریخ / ساعت»
      * واریز با کارت پیامک ندارد؛ از رمز پویای «کارگزاری مفید» به‌عنوان پس‌انداز ثبت می‌شود.
      */
     private val mfWithdraw = Regex("""برداشت مبلغ\s*(\d[\d,]*)""")
+    private val mfDeposit = Regex("""واریز مبلغ\s*(\d[\d,]*)""")
     private val mfBal = Regex("""مانده\s*:\s*(\d[\d,]*)""")
     private val mfReqAmt = Regex("""مبلغ\s*:\s*(\d[\d,]*)""")
     private val mfDest = Regex("""بانک مقصد\s*:\s*(.+)""")
@@ -197,6 +199,11 @@ object Banks {
         mfWithdraw.find(t)?.let { m ->
             val amount = num(m.groupValues[1]) ?: return null
             return build(true, amount, mfBal.find(t)?.let { num(it.groupValues[1]) }, t, ts, MOFID)
+        }
+        mfDeposit.find(t)?.let { m ->
+            val amount = num(m.groupValues[1]) ?: return null
+            return build(false, amount, mfBal.find(t)?.let { num(it.groupValues[1]) }, t, ts, MOFID)
+                ?.copy(tag = "mofidIn", note = "واریز به حامی")
         }
         if (t.contains("درخواست وجه")) {
             val amount = mfReqAmt.find(t)?.let { num(it.groupValues[1]) } ?: return null
@@ -215,6 +222,23 @@ object Banks {
      * درخواست وجه مفید ↔ واریزی که چند روز بعد در بانک مقصد می‌نشیند (هر دو «انتقال بین حساب‌ها»).
      * true اگر جفت پیدا و علامت زده شد.
      */
+    /**
+     * واریز به مفید ↔ پرداختی که قبلا با رمز پویا «پس‌انداز» (۳) ثبت شده: هر دو انتقال بین حساب‌ها می‌شوند
+     * تا پس‌انداز دو بار حساب نشود. true اگر جفت پیدا شد.
+     */
+    suspend fun matchMofidDeposit(ctx: Context, t: Tx): Boolean {
+        if (t.bank != MOFID || t.isExpense || t.tag() == "profit") return false
+        val dao = AppDb.get(ctx).tx()
+        val w = dao.savingsOut(t.ts - 2 * 24 * 60 * 60_000L, t.ts + 10 * 60_000L)
+            .filter { it.amount >= t.amount && it.amount - t.amount <= minOf(t.amount / 100, 1_000_000L) }
+            .minByOrNull { kotlin.math.abs(it.ts - t.ts) } ?: return false
+        dao.markTransfer(listOf(t.id, w.id))
+        Notifier.cancel(ctx, t.id)
+        return true
+    }
+
+    private fun Tx.tag() = if (note == "سود") "profit" else ""
+
     suspend fun matchMofidRequest(ctx: Context, t: Tx): Boolean {
         val dao = AppDb.get(ctx).tx()
         val window = 4 * 24 * 60 * 60_000L
@@ -338,12 +362,12 @@ object Banks {
      */
     suspend fun rematchAll(ctx: Context) {
         val dao = AppDb.get(ctx).tx()
-        dao.list().filter { !it.isExpense && it.reason != 1 && it.reason != 3 && it.reason != 4 && it.bank != MANUAL }
+        dao.list().filter { !it.isExpense && it.reason !in listOf(1, 3, 4, 7, 8) && it.bank != MANUAL }
             .sortedBy { it.ts }
             .forEach { d ->
                 val fresh = dao.get(d.id) ?: return@forEach
                 if (fresh.reason == 1) return@forEach
-                if (!matchMofidRequest(ctx, fresh)) matchTransfer(ctx, fresh)
+                if (!matchMofidDeposit(ctx, fresh) && !matchMofidRequest(ctx, fresh)) matchTransfer(ctx, fresh)
             }
     }
 

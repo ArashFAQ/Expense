@@ -123,6 +123,10 @@ interface TxDao {
     )
     suspend fun transferCandidates(e: Boolean, notBank: String, from: Long, to: Long): List<Tx>
 
+    /** برداشت‌های «پس‌انداز» (پرداخت با رمز پویا به مفید) در یک بازه */
+    @Query("SELECT * FROM tx WHERE isExpense = 1 AND reason = 3 AND ts BETWEEN :from AND :to")
+    suspend fun savingsOut(from: Long, to: Long): List<Tx>
+
     @Query("UPDATE tx SET excluded = 1, reason = 1 WHERE id IN (:ids)")
     suspend fun markTransfer(ids: List<Long>)
 

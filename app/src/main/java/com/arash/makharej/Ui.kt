@@ -248,7 +248,7 @@ private fun openAppSettings(ctx: Context) {
 
 internal fun List<Tx>.counted() = filter { !it.excluded }
 
-private const val IMPORT_VERSION = 9
+private const val IMPORT_VERSION = 10
 
 // ================================================================ Activities
 
@@ -638,8 +638,9 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
     val title: String
     val bg: Color
     when {
+        t.excluded && t.reason == 1 && t.bank == Banks.MOFID -> { title = if (t.isExpense) "برداشت از مفید" else "واریز به مفید"; bg = neutral }
         t.excluded && t.reason == 1 -> { title = "انتقال بین حساب‌ها"; bg = neutral }
-        t.excluded && t.reason == 3 -> { title = "پس‌انداز"; bg = neutral }
+        t.excluded && t.reason == 3 -> { title = "انتقال به مفید"; bg = neutral }
         t.excluded && t.reason == 2 -> { title = "حساب نمی‌شود"; bg = neutral }
         t.excluded && t.reason == 4 -> { title = "بازپرداخت دنگ"; bg = neutral }
         t.excluded && t.reason == 5 -> { title = "در انتظار تأیید"; bg = neutral }
@@ -1192,8 +1193,27 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
                     Text("آمار ${Fa.monthName(ym)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     StatLine("جمع خرج", Fa.toman(totalOut), ExpenseColor)
                     StatLine("جمع درآمد", Fa.toman(totalIn), IncomeColor)
-                    val saved = txs.filter { it.ym == ym && it.reason == 3 }.sumOf { it.eff }
-                    if (saved > 0) StatLine("پس‌انداز (صندوق)", Fa.toman(saved), MaterialTheme.colorScheme.primary)
+                    // خالص پس‌انداز = پولی که به مفید ریختی − پولی که از مفید برداشتی (سود جدا و جزو درآمد است)
+                    val mm = txs.filter { it.ym == ym }
+                    val putIn = mm.filter {
+                        it.reason == 3 || (it.bank == Banks.MOFID && !it.isExpense && it.excluded && it.reason in 0..2)
+                    }.sumOf { it.amount }
+                    val takeOut = mm.filter { it.bank == Banks.MOFID && it.isExpense && it.excluded && it.reason in 0..2 }.sumOf { it.amount }
+                    if (putIn > 0 || takeOut > 0) {
+                        val net = putIn - takeOut
+                        Column {
+                            StatLine(
+                                if (net >= 0) "خالص پس‌انداز" else "برداشت از پس‌انداز",
+                                Fa.toman(kotlin.math.abs(net)),
+                                if (net >= 0) MaterialTheme.colorScheme.primary else ExpenseColor
+                            )
+                            Text(
+                                "ریختی " + Fa.toman(putIn) + "  ·  برداشتی " + Fa.toman(takeOut),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                     StatLine(
                         "مانده‌ی ماه (واریزی − خرج)",
                         Fa.toman(kotlin.math.abs(totalIn - totalOut)),

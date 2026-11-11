@@ -64,6 +64,7 @@ object Ingest {
 
         // انتقال بین حساب‌های خودم؟
         val tx = db.tx().get(id) ?: return true
+        if (Banks.matchMofidDeposit(ctx, tx)) return true
         if (Banks.matchMofidRequest(ctx, tx)) return true
         if (reason != 3 && reason != 1) {
             val other = Banks.matchTransfer(ctx, tx)
