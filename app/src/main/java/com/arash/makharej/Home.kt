@@ -150,6 +150,10 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
         t.ym == Jalali.shiftYm(ym, -1) && t.isExpense &&
             (!isCurrent || (t.jDate.substringAfterLast('/').toIntOrNull() ?: 0) <= today[2])
     }.sumOf { it.eff }
+    val prevIn = counted.filter { t ->
+        t.ym == Jalali.shiftYm(ym, -1) && !t.isExpense &&
+            (!isCurrent || (t.jDate.substringAfterLast('/').toIntOrNull() ?: 0) <= today[2])
+    }.sumOf { it.eff }
     val uncat = monthOut.count { it.categoryId == null }
     val uncatColor = Color(0xFF90A4AE)
 
@@ -183,7 +187,13 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                         extra = diff?.let { "(" + (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪)" },
                         extraColor = if ((diff ?: 0) > 0) ExpenseColor else IncomeColor
                     )
-                    SummaryCell("درآمد", totalIn, IncomeColor, Modifier.weight(1f))
+                    // درآمد بیشتر از ماه قبل = سبز
+                    val diffIn = if (prevIn > 0 && totalIn > 0) ((totalIn - prevIn) * 100 / prevIn).toInt() else null
+                    SummaryCell(
+                        "درآمد", totalIn, IncomeColor, Modifier.weight(1f),
+                        extra = diffIn?.let { "(" + (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪)" },
+                        extraColor = if ((diffIn ?: 0) >= 0) IncomeColor else ExpenseColor
+                    )
                     SummaryCell(
                         "مانده", kotlin.math.abs(totalIn - totalOut),
                         if (totalIn >= totalOut) IncomeColor else ExpenseColor, Modifier.weight(1f)
