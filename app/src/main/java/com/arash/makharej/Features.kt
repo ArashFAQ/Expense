@@ -348,6 +348,22 @@ fun BackupSection() {
                 )
             }
             Spacer(Modifier.height(8.dp))
+            run {
+                val bp = ctx.getSharedPreferences("app", android.content.Context.MODE_PRIVATE)
+                var withReceipts by remember { mutableStateOf(bp.getBoolean("backupReceipts", false)) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("عکس رسیدها هم در پشتیبان باشد")
+                        Text(
+                            "فایل پشتیبان سنگین‌تر می‌شود (هر عکس حدود ۲۰۰ کیلوبایت)",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    androidx.compose.material3.Switch(checked = withReceipts, onCheckedChange = {
+                        withReceipts = it; bp.edit().putBoolean("backupReceipts", it).apply()
+                    })
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(enabled = !busy, onClick = {
                     busy = true

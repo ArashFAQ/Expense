@@ -374,6 +374,7 @@ fun MainScreen(startTab: Int = 0) {
     Refunds.update(txs)
     val splitsAll by remember { db.split().all() }.collectAsState(initial = emptyList())
     Splits.update(splitsAll)
+    LaunchedEffect(Unit) { Receipts.scan(ctx) }
     val cats by remember { db.cat().all() }.collectAsState(initial = emptyList())
     // جابه‌جایی بین تب‌ها با کشیدن چپ و راست
     val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = startTab) { 6 }
@@ -735,6 +736,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
                 Text(title, fontWeight = FontWeight.Bold, color = titleColor)
                 Text(
                     Fa.toFa(t.time) + "  ·  " + Banks.name(t.bank) +
+                        (if ((Receipts.counts[t.id] ?: 0) > 0) "  ·  رسید" else "") +
                         (if (t.reason == 6 || t.reason == 8) {
                             val left = t.amount - (Refunds.byExpense[t.id] ?: 0L)
                             if (left > 0) "  ·  مانده " + Fa.toman(left) else "  ·  تسویه شد"
@@ -1285,6 +1287,7 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
         }
 
         // ---- excel
+        item { PdfSection(txs, cats, ym) }
         item { ExcelSection(txs, cats, ym) }
 
         // ---- stats
@@ -1631,6 +1634,7 @@ fun TxEditor(
             note = n
             if (sel == null && c != null && cats.any { it.id == c && it.income == !tx.isExpense }) sel = c
         }
+        if (tx.id > 0) ReceiptSection(tx.id)
         // دنگ: برای خرج‌ها و واریزهایی که انتقال/پس‌انداز نیستند
         if (db != null && tx.reason != 1 && tx.reason != 3 && (!tx.isExpense || !excluded || tx.reason == 6 || tx.reason == 9 || tx.reason == 11 || tx.reason == 12)) DangSection(tx, db, cats, onCancel)
     }

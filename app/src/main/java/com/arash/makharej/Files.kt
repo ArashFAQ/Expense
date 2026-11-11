@@ -250,6 +250,14 @@ object Backup {
                 }
             })
             .put("prefs", Prefs.export(ctx))
+            .put("receipts", JSONObject().apply {
+                // عکس رسیدها فقط اگر در تنظیمات پشتیبان روشن باشد (حجم فایل زیاد می‌شود)
+                if (ctx.getSharedPreferences("app", Context.MODE_PRIVATE).getBoolean("backupReceipts", false)) {
+                    Receipts.dir(ctx).listFiles()?.forEach { f ->
+                        put(f.name, android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP))
+                    }
+                }
+            })
             .put("splits", JSONArray().apply {
                 db.split().list().forEach { p -> put(JSONObject().put("id", p.id).put("txId", p.txId).put("categoryId", p.categoryId).put("amount", p.amount)) }
             })
@@ -303,7 +311,8 @@ object Backup {
         val prefs: JSONObject? = null,
         val dues: List<Due> = emptyList(),
         val splits: List<Split> = emptyList(),
-        val groups: JSONObject? = null
+        val groups: JSONObject? = null,
+        val receipts: JSONObject? = null
     )
 
     fun parse(bytes: ByteArray): Content {
@@ -382,7 +391,7 @@ object Backup {
             val p = spa.getJSONObject(i)
             Split(p.getLong("id"), p.getLong("txId"), p.getLong("categoryId"), p.getLong("amount"))
         }
-        return Content(cats, txs, assets, stocks, trades, o.optJSONObject("prefs"), dues, splits, o.optJSONObject("groups"))
+        return Content(cats, txs, assets, stocks, trades, o.optJSONObject("prefs"), dues, splits, o.optJSONObject("groups"), o.optJSONObject("receipts"))
     }
 
     /** همه‌ی داده‌های فعلی با محتوای پشتیبان جایگزین می‌شود */
@@ -423,6 +432,13 @@ object Backup {
             }
         }
         c.prefs?.let { Prefs.restore(ctx, it) }
+        c.receipts?.let { r ->
+            if (r.length() > 0) {
+                val dir = Receipts.dir(ctx)
+                dir.listFiles()?.forEach { it.delete() }
+                r.keys().forEach { k -> java.io.File(dir, k).writeBytes(android.util.Base64.decode(r.getString(k), android.util.Base64.NO_WRAP)) }
+            }
+        }
         Learned.reset()
         RemoteBanks.reset()
     }
