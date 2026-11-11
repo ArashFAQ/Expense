@@ -127,9 +127,9 @@ fun SamplesSection() {
                         e.bank.templates.isNotEmpty() -> "از لیست آنلاین" to true
                         else -> "نمونه ندارد" to false
                     }
-                    BankStatusRow(e.bank.name, label, ok)
+                    BankStatusRow(e.bank.id, e.bank.name, label, ok)
                 }
-                extra.forEach { b -> BankStatusRow(b.name, "با نمونه‌ی شما (" + Fa.toFa(b.templates.size.toString()) + ")", true) }
+                extra.forEach { b -> BankStatusRow(b.id, b.name, "با نمونه‌ی شما (" + Fa.toFa(b.templates.size.toString()) + ")", true) }
                 Spacer(Modifier.height(6.dp))
                 val at = RemoteBanks.lastFetch(ctx)
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -193,10 +193,12 @@ fun SamplesSection() {
 }
 
 @Composable
-private fun BankStatusRow(name: String, status: String, ok: Boolean) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(if (ok) "✓" else "–", Modifier.width(20.dp), color = if (ok) IncomeColor else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+private fun BankStatusRow(id: String, name: String, status: String, ok: Boolean) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        BankBadge(id, 30.dp, name)
+        Spacer(Modifier.width(10.dp))
         Text(name, Modifier.weight(1f))
+        Text(if (ok) "✓ " else "– ", color = if (ok) IncomeColor else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
         Text(
             status, style = MaterialTheme.typography.labelMedium,
             color = if (ok) IncomeColor else MaterialTheme.colorScheme.onSurfaceVariant

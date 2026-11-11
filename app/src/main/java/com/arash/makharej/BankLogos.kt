@@ -51,18 +51,42 @@ object BankLogos {
         "https://icons.duckduckgo.com/ip3/$domain.ico"
     )
 
-    private val sources: Map<String, List<String>> = mapOf(
-        Banks.BLU to site("www.blubank.com"),
-        Banks.MELLAT to lib("mellat"),
-        Banks.EN to lib("en"),
-        Banks.PASARGAD to lib("bpi"),
-        Banks.TEJARAT to lib("tejarat"),
-        Banks.MELLI to lib("bmi"),
-        Banks.SADERAT to lib("bsi"),
-        Banks.SEPAH to lib("sepah"),
-        Banks.GARDESHGARI to lib("tourism"),
-        Banks.MOFID to site("emofid.com"),
+    private val sites = mapOf(Banks.BLU to "www.blubank.com", Banks.MOFID to "emofid.com")
+
+    /** شناسه‌ی بانک → اسم فایل در مجموعه‌ی لوگوها */
+    private val libById = mapOf(
+        Banks.MELLAT to "mellat", Banks.EN to "en", Banks.PASARGAD to "bpi", Banks.TEJARAT to "tejarat",
+        Banks.MELLI to "bmi", Banks.SADERAT to "bsi", Banks.SEPAH to "sepah", Banks.GARDESHGARI to "tourism",
+        "MASKAN" to "maskan", "KESHAVARZI" to "bki", "REFAH" to "rb", "SANAT" to "bim",
+        "TOSEESADERAT" to "edbi", "TOSEETAAVON" to "tt", "POST" to "post", "PARSIAN" to "parsian",
+        "SAMAN" to "sb", "SINA" to "sina", "KARAFARIN" to "kar", "SARMAYEH" to "sarmayeh", "SHAHR" to "shahr",
+        "DAY" to "day", "IRANZAMIN" to "iz", "KHAVARMIANEH" to "me", "MEHRIRAN" to "mehriran",
+        "RESALAT" to "resalat", "MELAL" to "melal", "IRANVENEZUELA" to "ivbb", "ANSAR" to "ansar",
+        "GHAVAMIN" to "ghbi", "HEKMAT" to "hi", "AYANDEH" to "ba"
     )
+
+    /** برای بانک‌هایی که با نمونه‌ی پیامک اضافه شده‌اند: از روی اسم (ترتیب مهم است) */
+    private val libByName = listOf(
+        "توسعه صادرات" to "edbi", "توسعه تعاون" to "tt", "صنعت" to "bim", "مهر ایران" to "mehriran",
+        "ایران زمین" to "iz", "ونزوئلا" to "ivbb", "خاورمیانه" to "me", "کارآفرین" to "kar",
+        "اقتصاد نوین" to "en", "پاسارگاد" to "bpi", "گردشگری" to "tourism", "کشاورزی" to "bki",
+        "رفاه" to "rb", "پست" to "post", "پارسیان" to "parsian", "سامان" to "sb", "سینا" to "sina",
+        "سرمایه" to "sarmayeh", "مسکن" to "maskan", "رسالت" to "resalat", "ملل" to "melal",
+        "قوامین" to "ghbi", "حکمت" to "hi", "آینده" to "ba", "انصار" to "ansar",
+        "ملت" to "mellat", "تجارت" to "tejarat", "صادرات" to "bsi", "سپه" to "sepah", "شهر" to "shahr", "ملی" to "bmi"
+    )
+
+    private fun libKey(bank: String, name: String?): String? =
+        libById[bank] ?: name?.let { n ->
+            val t = n.replace("بانک", "").trim()
+            if (t == "دی") "day" else libByName.firstOrNull { t.contains(it.first) }?.second
+        }
+
+    /** کلید ذخیره: یک فایل برای هر لوگو، تا بانک‌های هم‌لوگو از همان فایل استفاده کنند */
+    private fun storeKey(bank: String, name: String?) = libKey(bank, name)?.let { "lib_$it" } ?: bank
+
+    private fun urls(bank: String, name: String?): List<String>? =
+        sites[bank]?.let { site(it) } ?: libKey(bank, name)?.let { lib(it) }
 
     /** رنگ پشتیبان (دایره‌ی حرف اول) */
     fun color(bank: String): Color = when (bank) {
@@ -83,22 +107,28 @@ object BankLogos {
     private val tried = mutableSetOf<String>()
     private val lock = Mutex()
 
-    private fun file(ctx: Context, bank: String) = File(File(ctx.filesDir, "logos").apply { mkdirs() }, "$bank.png")
+    private fun file(ctx: Context, key: String) = File(File(ctx.filesDir, "logos").apply { mkdirs() }, "$key.png")
 
-    suspend fun load(ctx: Context, bank: String) {
+    fun has(bank: String) = cache.containsKey(bank)
+
+    suspend fun load(ctx: Context, bank: String, name: String? = null) {
         if (cache.containsKey(bank)) return
-        val urls = sources[bank] ?: return
+        val urls = urls(bank, name ?: Banks.name(bank)) ?: return
+        val key = storeKey(bank, name ?: Banks.name(bank))
         lock.withLock {
             if (cache.containsKey(bank) || bank in tried) return
             tried += bank
         }
         val bmp = withContext(Dispatchers.IO) {
-            val f = file(ctx, bank)
+            // فایل قدیمی (با شناسه‌ی بانک) هم قبول است
+            val old = file(ctx, bank)
+            if (key != bank && old.exists() && old.length() > 0) old.renameTo(file(ctx, key))
+            val f = file(ctx, key)
             if (f.exists() && f.length() > 0) {
                 BitmapFactory.decodeFile(f.path)?.let { return@withContext it }
             }
             val prefs = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
-            val lastFail = prefs.getLong("logoFail_$bank", 0)
+            val lastFail = prefs.getLong("logoFail_$key", 0)
             if (System.currentTimeMillis() - lastFail < 24 * 60 * 60_000L) return@withContext null
             for (u in urls) {
                 try {
@@ -116,7 +146,7 @@ object BankLogos {
                 } catch (_: Exception) {
                 }
             }
-            prefs.edit().putLong("logoFail_$bank", System.currentTimeMillis()).apply()
+            prefs.edit().putLong("logoFail_$key", System.currentTimeMillis()).apply()
             null
         }
         if (bmp != null) cache[bank] = bmp.asImageBitmap()
@@ -134,9 +164,9 @@ object BankLogos {
 
 /** دایره‌ی لوگوی بانک */
 @Composable
-fun BankBadge(bank: String, size: Dp = 32.dp) {
+fun BankBadge(bank: String, size: Dp = 32.dp, name: String? = null) {
     val ctx = LocalContext.current
-    LaunchedEffect(bank) { BankLogos.load(ctx.applicationContext, bank) }
+    LaunchedEffect(bank, name) { BankLogos.load(ctx.applicationContext, bank, name) }
     val img = BankLogos.cache[bank]
     val outline = MaterialTheme.colorScheme.outlineVariant
     when {
@@ -155,7 +185,7 @@ fun BankBadge(bank: String, size: Dp = 32.dp) {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                Banks.name(bank).replace("بانک", "").trim().take(1),
+                (name ?: Banks.name(bank)).replace("بانک", "").replace("قرض\u200cالحسنه", "").replace("مؤسسه اعتباری", "").trim().take(1),
                 color = Color.White, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.42f).sp
             )
         }
