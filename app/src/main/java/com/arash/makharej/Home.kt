@@ -139,7 +139,8 @@ fun MonthRow(txs: List<Tx>, isExpense: Boolean, ym: Int, onYm: (Int) -> Unit) {
 
 @Composable
 fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, onOpenExpenses: () -> Unit, onOpenAssets: () -> Unit = {}) {
-    val dues by remember { AppDb.get(androidx.compose.ui.platform.LocalContext.current).due().all() }.collectAsState(initial = emptyList())
+    val homeCtx = androidx.compose.ui.platform.LocalContext.current
+    val dues by remember { AppDb.get(homeCtx).due().all() }.collectAsState(initial = emptyList())
     val catById = cats.associateBy { it.id }
     val counted = txs.counted()
     val monthOut = counted.filter { it.ym == ym && it.isExpense }
