@@ -190,12 +190,15 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
         // ---- دو کارت خرج و درآمد
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // هر دو عدد یک اندازه: بر اساس طولانی‌ترشان
+                val numSize = if (maxOf(Fa.num(totalOut).length, Fa.num(totalIn).length) > 10) 22 else 26
                 val diff = if (prevOut > 0 && totalOut > 0) ((totalOut - prevOut) * 100 / prevOut).toInt() else null
                 SummaryCell(
                     "خرج", totalOut, ExpenseColor, Modifier.weight(1f),
                     extra = diff?.let { "(" + (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪)" },
                     extraColor = if ((diff ?: 0) > 0) ExpenseColor else IncomeColor,
-                    tint = if (LocalDark.current) ExpenseColor.copy(alpha = 0.16f) else Color(0xFFFFEBEE)
+                    tint = if (LocalDark.current) ExpenseColor.copy(alpha = 0.16f) else Color(0xFFFFEBEE),
+                    numSize = numSize
                 )
                 // درآمد بیشتر از ماه قبل = سبز
                 val diffIn = if (prevIn > 0 && totalIn > 0) ((totalIn - prevIn) * 100 / prevIn).toInt() else null
@@ -203,7 +206,8 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                     "درآمد", totalIn, IncomeColor, Modifier.weight(1f),
                     extra = diffIn?.let { "(" + (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪)" },
                     extraColor = if ((diffIn ?: 0) >= 0) IncomeColor else ExpenseColor,
-                    tint = if (LocalDark.current) IncomeColor.copy(alpha = 0.16f) else Color(0xFFE8F5E9)
+                    tint = if (LocalDark.current) IncomeColor.copy(alpha = 0.16f) else Color(0xFFE8F5E9),
+                    numSize = numSize
                 )
             }
         }
@@ -376,7 +380,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
 @Composable
 private fun SummaryCell(
     title: String, rial: Long, color: Color, modifier: Modifier,
-    extra: String? = null, extraColor: Color = Color.Unspecified, tint: Color = Color.Transparent
+    extra: String? = null, extraColor: Color = Color.Unspecified, tint: Color = Color.Transparent, numSize: Int = 26
 ) {
     androidx.compose.material3.Card(
         modifier, shape = RoundedCornerShape(20.dp),
@@ -394,7 +398,7 @@ private fun SummaryCell(
             ) {
                 Text(
                     num, color = color, fontWeight = FontWeight.Black,
-                    fontSize = if (num.length > 10) 22.sp else 26.sp, maxLines = 1, softWrap = false,
+                    fontSize = numSize.sp, maxLines = 1, softWrap = false,
                     modifier = Modifier.align(Alignment.CenterVertically)
                 )
                 if (extra != null) Text(
