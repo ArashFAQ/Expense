@@ -363,7 +363,11 @@ fun MainScreen(startTab: Int = 0) {
     val txs by remember { db.tx().all() }.collectAsState(initial = emptyList())
     Refunds.update(txs)
     val cats by remember { db.cat().all() }.collectAsState(initial = emptyList())
-    var tab by rememberSaveable { mutableIntStateOf(startTab) }
+    // جابه‌جایی بین تب‌ها با کشیدن چپ و راست
+    val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = startTab) { 6 }
+    val pagerScope = rememberCoroutineScope()
+    val tab = pager.currentPage
+    fun goTab(i: Int) { pagerScope.launch { pager.animateScrollToPage(i) } }
     var ym by rememberSaveable { mutableIntStateOf(Jalali.currentYm()) }
     var adding by rememberSaveable { mutableIntStateOf(0) } // ۰ بسته، ۱ خرج، ۲ واریز
     var searching by rememberSaveable { mutableStateOf(false) }
@@ -417,7 +421,7 @@ fun MainScreen(startTab: Int = 0) {
                 tabs.forEachIndexed { i, (label, icon) ->
                     NavigationBarItem(
                         selected = tab == i,
-                        onClick = { tab = i },
+                        onClick = { goTab(i) },
                         icon = { Icon(icon, contentDescription = label) },
                         label = { Text(label, maxLines = 1, style = MaterialTheme.typography.labelSmall) }
                     )
@@ -425,9 +429,13 @@ fun MainScreen(startTab: Int = 0) {
             }
         }
     ) { pad ->
-        Box(Modifier.padding(pad).fillMaxSize()) {
-            when (tab) {
-                0 -> HomeTab(txs, cats, ym, onYm = { ym = it }, onOpenExpenses = { tab = 1 })
+        androidx.compose.foundation.pager.HorizontalPager(
+            state = pager,
+            modifier = Modifier.padding(pad).fillMaxSize(),
+            key = { it }
+        ) { page ->
+            when (page) {
+                0 -> HomeTab(txs, cats, ym, onYm = { ym = it }, onOpenExpenses = { goTab(1) })
                 1 -> ExpensesTab(txs, cats, db, ym, onAdd = { adding = 1 }, onSearch = { searching = true }) { ym = it }
                 2 -> IncomeTab(txs, cats, db, ym, onAdd = { adding = 2 }, onSearch = { searching = true }) { ym = it }
                 3 -> AssetsTab(txs, db, cats)
