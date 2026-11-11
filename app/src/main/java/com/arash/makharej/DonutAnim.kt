@@ -42,7 +42,10 @@ fun AnimatedDonut(
     /** حلقه‌ی دوم (مثلا دسته‌های درآمد) */
     outer: List<Pair<Float, Color>> = emptyList(),
     /** حلقه‌ی بیرونی: نسبت خرج به درآمد (null = نباشد) */
-    ratio: Float? = null
+    ratio: Float? = null,
+    /** برش انتخاب‌شده‌ی حلقه‌ی دوم و لمس آن */
+    selectedOuter: Int = -1,
+    onSelectOuter: (Int) -> Unit = {}
 ) {
     val n = values.size
     val m = outer.size
@@ -81,22 +84,37 @@ fun AnimatedDonut(
     val pops = (0 until n).map { i ->
         animateFloatAsState(if (i == selected) 1f else 0f, tween(220), label = "pop$i").value
     }
-    val dim by animateFloatAsState(if (selected >= 0) 0.35f else 1f, tween(220), label = "dim")
+    val dim by animateFloatAsState(if (selected >= 0 || selectedOuter >= 0) 0.35f else 1f, tween(220), label = "dim")
+    val popsO = (0 until m).map { i ->
+        animateFloatAsState(if (i == selectedOuter) 1f else 0f, tween(220), label = "popO$i").value
+    }
     val total = values.sumOf { it.first.toDouble() }.toFloat()
 
     Canvas(
-        modifier.pointerInput(values, selected) {
+        modifier.pointerInput(values, outer, selected, selectedOuter) {
             detectTapGestures { p ->
                 val cx = size.width / 2f
                 val cy = size.height / 2f
                 val rr = radii(size.width.toFloat(), size.height.toFloat(), 7.dp.toPx(), 10.dp.toPx())
                 val r = rr[4]
                 val d = hypot(p.x - cx, p.y - cy)
-                if (total <= 0f || d < r * 0.5f || d > r + 8.dp.toPx()) {
-                    onSelect(-1); return@detectTapGestures
-                }
                 var ang = Math.toDegrees(atan2((p.y - cy).toDouble(), (p.x - cx).toDouble())).toFloat() + 90f
                 if (ang < 0) ang += 360f
+                // حلقه‌ی دوم (درآمد)
+                if (m > 0 && totalO > 0f && d > rr[2] - rr[3] - 5.dp.toPx() && d < rr[2] + 5.dp.toPx()) {
+                    var acc = 0f
+                    var hit = -1
+                    outer.forEachIndexed { i, (v, _) ->
+                        val s = v / totalO * 360f
+                        if (hit < 0 && ang >= acc && ang < acc + s) hit = i
+                        acc += s
+                    }
+                    onSelectOuter(if (hit == selectedOuter) -1 else hit)
+                    return@detectTapGestures
+                }
+                if (total <= 0f || d < r * 0.5f || d > r + 4.dp.toPx()) {
+                    onSelect(-1); onSelectOuter(-1); return@detectTapGestures
+                }
                 var acc = 0f
                 var hit = -1
                 values.forEachIndexed { i, (v, _) ->
@@ -131,11 +149,11 @@ fun AnimatedDonut(
                 val e = enterO.getOrNull(i)?.value ?: 1f
                 if (e > 0f) {
                     val mm = Math.toRadians((st + sweep / 2).toDouble())
-                    val off = (1f - e) * 60.dp.toPx()
+                    val off = (1f - e) * 60.dp.toPx() + popsO[i] * 5.dp.toPx()
                     val cc = Offset(c.x + cos(mm).toFloat() * off, c.y + sin(mm).toFloat() * off)
                     drawArc(
-                        color.copy(alpha = e * dim), st + 1f, (sweep - 2f).coerceAtLeast(0.5f), false,
-                        Offset(cc.x - imid, cc.y - imid), Size(imid * 2, imid * 2), style = Stroke(rr[3])
+                        color.copy(alpha = e * (if (i == selectedOuter) 1f else dim)), st + 1f, (sweep - 2f).coerceAtLeast(0.5f), false,
+                        Offset(cc.x - imid, cc.y - imid), Size(imid * 2, imid * 2), style = Stroke(rr[3] + popsO[i] * 4.dp.toPx())
                     )
                 }
                 st += sweep

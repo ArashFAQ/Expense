@@ -165,6 +165,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
         }
         .sortedByDescending { it.sum }
     var openCat by rememberSaveable(ym) { mutableStateOf<Long?>(null) }
+    var openInc by rememberSaveable(ym) { mutableStateOf<Long?>(null) }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -213,22 +214,37 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
             Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
                 Column(Modifier.fillMaxWidth().padding(18.dp)) {
                     val selIdx = slices.indexOfFirst { it.key == openCat }
+                    // دسته‌های درآمد (حلقه‌ی دوم و فهرست درآمدها)
+                    val incSlices = counted.filter { it.ym == ym && !it.isExpense }
+                        .groupBy { it.categoryId }
+                        .map { (id, l) ->
+                            val c = id?.let { catById[it] }
+                            CatSlice(id ?: -1L, c?.name ?: "بدون دسته", c?.uiColor() ?: Color(0xFFB0BEC5), c?.uiIcon() ?: CatIcons.unknown, l.sumOf { it.eff }, l)
+                        }
+                        .sortedByDescending { it.sum }
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         // حلقه‌ی دوم: دسته‌های درآمد؛ حلقه‌ی بیرونی: چقدر از درآمد خرج شده
-                        val incSlices = counted.filter { it.ym == ym && !it.isExpense }
-                            .groupBy { it.categoryId }
-                            .map { (id, l) -> l.sumOf { it.eff }.toFloat() to (id?.let { catById[it] }?.uiColor() ?: Color(0xFFB0BEC5)) }
-                            .sortedByDescending { it.first }
+                        val incIdx = incSlices.indexOfFirst { it.key == openInc }
                         AnimatedDonut(
                             slices.map { it.sum.toFloat() to it.color }, selIdx,
-                            onSelect = { i -> openCat = slices.getOrNull(i)?.key },
+                            onSelect = { i -> openCat = slices.getOrNull(i)?.key; if (i >= 0) openInc = null },
                             animKey = ym, modifier = Modifier.size(270.dp),
                             track = MaterialTheme.colorScheme.surfaceVariant,
-                            outer = incSlices,
-                            ratio = if (totalIn > 0) totalOut.toFloat() / totalIn else if (totalOut > 0) 2f else null
+                            outer = incSlices.map { it.sum.toFloat() to it.color },
+                            ratio = if (totalIn > 0) totalOut.toFloat() / totalIn else if (totalOut > 0) 2f else null,
+                            selectedOuter = incIdx,
+                            onSelectOuter = { i -> openInc = incSlices.getOrNull(i)?.key; if (i >= 0) openCat = null }
                         )
                         val selS = slices.getOrNull(selIdx)
-                        if (selS != null) Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        val selI = incSlices.getOrNull(incIdx)
+                        if (selI != null) Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(selI.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            Text(Fa.num(selI.sum), fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1, color = selI.color)
+                            Text(
+                                Fa.toFa(if (totalIn > 0) (selI.sum * 100 / totalIn).toString() else "0") + "٪ از کل درآمد",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else if (selS != null) Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(selS.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                             Text(Fa.num(selS.sum), fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1, color = selS.color)
                             Text(
@@ -246,13 +262,20 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                         Modifier.fillMaxWidth().padding(16.dp), textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    // درآمد انتخاب‌شده: فهرست درآمدها بالا می‌آید
+                    if (openInc != null && incSlices.isNotEmpty()) {
+                        Text("درآمدها", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
+                        CatBreakdown(incSlices, totalIn, openInc, IncomeColor) { k -> openInc = if (openInc == k) null else k }
+                        Spacer(Modifier.height(10.dp))
+                        Text("خرج‌ها", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
+                    }
                     // دسته‌ی انتخاب‌شده بالای فهرست می‌آید
                     val ordered = if (openCat != null) slices.sortedByDescending { it.key == openCat } else slices
                     ordered.forEach { s ->
                         val frac = if (totalOut > 0) s.sum.toFloat() / totalOut else 0f
                         val open = openCat == s.key
                         val faded by androidx.compose.animation.core.animateFloatAsState(
-                            if (openCat != null && !open) 0.4f else 1f, label = "fade"
+                            if ((openCat != null && !open) || openInc != null) 0.4f else 1f, label = "fade"
                         )
                         Column(
                             Modifier
@@ -260,7 +283,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                                 .alpha(faded)
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(if (open) s.color.copy(alpha = 0.16f) else Color.Transparent)
-                                .clickable { openCat = if (open) null else s.key }
+                                .clickable { openCat = if (open) null else s.key; openInc = null }
                                 .padding(horizontal = 6.dp, vertical = 8.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -314,6 +337,12 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                             }
                         }
                     }
+                    // فهرست درآمدها (وقتی درآمدی انتخاب نشده، زیر خرج‌ها)
+                    if (openInc == null && incSlices.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("درآمدها", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
+                        CatBreakdown(incSlices, totalIn, openInc, IncomeColor) { k -> openInc = k; openCat = null }
+                    }
                 }
             }
         }
@@ -323,12 +352,12 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
 @Composable
 private fun SummaryCell(title: String, rial: Long, color: Color, modifier: Modifier, extra: String? = null, extraColor: Color = Color.Unspecified) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (extra != null) Text(" " + extra, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = extraColor)
-        }
+        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
-        Text(Fa.num(rial), color = color, fontWeight = FontWeight.Black, fontSize = 15.sp, maxLines = 1)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(Fa.num(rial), color = color, fontWeight = FontWeight.Black, fontSize = 15.sp, maxLines = 1)
+            if (extra != null) Text(" " + extra, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = extraColor, maxLines = 1)
+        }
         Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
