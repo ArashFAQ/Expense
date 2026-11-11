@@ -529,13 +529,24 @@ private val MIGRATION_12_13 = object : Migration(12, 13) {
     }
 }
 
-@Database(entities = [Tx::class, Category::class, Asset::class, Stock::class, StockTrade::class, Due::class], version = 13, exportSchema = false)
+/** نسخه‌ی ۱۳ ← ۱۴: تراکنش چنددسته‌ای */
+private val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `Split` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txId` INTEGER NOT NULL, " +
+                "`categoryId` INTEGER NOT NULL, `amount` INTEGER NOT NULL)"
+        )
+    }
+}
+
+@Database(entities = [Tx::class, Category::class, Asset::class, Stock::class, StockTrade::class, Due::class, Split::class], version = 14, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun tx(): TxDao
     abstract fun cat(): CatDao
     abstract fun asset(): AssetDao
     abstract fun stock(): StockDao
     abstract fun due(): DueDao
+    abstract fun split(): SplitDao
 
     companion object {
         val DEFAULT_CATS = listOf(
@@ -548,7 +559,7 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "makharej.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         DEFAULT_CATS.forEachIndexed { i, n ->

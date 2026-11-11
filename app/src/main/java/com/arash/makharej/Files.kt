@@ -250,6 +250,9 @@ object Backup {
                 }
             })
             .put("prefs", Prefs.export(ctx))
+            .put("splits", JSONArray().apply {
+                db.split().list().forEach { p -> put(JSONObject().put("id", p.id).put("txId", p.txId).put("categoryId", p.categoryId).put("amount", p.amount)) }
+            })
             .put("dues", JSONArray().apply {
                 db.due().list().forEach { d ->
                     put(
@@ -280,7 +283,8 @@ object Backup {
         val cats: List<Category>, val txs: List<Tx>, val assets: List<Asset> = emptyList(),
         val stocks: List<Stock> = emptyList(), val trades: List<StockTrade> = emptyList(),
         val prefs: JSONObject? = null,
-        val dues: List<Due> = emptyList()
+        val dues: List<Due> = emptyList(),
+        val splits: List<Split> = emptyList()
     )
 
     fun parse(bytes: ByteArray): Content {
@@ -354,7 +358,12 @@ object Backup {
                 d.optInt("count", 1), d.optInt("period", 1), d.optInt("paid"), d.optString("note"), d.optBoolean("done")
             )
         }
-        return Content(cats, txs, assets, stocks, trades, o.optJSONObject("prefs"), dues)
+        val spa = o.optJSONArray("splits") ?: JSONArray()
+        val splits = (0 until spa.length()).map { i ->
+            val p = spa.getJSONObject(i)
+            Split(p.getLong("id"), p.getLong("txId"), p.getLong("categoryId"), p.getLong("amount"))
+        }
+        return Content(cats, txs, assets, stocks, trades, o.optJSONObject("prefs"), dues, splits)
     }
 
     /** همه‌ی داده‌های فعلی با محتوای پشتیبان جایگزین می‌شود */
@@ -373,6 +382,8 @@ object Backup {
             db.stock().insertTrades(c.trades)
             db.due().deleteAll()
             db.due().insertAll(c.dues)
+            db.split().deleteAll()
+            db.split().insertAll(c.splits)
         }
         c.prefs?.let { Prefs.restore(ctx, it) }
         Learned.reset()
@@ -537,7 +548,7 @@ object Excel {
             emptyList(),
             listOf(Cell("دسته", 2), Cell("مبلغ (تومان)", 2), Cell("تعداد", 2))
         )
-        out.groupBy { it.categoryId }
+        out.expandSplits().groupBy { it.categoryId }
             .map { (id, l) -> (id?.let { catName[it] } ?: "بدون دسته") to l }
             .sortedByDescending { p -> p.second.sumOf { it.eff } }
             .forEach { (name, l) -> rows2.add(listOf(Cell(name), Cell(l.sumOf { it.eff } / 10, 1), Cell(l.size.toLong()))) }

@@ -363,6 +363,8 @@ fun MainScreen(startTab: Int = 0) {
     val db = remember { AppDb.get(ctx) }
     val txs by remember { db.tx().all() }.collectAsState(initial = emptyList())
     Refunds.update(txs)
+    val splitsAll by remember { db.split().all() }.collectAsState(initial = emptyList())
+    Splits.update(splitsAll)
     val cats by remember { db.cat().all() }.collectAsState(initial = emptyList())
     // جابه‌جایی بین تب‌ها با کشیدن چپ و راست
     val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = startTab) { 6 }
@@ -1211,7 +1213,7 @@ private fun SmallChoice(label: String, primary: Boolean, onClick: () -> Unit) {
 fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit) {
     val catById = cats.associateBy { it.id }
     val counted = txs.counted()
-    val monthOut = counted.filter { it.ym == ym && it.isExpense }
+    val monthOut = counted.filter { it.ym == ym && it.isExpense }.expandSplits()
     val totalOut = monthOut.sumOf { it.eff }
     val totalIn = counted.filter { it.ym == ym && !it.isExpense }.sumOf { it.eff }
     val uncatColor = Color(0xFFB0BEC5)
@@ -1445,6 +1447,15 @@ fun TxEditor(
     db: AppDb? = null
 ) {
     var sel by remember(tx.id) { mutableStateOf(tx.categoryId) }
+    // چند دسته
+    val existingSplit = Splits.byTx[tx.id].orEmpty()
+    var splitOn by remember(tx.id) { mutableStateOf(existingSplit.size > 1) }
+    val splitRows = remember(tx.id) {
+        androidx.compose.runtime.mutableStateListOf<Pair<Long?, String>>().apply {
+            existingSplit.forEachIndexed { i, s -> add(s.categoryId to if (i < existingSplit.lastIndex) (s.amount / 10).toString() else "") }
+        }
+    }
+    val splitScope = rememberCoroutineScope()
     var note by remember(tx.id) { mutableStateOf(tx.note) }
     var excluded by remember(tx.id) { mutableStateOf(tx.excluded) }
     var confirmDel by remember(tx.id) { mutableStateOf(false) }
@@ -1577,7 +1588,15 @@ fun TxEditor(
             Spacer(Modifier.height(16.dp))
             Text(if (tx.isExpense) "کجا خرج شد؟" else "بابت چی بود؟ (اختیاری)", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (tx.isExpense) Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("چند دسته", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Switch(checked = splitOn, onCheckedChange = { on ->
+                    splitOn = on
+                    if (on && splitRows.isEmpty()) { splitRows.add(sel to ""); splitRows.add(null to "") }
+                })
+            }
+            if (splitOn && tx.isExpense) SplitEditor(newAmount ?: tx.amount, cats.filter { !it.income }, splitRows)
+            else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 cats.filter { it.income == !tx.isExpense }.forEach { c ->
                     val col = c.uiColor()
                     FilterChip(
@@ -1613,9 +1632,14 @@ fun TxEditor(
             Spacer(Modifier.weight(1f))
             TextButton(onClick = onCancel) { Text("انصراف") }
             Spacer(Modifier.width(8.dp))
+            val total = newAmount ?: tx.amount
+            val parts = if (splitOn && tx.isExpense && !excluded) splitParts(total, splitRows) else null
             Button(
-                enabled = newAmount != null,
-                onClick = { onSave(if (excluded) null else sel, note.trim(), excluded, newAmount ?: tx.amount) }
+                enabled = newAmount != null && (!splitOn || !tx.isExpense || excluded || parts != null),
+                onClick = {
+                    if (db != null) splitScope.launch { Splits.save(db, tx.id, parts) }
+                    onSave(if (excluded) null else parts?.first()?.first ?: sel, note.trim(), excluded, total)
+                }
             ) { Text("ذخیره") }
         }
     }

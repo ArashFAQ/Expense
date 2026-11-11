@@ -143,7 +143,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
     val dues by remember { AppDb.get(homeCtx).due().all() }.collectAsState(initial = emptyList())
     val catById = cats.associateBy { it.id }
     val counted = txs.counted()
-    val monthOut = counted.filter { it.ym == ym && it.isExpense }
+    val monthOut = counted.filter { it.ym == ym && it.isExpense }.expandSplits()
     val totalOut = monthOut.sumOf { it.eff }
     val totalIn = counted.filter { it.ym == ym && !it.isExpense }.sumOf { it.eff }
     // مقایسه با ماه قبل: اگر ماه جاری است، تا همین روزِ ماه قبل (مثلا ۱۹ آبان با ۱ تا ۱۹ مهر)
