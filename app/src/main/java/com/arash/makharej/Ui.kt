@@ -252,9 +252,15 @@ private const val IMPORT_VERSION = 11
 
 // ================================================================ Activities
 
-class MainActivity : ComponentActivity() {
+class MainActivity : androidx.fragment.app.FragmentActivity() {
+    override fun onStart() {
+        super.onStart()
+        AppLock.onStart(this)
+    }
+
     override fun onStop() {
         super.onStop()
+        AppLock.onStop()
         // ویجت‌ها با آخرین تغییرات
         SummaryWidget.refresh(this)
         try { PricesWidget.render(this) } catch (_: Exception) {}
@@ -271,7 +277,7 @@ class MainActivity : ComponentActivity() {
             intent?.getBooleanExtra("openSettings", false) == true -> 5
             else -> intent?.getIntExtra("openTab", 0) ?: 0
         }
-        setContent { AppTheme { MainScreen(startTab) } }
+        setContent { AppTheme { if (AppLock.locked.value && AppLock.enabled(this)) LockScreen() else MainScreen(startTab) } }
     }
 }
 
@@ -1792,6 +1798,7 @@ val SettingsPages = listOf(
     SettingsPage("banks", "بانک‌ها و حساب‌ها", "کدام بانک‌ها خوانده شوند، خرج و درآمد، پس‌انداز"),
     SettingsPage("backup", "پشتیبان‌گیری", "Google Drive، فایل پشتیبان، بازگردانی"),
     SettingsPage("theme", "ظاهر", "حالت روشن و تیره، رنگ اصلی"),
+    SettingsPage("lock", "قفل و حریم خصوصی", "اثر انگشت، پنهان کردن روی صفحه‌ی قفل و ویجت"),
     SettingsPage("samples", "نمونه پیامک بانک‌ها", "آموزش بانک جدید، وضعیت همه‌ی بانک‌ها"),
     SettingsPage("misc", "پیامک‌ها و کار در پس‌زمینه", "خواندن دوباره‌ی پیامک‌ها، Autostart و باتری"),
     SettingsPage("update", "به‌روزرسانی اپ", "نسخه‌ی " + Fa.toFa(BuildConfig.VERSION_CODE.toString())),
@@ -1900,6 +1907,9 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
                 }
             }
         }
+            }
+            "lock" -> {
+        item { LockSettings() }
             }
             "misc" -> {
         item {

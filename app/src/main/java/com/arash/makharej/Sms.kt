@@ -216,6 +216,7 @@ object Notifier {
         b.addAction(0, label, PendingIntent.getActivity(ctx, nid * 10 + 4, third, FLAGS))
 
         try {
+            AppLock.applyPrivacy(ctx, b, CHANNEL, "خرج جدید")
             NotificationManagerCompat.from(ctx).notify(nid, b.build())
         } catch (_: SecurityException) {
         }
@@ -265,6 +266,7 @@ object Notifier {
             )
             .addAction(0, "بازپرداخت / قرض", dang)
             .addAction(0, "حساب خودم", bc(3, "own"))
+            .also { AppLock.applyPrivacy(ctx, it, CHANNEL, "واریز جدید") }
             .build()
         try {
             NotificationManagerCompat.from(ctx).notify(nid, n)

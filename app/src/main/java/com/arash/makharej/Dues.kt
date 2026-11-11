@@ -307,6 +307,7 @@ object DueReminder {
             .setDeleteIntent(pi(ctx, ACTION_CHECK, d.id, 9400 + d.id.toInt()))
             .addAction(0, if (d.kind == 2) "وصول شد" else "پرداخت شد", pi(ctx, ACTION_PAID, d.id, 9500 + d.id.toInt()))
         if (overdue) b.setColor(0xFFC62828.toInt()).setColorized(false)
+        AppLock.applyPrivacy(ctx, b, CHANNEL, "یادآوری چک و قسط")
         nm.notify(nid(d.id), b.build())
     }
 

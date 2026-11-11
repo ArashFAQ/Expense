@@ -145,9 +145,10 @@ class SummaryWidget : AppWidgetProvider() {
             val inc = month.filter { !it.isExpense }.sumOf { it.eff }
             val v = RemoteViews(ctx.packageName, R.layout.widget_summary)
             v.setTextViewText(R.id.s_title, Fa.monthTitle(ym) + " (تومان)")
-            v.setTextViewText(R.id.s_out, Fa.num(out))
-            v.setTextViewText(R.id.s_in, Fa.num(inc))
-            v.setTextViewText(R.id.s_left, (if (inc < out) "−" else "") + Fa.num(kotlin.math.abs(inc - out)))
+            val mask = AppLock.maskWidget(ctx)
+            v.setTextViewText(R.id.s_out, if (mask) "••••" else Fa.num(out))
+            v.setTextViewText(R.id.s_in, if (mask) "••••" else Fa.num(inc))
+            v.setTextViewText(R.id.s_left, if (mask) "••••" else (if (inc < out) "−" else "") + Fa.num(kotlin.math.abs(inc - out)))
             v.setOnClickPendingIntent(R.id.w_root, openApp(ctx, 0, 9102))
             mgr.updateAppWidget(wids, v)
         }
