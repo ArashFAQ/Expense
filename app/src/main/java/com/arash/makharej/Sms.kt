@@ -239,7 +239,15 @@ object Notifier {
                     ctx, nid * 10 + 7, Intent(ctx, ReshowReceiver::class.java).putExtra("tx", tx.id), FLAGS
                 )
             )
-            .addAction(0, "درآمد", bc(2, "income"))
+            .addAction(
+                0, "درآمد",
+                PendingIntent.getActivity(
+                    ctx, nid * 10 + 2,
+                    Intent(ctx, CategorizeActivity::class.java).putExtra("tx", tx.id).putExtra("incomeCat", true)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                    FLAGS
+                )
+            )
             .addAction(0, "بازپرداخت / قرض", dang)
             .addAction(0, "حساب خودم", bc(3, "own"))
             .build()

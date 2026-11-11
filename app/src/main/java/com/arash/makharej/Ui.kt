@@ -282,6 +282,7 @@ class CategorizeActivity : ComponentActivity() {
         val txId = intent.getLongExtra("tx", -1)
         val refundMode = intent.getBooleanExtra("refund", false)
         val loanMode = intent.getBooleanExtra("loan", false)
+        val incomeMode = intent.getBooleanExtra("incomeCat", false)
         ThemeSettings.load(this)
         setContent {
             AppTheme {
@@ -295,6 +296,13 @@ class CategorizeActivity : ComponentActivity() {
                     Refunds.update(all)
                     val d = tx
                     if (d != null) RepayPicker(d, all, cats, onDone = { finish() }, onDismiss = { finish() })
+                    return@AppTheme
+                }
+                if (incomeMode) {
+                    val d = tx
+                    if (d != null && cats.isNotEmpty()) IncomeCatDialog(d.amount, cats, onPick = { c ->
+                        scope.launch { markIncome(ctx, d.id, c); finish() }
+                    }, onDismiss = { finish() })
                     return@AppTheme
                 }
                 if (loanMode) {
@@ -1022,6 +1030,7 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
     val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf<Tx?>(null) }
     var dangFor by remember { mutableStateOf<Tx?>(null) }
+    var incomeFor by remember { mutableStateOf<Tx?>(null) }
     var showMoves by rememberSaveable { mutableStateOf(false) }
     val catById = cats.associateBy { it.id }
     val all = txs.filter { it.ym == ym && !it.isExpense }
@@ -1088,7 +1097,7 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
                                 }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
-                                SmallChoice("درآمد", true) { setKind(t, false) }
+                                SmallChoice("درآمد", true) { incomeFor = t }
                                 SmallChoice("بازپرداخت / قرض", false) { dangFor = t }
                                 SmallChoice("حساب خودم", false) { setKind(t, true) }
                             }
@@ -1113,6 +1122,12 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
     editing?.let { t -> EditDialog(t, cats, db) { editing = null } }
     dangFor?.let { d ->
         RepayPicker(d, txs, cats, onDone = { dangFor = null }, onDismiss = { dangFor = null })
+    }
+    incomeFor?.let { d ->
+        IncomeCatDialog(d.amount, cats, onPick = { c ->
+            incomeFor = null
+            scope.launch { markIncome(ctx, d.id, c) }
+        }, onDismiss = { incomeFor = null })
     }
 }
 
@@ -1432,13 +1447,16 @@ fun TxEditor(
             val ctxP = LocalContext.current
             val scopeP = rememberCoroutineScope()
             var pickDang by remember(tx.id) { mutableStateOf(false) }
+            var pickInc by remember(tx.id) { mutableStateOf(false) }
+            if (pickInc) IncomeCatDialog(tx.amount, cats, onPick = { c ->
+                pickInc = false
+                scopeP.launch { markIncome(ctxP, tx.id, c); onCancel() }
+            }, onDismiss = { pickInc = false })
             Spacer(Modifier.height(16.dp))
             Text("این واریز چیه؟", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = {
-                    scopeP.launch { db!!.tx().setDepositKind(tx.id, false); Notifier.cancel(ctxP, tx.id); onCancel() }
-                }) { Text("درآمد") }
+                Button(onClick = { pickInc = true }) { Text("درآمد") }
                 OutlinedButton(onClick = { pickDang = true }) { Text("بازپرداخت / قرض") }
                 OutlinedButton(onClick = {
                     scopeP.launch { db!!.tx().setDepositKind(tx.id, true); Notifier.cancel(ctxP, tx.id); onCancel() }

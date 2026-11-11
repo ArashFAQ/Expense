@@ -281,6 +281,24 @@ fun CatPickDialog(title: String, message: String, cats: List<Category>, onPick: 
     )
 }
 
+/** ثبت واریز به‌عنوان درآمد با دسته‌ی انتخابی (یا بدون دسته) */
+suspend fun markIncome(ctx: Context, txId: Long, cat: Long?) {
+    val dao = AppDb.get(ctx).tx()
+    dao.setDepositKind(txId, false)
+    dao.setCategory(txId, cat)
+    Notifier.cancel(ctx, txId)
+    SummaryWidget.refresh(ctx)
+}
+
+/** انتخاب دسته‌ی درآمد */
+@Composable
+fun IncomeCatDialog(amount: Long, cats: List<Category>, onPick: (Long?) -> Unit, onDismiss: () -> Unit) {
+    CatPickDialog(
+        Fa.toman(amount) + " درآمد", "بابت چه بود؟", cats.filter { it.income },
+        onPick = onPick, onDismiss = onDismiss
+    )
+}
+
 /** برداشت: قرض دادم به کسی، یا بدهی‌ام را دادم */
 @Composable
 fun OutPicker(w: Tx, txs: List<Tx>, onDone: () -> Unit, onDismiss: () -> Unit) {
