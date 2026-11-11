@@ -1046,14 +1046,46 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item { MonthRow(txs, false, ym, onYm) }
+        // ---- نمودار دایره‌ای درآمد بر اساس دسته
         item {
-            HeroCard(
-                title = "درآمد ${Fa.monthName(ym)}",
-                rial = income.sumOf { it.eff },
-                subtitle = Fa.toFa(income.size.toString()) + " مورد" +
-                    if (pending.isNotEmpty()) "  ·  " + Fa.toFa(pending.size.toString()) + " واریز در انتظار تأیید" else "",
-                gradient = IncomeGradient
-            )
+            val total = income.sumOf { it.eff }
+            val slices = income.groupBy { it.categoryId?.let { id -> catById[id] } }
+                .map { (c, l) -> Triple(c, l.sumOf { it.eff }, c?.uiColor() ?: Color(0xFFB0BEC5)) }
+                .sortedByDescending { it.second }
+            var sel by remember(ym) { mutableIntStateOf(-1) }
+            Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
+                Box(Modifier.fillMaxWidth().padding(18.dp), contentAlignment = Alignment.Center) {
+                    AnimatedDonut(
+                        slices.map { it.second.toFloat() to it.third }, sel,
+                        onSelect = { sel = it }, animKey = ym, modifier = Modifier.size(220.dp),
+                        track = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    val s = slices.getOrNull(sel)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (s != null) {
+                            Text(s.first?.name ?: "بدون دسته", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            Text(Fa.num(s.second), fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1, color = s.third)
+                            Text(
+                                Fa.toFa(if (total > 0) (s.second * 100 / total).toString() else "0") + "٪ از کل درآمد",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Text("درآمد " + Fa.monthName(ym), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(Fa.num(total), fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1, color = IncomeColor)
+                            Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                Fa.toFa(income.size.toString()) + " مورد",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (pending.isNotEmpty()) Text(
+                                Fa.toFa(pending.size.toString()) + " در انتظار تأیید",
+                                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
         }
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
