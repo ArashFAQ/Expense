@@ -260,7 +260,7 @@ object DueReminder {
         }
         list.forEach { d ->
             val at = Dues.remindAt(d) ?: return@forEach
-            if (now >= at) show(app, d, if (d.kind == 1 && d.bank != null) balances.firstOrNull { it.bank == d.bank }?.balance else null)
+            if (now >= at) show(app, d, if (d.kind != 2 && d.bank != null) balances.firstOrNull { it.bank == d.bank }?.balance else null)
             else cancel(app, d.id)
         }
         // نوتیفیکیشن‌های موردهای بسته‌شده
@@ -283,7 +283,8 @@ object DueReminder {
                 (d.bank?.let { " · " + Banks.name(it) } ?: "")
         )
         if (bankBalance != null && bankBalance < d.amount) {
-            lines += "⚠️ موجودی " + Banks.name(d.bank!!) + " " + Fa.toman(d.amount - bankBalance) + " کمتر از مبلغ چک است"
+            lines += "⚠️ موجودی " + Banks.name(d.bank!!) + " " + Fa.toman(bankBalance) + " است؛ " +
+                Fa.toman(d.amount - bankBalance) + " کم داری"
         }
         val open = PendingIntent.getActivity(
             ctx, 9310 + d.id.toInt(),
@@ -544,11 +545,17 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit) {
                     FilterChip(selected = period == 12, onClick = { period = 12 }, label = { Text("سالانه") })
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("بانک: " + (bank?.let { Banks.name(it) } ?: "مهم نیست"), Modifier.weight(1f))
+                    Text(
+                        when (kind) {
+                            2 -> "به کدام حساب واریز می‌شود؟ "
+                            else -> "از کدام حساب کم می‌شود؟ "
+                        } + (bank?.let { Banks.name(it) } ?: "مشخص نیست"),
+                        Modifier.weight(1f)
+                    )
                     Column {
                         TextButton(onClick = { bankMenu = true }) { Text("انتخاب") }
                         androidx.compose.material3.DropdownMenu(expanded = bankMenu, onDismissRequest = { bankMenu = false }) {
-                            androidx.compose.material3.DropdownMenuItem(text = { Text("مهم نیست") }, onClick = { bank = null; bankMenu = false })
+                            androidx.compose.material3.DropdownMenuItem(text = { Text("مشخص نیست") }, onClick = { bank = null; bankMenu = false })
                             Banks.all(ctx).filter { it != Banks.MANUAL }.forEach { b ->
                                 androidx.compose.material3.DropdownMenuItem(text = { Text(Banks.name(b)) }, onClick = { bank = b; bankMenu = false })
                             }
@@ -556,7 +563,8 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit) {
                     }
                 }
                 Text(
-                    "اگر برداشت یا واریزی با همین مبلغ نزدیک سررسید بیاید، خودکار تیک می‌خورد.",
+                    (if (kind != 2) "اگر موجودی این حساب کمتر از مبلغ باشد، در یادآوری می‌گوید چقدر کم داری. " else "") +
+                        "اگر برداشت یا واریزی با همین مبلغ نزدیک سررسید بیاید، خودکار تیک می‌خورد.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 OutlinedTextField(
