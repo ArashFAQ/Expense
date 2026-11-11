@@ -340,6 +340,7 @@ class CategorizeActivity : ComponentActivity() {
                             onSave = { cat, note, ex, amount ->
                                 scope.launch {
                                     db.tx().update(t.id, cat, note, ex, amount)
+                        if (ex && !t.excluded) OwnAccounts.learn(ctx, t.id)
                                     Notifier.cancel(ctx, t.id)
                                     finish()
                                 }
@@ -395,6 +396,11 @@ fun MainScreen(startTab: Int = 0) {
             if (RemoteBanks.refresh(ctx) && hasPerm(ctx, Manifest.permission.READ_SMS)) InboxImporter.run(ctx)
         } catch (_: Exception) {}
         try { DueReminder.check(ctx) } catch (_: Exception) {}
+        // یک بار: حساب‌های خودی از روی «حساب خودم»ها و انتقال‌های قبلی یاد گرفته می‌شوند
+        if (!pr.getBoolean("ownLearned", false)) {
+            try { OwnAccounts.learnExisting(ctx) } catch (_: Exception) {}
+            pr.edit().putBoolean("ownLearned", true).apply()
+        }
         if (hasPerm(ctx, Manifest.permission.READ_SMS) && !pr.getBoolean("otpNotesCleared", false)) {
             try { OtpNoteCleanup.run(ctx) } catch (_: Exception) {}
             pr.edit().putBoolean("otpNotesCleared", true).apply()
@@ -809,6 +815,7 @@ fun EditDialog(t: Tx, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
                 onSave = { cat, note, ex, amount ->
                     scope.launch {
                         db.tx().update(t.id, cat, note, ex, amount)
+                        if (ex && !t.excluded) OwnAccounts.learn(ctx, t.id)
                         Notifier.cancel(ctx, t.id)
                     }
                     onClose()
@@ -1048,7 +1055,10 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
     val moves = all.filter { it.excluded && it.reason != 5 }
     val shown = if (showMoves) income + moves else income
 
-    fun setKind(t: Tx, own: Boolean) = scope.launch { db.tx().setDepositKind(t.id, own); Notifier.cancel(ctx, t.id) }
+    fun setKind(t: Tx, own: Boolean) = scope.launch {
+        db.tx().setDepositKind(t.id, own); Notifier.cancel(ctx, t.id)
+        if (own) OwnAccounts.learn(ctx, t.id)
+    }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -1515,7 +1525,7 @@ fun TxEditor(
                 Button(onClick = { pickInc = true }) { Text("درآمد") }
                 OutlinedButton(onClick = { pickDang = true }) { Text("بازپرداخت / قرض") }
                 OutlinedButton(onClick = {
-                    scopeP.launch { db!!.tx().setDepositKind(tx.id, true); Notifier.cancel(ctxP, tx.id); onCancel() }
+                    scopeP.launch { db!!.tx().setDepositKind(tx.id, true); Notifier.cancel(ctxP, tx.id); OwnAccounts.learn(ctxP, tx.id); onCancel() }
                 }) { Text("حساب خودم") }
             }
             if (pickDang) {

@@ -459,14 +459,24 @@ object Banks {
     }
 
     /** اگر این تراکنش با یک تراکنش مخالف در حساب دیگر جفت شد، id آن را برمی‌گرداند */
+    /** پایا/ساتنا ممکن است تا روز کاری بعد بنشیند */
+    private const val SLOW = 3 * 24 * 60 * 60_000L
+    private fun slow(raw: String) = raw.contains("پایا") || raw.contains("ساتنا")
+
     suspend fun matchTransfer(ctx: Context, t: Tx): Long? {
         if (t.bank == MANUAL) return null
         val dao = AppDb.get(ctx).tx()
-        val (from, to) = if (t.isExpense) (t.ts - BEFORE) to (t.ts + AFTER) else (t.ts - AFTER) to (t.ts + BEFORE)
+        val (from, to) = if (t.isExpense) (t.ts - BEFORE) to (t.ts + SLOW) else (t.ts - SLOW) to (t.ts + BEFORE)
         val other = dao.transferCandidates(!t.isExpense, t.bank, from, to)
             .filter { o -> if (t.isExpense) feeOk(t.amount, o.amount) else feeOk(o.amount, t.amount) }
+            .filter { o ->
+                // فاصله‌ی برداشت تا واریز
+                val gap = if (t.isExpense) o.ts - t.ts else t.ts - o.ts
+                gap <= AFTER || slow(t.raw) || slow(o.raw)
+            }
             .minByOrNull { kotlin.math.abs(it.ts - t.ts) } ?: return null
         dao.markTransfer(listOf(t.id, other.id))
+        try { OwnAccounts.learn(ctx, t.id); OwnAccounts.learn(ctx, other.id) } catch (_: Exception) {}
         return other.id
     }
 }

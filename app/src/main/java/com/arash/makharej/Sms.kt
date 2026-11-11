@@ -76,6 +76,13 @@ object Ingest {
                 return true
             }
         }
+        // حساب خودی که قبلا یاد گرفته شده؟
+        if (reason == 0 || reason == 5) {
+            if (OwnAccounts.matches(ctx, tx)) {
+                if (p.isExpense) db.tx().setExcluded(tx.id, true) else db.tx().setDepositKind(tx.id, true)
+                return true
+            }
+        }
         // قسط یا چکی که سررسیدش نزدیک است؟ (فقط پیامک تازه، نه خواندن پیامک‌های قبلی)
         if (notify) {
             val due = try { Dues.matchPayment(ctx, tx) } catch (_: Exception) { null }
@@ -345,6 +352,7 @@ class ActionReceiver : BroadcastReceiver() {
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     AppDb.get(app).tx().setDepositKind(tx, own)
+                    if (own) OwnAccounts.learn(app, tx)
                     Notifier.cancel(app, tx)
                     SummaryWidget.render(app)
                 } finally {
@@ -363,7 +371,7 @@ class ActionReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val dao = AppDb.get(app).tx()
-                if (exclude) dao.setExcluded(tx, true) else dao.setCategory(tx, cat)
+                if (exclude) { dao.setExcluded(tx, true); OwnAccounts.learn(app, tx) } else dao.setCategory(tx, cat)
                 Notifier.cancel(app, tx)
             } finally {
                 pending.finish()
