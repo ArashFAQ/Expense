@@ -1046,47 +1046,62 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item { MonthRow(txs, false, ym, onYm) }
-        // ---- نمودار دایره‌ای درآمد بر اساس دسته
+        // ---- نمودار دایره‌ای درآمد و فهرست دسته‌ها
         item {
             val total = income.sumOf { it.eff }
-            val slices = income.groupBy { it.categoryId?.let { id -> catById[id] } }
-                .map { (c, l) -> Triple(c, l.sumOf { it.eff }, c?.uiColor() ?: Color(0xFFB0BEC5)) }
-                .sortedByDescending { it.second }
-            var sel by remember(ym) { mutableIntStateOf(-1) }
-            Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
-                Box(Modifier.fillMaxWidth().padding(18.dp), contentAlignment = Alignment.Center) {
-                    AnimatedDonut(
-                        slices.map { it.second.toFloat() to it.third }, sel,
-                        onSelect = { sel = it }, animKey = ym, modifier = Modifier.size(220.dp),
-                        track = MaterialTheme.colorScheme.surfaceVariant
+            val slices = income.groupBy { it.categoryId }
+                .map { (id, l) ->
+                    val c = id?.let { catById[it] }
+                    CatSlice(
+                        id ?: -1L, c?.name ?: "بدون دسته", c?.uiColor() ?: Color(0xFFB0BEC5),
+                        c?.uiIcon() ?: CatIcons.unknown, l.sumOf { it.eff }, l
                     )
-                    val s = slices.getOrNull(sel)
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        if (s != null) {
-                            Text(s.first?.name ?: "بدون دسته", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                            Text(Fa.num(s.second), fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1, color = s.third)
-                            Text(
-                                Fa.toFa(if (total > 0) (s.second * 100 / total).toString() else "0") + "٪ از کل درآمد",
-                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        } else {
-                            Text("درآمد " + Fa.monthName(ym), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(Fa.num(total), fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1, color = IncomeColor)
-                            Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(
-                                Fa.toFa(income.size.toString()) + " مورد",
-                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (pending.isNotEmpty()) Text(
-                                Fa.toFa(pending.size.toString()) + " در انتظار تأیید",
-                                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                }
+                .sortedByDescending { it.sum }
+            var openKey by rememberSaveable(ym) { mutableStateOf<Long?>(null) }
+            val sel = slices.indexOfFirst { it.key == openKey }
+            Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
+                Column(Modifier.fillMaxWidth().padding(18.dp)) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        AnimatedDonut(
+                            slices.map { it.sum.toFloat() to it.color }, sel,
+                            onSelect = { i -> openKey = slices.getOrNull(i)?.key }, animKey = ym,
+                            modifier = Modifier.size(220.dp),
+                            track = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                        val s = slices.getOrNull(sel)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (s != null) {
+                                Text(s.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                Text(Fa.num(s.sum), fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1, color = s.color)
+                                Text(
+                                    Fa.toFa(if (total > 0) (s.sum * 100 / total).toString() else "0") + "٪ از کل درآمد",
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                Text("درآمد " + Fa.monthName(ym), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(Fa.num(total), fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1, color = IncomeColor)
+                                Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    Fa.toFa(income.size.toString()) + " مورد",
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (pending.isNotEmpty()) Text(
+                                    Fa.toFa(pending.size.toString()) + " در انتظار تأیید",
+                                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
+                    }
+                    if (slices.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        CatBreakdown(slices, total, openKey, IncomeColor) { k -> openKey = if (openKey == k) null else k }
                     }
                 }
             }
         }
+
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (moves.isNotEmpty()) FilterChip(

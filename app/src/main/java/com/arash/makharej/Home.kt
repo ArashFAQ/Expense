@@ -332,3 +332,78 @@ private fun SummaryCell(title: String, rial: Long, color: Color, modifier: Modif
         Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+/** یک ردیف از فهرست دسته‌ها (زیر نمودار دایره‌ای) */
+class CatSlice(val key: Long, val name: String, val color: Color, val icon: ImageVector, val sum: Long, val items: List<Tx>)
+
+/** فهرست دسته‌ها با نوار درصد؛ انتخاب‌شده بالا می‌آید و بقیه کم‌رنگ می‌شوند، ریز توضیحاتش باز می‌شود */
+@Composable
+fun CatBreakdown(slices: List<CatSlice>, total: Long, openKey: Long?, amountColor: Color, onToggle: (Long) -> Unit) {
+    val ordered = if (openKey != null) slices.sortedByDescending { it.key == openKey } else slices
+    ordered.forEach { s ->
+        val frac = if (total > 0) s.sum.toFloat() / total else 0f
+        val open = openKey == s.key
+        val faded by androidx.compose.animation.core.animateFloatAsState(
+            if (openKey != null && !open) 0.4f else 1f, label = "fade"
+        )
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .alpha(faded)
+                .clip(RoundedCornerShape(14.dp))
+                .background(if (open) s.color.copy(alpha = 0.16f) else Color.Transparent)
+                .clickable { onToggle(s.key) }
+                .padding(horizontal = 6.dp, vertical = 8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CatBadge(s.color, s.icon, 42.dp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(s.name, Modifier.weight(1f), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(Fa.toman(s.sum), fontWeight = FontWeight.Bold, color = amountColor)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        LinearProgressIndicator(
+                            progress = { frac },
+                            modifier = Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)),
+                            color = s.color,
+                            trackColor = s.color.copy(alpha = 0.15f),
+                            drawStopIndicator = {}
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            Fa.toFa("${(frac * 100).toInt()}") + "٪",
+                            Modifier.widthIn(min = 34.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            if (open) {
+                Spacer(Modifier.height(8.dp))
+                s.items.groupBy { it.note.trim() }
+                    .map { (note, l) -> Triple(note.ifEmpty { "بدون توضیح" }, l.sumOf { it.eff }, l.size) }
+                    .sortedWith(compareBy<Triple<String, Long, Int>> { it.first == "بدون توضیح" }.thenByDescending { it.second })
+                    .forEach { (note, sum, n) ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 54.dp, top = 4.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(note, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    Fa.toFa(n.toString()) + " بار",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(Fa.toman(sum), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+            }
+        }
+    }
+}
