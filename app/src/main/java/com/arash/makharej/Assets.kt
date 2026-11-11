@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.AttachMoney
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.Toll
+import androidx.compose.material.icons.outlined.ShowChart
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -319,6 +320,10 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
     val dues by remember { db.due().all() }.collectAsState(initial = emptyList())
     val debtTotal = Loans.total(txs, debt = true) + Dues.liabilities(dues)
     val stockTotal = remember(holdings, tick) { Stocks.total(ctx, holdings) }
+    // قیمت سهام حتی وقتی بخش سهام بسته است به‌روز می‌شود
+    LaunchedEffect(holdings.filter { it.qty > 0 }.map { it.stock.insCode }) {
+        if (Tse.refreshPrices(ctx, holdings.filter { it.qty > 0 }.map { it.stock.insCode })) tick++
+    }
     val loanTotal = loanTotalRaw + Dues.receivables(dues)
     val total = bankTotal + investTotal + stockTotal + loanTotal - debtTotal
     LaunchedEffect(total) { Wealth.saveSnapshot(ctx, total) }
@@ -335,13 +340,17 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                     Text(Fa.num(total), fontSize = 28.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
                     Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(10.dp))
-                    Row(Modifier.fillMaxWidth()) {
-                        MiniStat("بانک‌ها", bankTotal, BankColor, Modifier.weight(1f))
-                        if (stockTotal > 0) MiniStat("سهام", stockTotal, Color(0xFF3949AB), Modifier.weight(1f))
-                        MiniStat("سرمایه‌گذاری و سایر", investTotal, GoldColor, Modifier.weight(1f))
-                        if (loanTotal > 0) MiniStat("طلب‌ها", loanTotal, LoanColor, Modifier.weight(1f))
-                        if (debtTotal > 0) MiniStat("بدهی‌ها (−)", debtTotal, DebtColor, Modifier.weight(1f))
-                    }
+                    Text(
+                        listOfNotNull(
+                            "بانک‌ها " + Fa.compact(bankTotal),
+                            if (stockTotal > 0) "سهام " + Fa.compact(stockTotal) else null,
+                            if (investTotal > 0) "سرمایه‌گذاری " + Fa.compact(investTotal) else null,
+                            if (loanTotal > 0) "طلب " + Fa.compact(loanTotal) else null,
+                            if (debtTotal > 0) "بدهی −" + Fa.compact(debtTotal) else null
+                        ).joinToString("  ·  "),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
                     val snaps = Wealth.snapshots(ctx)
                     if (snaps.size >= 2) {
                         Spacer(Modifier.height(12.dp))
@@ -382,17 +391,39 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
             }
         }
 
-        // ---- سهام
-        item { StocksCard(db, holdings, tick) { tick++ } }
-
-        // ---- طلب‌ها
-        item { DuesCard(db, dues) }
-        item { GroupsCard(cats) }
-        item { LoansCard(txs, db, cats, debt = false) }
-        item { LoansCard(txs, db, cats, debt = true) }
-
-        // ---- سرمایه‌گذاری
+        // ---- سهام (جمع‌شده)
         item {
+            val act = holdings.filter { it.qty > 0 }
+            val cost = act.sumOf { it.cost }
+            val pl = stockTotal - cost
+            FoldRow(
+                "stocks", "سهام و صندوق‌ها", Fa.toFa(act.size.toString()) + " نماد", Fa.toman(stockTotal),
+                if (cost > 0 && act.isNotEmpty()) ((if (pl >= 0) "▲" else "▼") + Fa.toFa(String.format(java.util.Locale.US, "%.1f", kotlin.math.abs(pl * 100.0 / cost))).replace('.', '٫') + "٪") to (pl >= 0) else null,
+                Icons.Outlined.ShowChart, Color(0xFF3949AB)
+            ) { StocksCard(db, holdings, tick) { tick++ } }
+        }
+
+        // ---- طلب‌ها و بدهی‌ها (جمع‌شده)
+        item {
+            FoldRow("loans", "طلب‌ها", Fa.toFa(Loans.open(txs).map { it.loan.person }.distinct().size.toString()) + " نفر" +
+                (if (Dues.receivables(dues) > 0) " · چک دریافتی" else ""), Fa.toman(loanTotal), null, CatIcons.loan, LoanColor) {
+                LoansCard(txs, db, cats, debt = false)
+            }
+        }
+        item {
+            FoldRow("debts", "بدهی‌ها", "قرض، اقساط، چک صادره", Fa.toman(debtTotal), null, CatIcons.loan, DebtColor) {
+                LoansCard(txs, db, cats, debt = true)
+                if (Dues.liabilities(dues) > 0) Text(
+                    "اقساط و چک‌های صادره: " + Fa.toman(Dues.liabilities(dues)) + " (جزئیات در تب برنامه)",
+                    Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // ---- سرمایه‌گذاری (جمع‌شده)
+        item {
+            FoldRow("inv", "سرمایه‌گذاری و طلا", "دلار، سکه، صندوق", Fa.toman(investTotal), null, kindIcon("emami"), GoldColor) {
             Card(shape = RoundedCornerShape(20.dp), colors = cardColors()) {
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -424,6 +455,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                         AssetRow(kindIcon(a.kind), kindColor(a.kind), a.name, sub, Fa.toman(v)) { editing = a }
                     }
                 }
+            }
             }
         }
 
@@ -689,3 +721,36 @@ private fun AssetEditDialog(
     )
 }
 
+
+
+/** ردیف خلاصه‌ای که با لمس باز و بسته می‌شود؛ جزئیات زیرش نشان داده می‌شود */
+@Composable
+fun FoldRow(
+    key: String, title: String, sub: String, value: String, change: Pair<String, Boolean>?,
+    icon: ImageVector, color: Color, content: @Composable () -> Unit
+) {
+    var open by androidx.compose.runtime.saveable.rememberSaveable(key) { mutableStateOf(false) }
+    Column {
+        Card(onClick = { open = !open }, shape = RoundedCornerShape(20.dp), colors = cardColors()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                CatBadge(color, icon, 40.dp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(title, fontWeight = FontWeight.Bold)
+                    Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(value, fontWeight = FontWeight.Bold)
+                    if (change != null) Text(
+                        change.first, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                        color = if (change.second) IncomeColor else ExpenseColor
+                    )
+                }
+                Text(if (open) "  ▴" else "  ▾", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        androidx.compose.animation.AnimatedVisibility(open) {
+            Column(Modifier.padding(top = 8.dp)) { content() }
+        }
+    }
+}

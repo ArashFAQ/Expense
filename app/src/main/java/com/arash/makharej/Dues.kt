@@ -288,7 +288,7 @@ object DueReminder {
         }
         val open = PendingIntent.getActivity(
             ctx, 9310 + d.id.toInt(),
-            Intent(ctx, MainActivity::class.java).putExtra("openTab", 3)
+            Intent(ctx, MainActivity::class.java).putExtra("openTab", 4)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )

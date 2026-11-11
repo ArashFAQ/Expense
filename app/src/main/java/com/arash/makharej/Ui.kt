@@ -430,7 +430,7 @@ fun MainScreen(startTab: Int = 0) {
         "خرج‌ها" to Icons.Filled.ShoppingCart,
         "درآمد" to Icons.Filled.AddCircle,
         "دارایی" to Icons.Filled.AccountBalance,
-        "گزارش" to Icons.Filled.DateRange,
+        "برنامه" to Icons.Filled.DateRange,
         "تنظیمات" to Icons.Filled.Settings
     )
 
@@ -460,7 +460,7 @@ fun MainScreen(startTab: Int = 0) {
             key = { it }
         ) { page ->
             when (page) {
-                0 -> HomeTab(txs, cats, ym, onYm = { ym = it }, onOpenExpenses = { goTab(1) }, onOpenAssets = { goTab(3) })
+                0 -> HomeTab(txs, cats, ym, onYm = { ym = it }, onOpenExpenses = { goTab(1) }, onOpenAssets = { goTab(4) })
                 1 -> ExpensesTab(txs, cats, db, ym, onAdd = { adding = 1 }, onSearch = { searching = true }) { ym = it }
                 2 -> IncomeTab(txs, cats, db, ym, onAdd = { adding = 2 }, onSearch = { searching = true }) { ym = it }
                 3 -> AssetsTab(txs, db, cats)
@@ -1254,6 +1254,14 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // ---- برنامه: چک و قسط، دنگ گروهی
+        item {
+            val pctx = LocalContext.current
+            val dues by remember { AppDb.get(pctx).due().all() }.collectAsState(initial = emptyList())
+            DuesCard(AppDb.get(pctx), dues)
+        }
+        item { GroupsCard(cats) }
+
         item { MonthRow(txs, true, ym, onYm) }
 
         // ---- year chart (فروردین تا اسفند)
