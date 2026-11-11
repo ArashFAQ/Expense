@@ -194,10 +194,6 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                         extra = diffIn?.let { "(" + (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪)" },
                         extraColor = if ((diffIn ?: 0) >= 0) IncomeColor else ExpenseColor
                     )
-                    SummaryCell(
-                        "مانده", kotlin.math.abs(totalIn - totalOut),
-                        if (totalIn >= totalOut) IncomeColor else ExpenseColor, Modifier.weight(1f)
-                    )
                 }
             }
         }
@@ -262,8 +258,12 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         } else Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("خرج " + Fa.monthName(ym), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(Fa.num(totalOut), fontSize = 18.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                            Text("مانده " + Fa.monthName(ym), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                (if (totalIn < totalOut) "−" else "") + Fa.num(kotlin.math.abs(totalIn - totalOut)),
+                                fontSize = 18.sp, fontWeight = FontWeight.Black, maxLines = 1,
+                                color = if (totalIn >= totalOut) IncomeColor else ExpenseColor
+                            )
                         }
                     }
                     Spacer(Modifier.height(14.dp))
@@ -365,15 +365,14 @@ private fun SummaryCell(title: String, rial: Long, color: Color, modifier: Modif
         Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            val num = Fa.num(rial)
-            // عدد بزرگ‌تر؛ برای عددهای خیلی طولانی کمی کوچک‌تر تا در یک خط جا شود
-            val size = when {
-                num.length + (extra?.length ?: 0) > 16 -> 15.sp
-                num.length > 10 -> 17.sp
-                else -> 19.sp
-            }
-            Text(num, color = color, fontWeight = FontWeight.Black, fontSize = size, maxLines = 1, softWrap = false)
-            if (extra != null) Text(" " + extra, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = extraColor, maxLines = 1)
+            // عدد دو برابر؛ اگر جا نشد خودش کوچک می‌شود تا در یک خط بماند
+            var size by remember(rial, extra) { mutableStateOf(38f) }
+            Text(
+                Fa.num(rial), Modifier.weight(1f, fill = false),
+                color = color, fontWeight = FontWeight.Black, fontSize = size.sp, maxLines = 1, softWrap = false,
+                onTextLayout = { if (it.hasVisualOverflow && size > 14f) size *= 0.92f }
+            )
+            if (extra != null) Text(" " + extra, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = extraColor, maxLines = 1, softWrap = false)
         }
         Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
