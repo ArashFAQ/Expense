@@ -249,7 +249,9 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                         Modifier.fillMaxWidth().padding(16.dp), textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    slices.forEach { s ->
+                    // دسته‌ی انتخاب‌شده بالای فهرست می‌آید
+                    val ordered = if (openCat != null) slices.sortedByDescending { it.key == openCat } else slices
+                    ordered.forEach { s ->
                         val frac = if (totalOut > 0) s.sum.toFloat() / totalOut else 0f
                         val open = openCat == s.key
                         val faded by androidx.compose.animation.core.animateFloatAsState(
