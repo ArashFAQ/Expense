@@ -397,7 +397,7 @@ fun LinkFlow(payment: Tx, target: Tx, txs: List<Tx>, cats: List<Category>, onDon
     }
     if (pickCat) {
         CatPickDialog(
-            "خرج " + Fa.toman(excess), "مثلا سهم دنگ تو. دسته‌اش؟", allCats,
+            "خرج " + Fa.toman(excess), "مثلا سهم دنگ تو. دسته‌اش؟", allCats.filter { !it.income },
             onPick = { finish(1, it) }, onDismiss = { pickCat = false }
         )
         return
@@ -562,7 +562,7 @@ fun LoanDetails(loan: Tx, all: List<Tx>, cats: List<Category>, onClose: () -> Un
         else CatPickDialog(
             "بخشیدن " + Fa.toman(o.left),
             "مانده‌ی طلب از " + (loan.person ?: "") + " بسته می‌شود و همین مبلغ جزو خرج‌های امروز ثبت می‌شود. دسته‌اش؟",
-            cats, onPick = { c -> forgive = false; scope.launch { Loans.forgive(ctx, loan, o.left, c) } },
+            cats.filter { !it.income }, onPick = { c -> forgive = false; scope.launch { Loans.forgive(ctx, loan, o.left, c) } },
             onDismiss = { forgive = false }
         )
     }

@@ -881,7 +881,7 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                         Text(if (isExpense) "دسته" else "دسته (اختیاری)", style = MaterialTheme.typography.titleSmall)
                         Spacer(Modifier.height(8.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            cats.forEach { c ->
+                            cats.filter { it.income == !isExpense }.forEach { c ->
                                 val col = c.uiColor()
                                 FilterChip(
                                     selected = sel == c.id,
@@ -899,7 +899,7 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                         )
                         NoteSuggestions(stats, sel, note) { n, c ->
                             note = n
-                            if (sel == null && c != null) sel = c
+                            if (sel == null && c != null && cats.any { it.id == c && it.income == !isExpense }) sel = c
                         }
                     }
                     Spacer(Modifier.height(12.dp))
@@ -1494,7 +1494,7 @@ fun TxEditor(
             Text(if (tx.isExpense) "کجا خرج شد؟" else "بابت چی بود؟ (اختیاری)", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                cats.forEach { c ->
+                cats.filter { it.income == !tx.isExpense }.forEach { c ->
                     val col = c.uiColor()
                     FilterChip(
                         selected = sel == c.id,
@@ -1514,7 +1514,7 @@ fun TxEditor(
         )
         if (!excluded) NoteSuggestions(notes, sel, note) { n, c ->
             note = n
-            if (sel == null && c != null) sel = c
+            if (sel == null && c != null && cats.any { it.id == c && it.income == !tx.isExpense }) sel = c
         }
         // دنگ: برای خرج‌ها و واریزهایی که انتقال/پس‌انداز نیستند
         if (db != null && tx.reason != 1 && tx.reason != 3 && (!tx.isExpense || !excluded || tx.reason == 6 || tx.reason == 9)) DangSection(tx, db, cats, onCancel)
@@ -1722,52 +1722,58 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
             "banks" -> item { AccountsSection() }
             "samples" -> item { SamplesSection() }
             "cats" -> {
-        item {
-            Column {
-                Text(
-                    "دسته‌ها", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-                Text(
-                    "روی دایره‌ی رنگی بزن تا رنگ دسته عوض شود.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        items(cats, key = { it.id }) { c ->
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = cardColors()) {
-                Row(
-                    Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CatBadge(c.uiColor(), c.uiIcon(), 38.dp, Modifier.clickable { renaming = c })
-                    Spacer(Modifier.width(12.dp))
-                    Text(c.name, Modifier.weight(1f), fontWeight = FontWeight.Medium)
-                    TextButton(onClick = { renaming = c }) { Text("ویرایش") }
-                    TextButton(onClick = { deleting = c }) { Text("حذف", color = MaterialTheme.colorScheme.error) }
+        for (inc in listOf(false, true)) {
+            val list = cats.filter { it.income == inc }
+            item(key = "head$inc") {
+                Column {
+                    Text(
+                        if (inc) "دسته‌های درآمد" else "دسته‌های خرج",
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Text(
+                        if (inc) "برای واریزها (اختیاری). کارت درآمد به رنگ دسته‌اش درمی‌آید."
+                        else "روی دایره‌ی رنگی بزن تا رنگ و شکل دسته عوض شود.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
-        }
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = newName, onValueChange = { newName = it },
-                    label = { Text("دسته‌ی جدید") }, singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    enabled = newName.isNotBlank(),
-                    onClick = {
-                        val n = newName.trim()
-                        val sort = (cats.maxOfOrNull { it.sort } ?: 0) + 1
-                        val used = cats.map { it.color }.toSet()
-                        val color = Palette.colors.firstOrNull { it !in used } ?: Palette.at(cats.size)
-                        scope.launch { db.cat().insert(Category(name = n, sort = sort, color = color, icon = CatIcons.guess(n))) }
-                        newName = ""
+            items(list, key = { it.id }) { c ->
+                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = cardColors()) {
+                    Row(
+                        Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CatBadge(c.uiColor(), c.uiIcon(), 38.dp, Modifier.clickable { renaming = c })
+                        Spacer(Modifier.width(12.dp))
+                        Text(c.name, Modifier.weight(1f), fontWeight = FontWeight.Medium)
+                        TextButton(onClick = { renaming = c }) { Text("ویرایش") }
+                        TextButton(onClick = { deleting = c }) { Text("حذف", color = MaterialTheme.colorScheme.error) }
                     }
-                ) { Text("افزودن") }
+                }
+            }
+            item(key = "add$inc") {
+                var nn by remember { mutableStateOf("") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = nn, onValueChange = { nn = it },
+                        label = { Text(if (inc) "دسته‌ی درآمد جدید" else "دسته‌ی خرج جدید") }, singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        enabled = nn.isNotBlank(),
+                        onClick = {
+                            val n = nn.trim()
+                            val sort = (cats.maxOfOrNull { it.sort } ?: 0) + 1
+                            val used = cats.map { it.color }.toSet()
+                            val color = Palette.colors.firstOrNull { it !in used } ?: Palette.at(cats.size)
+                            scope.launch { db.cat().insert(Category(name = n, sort = sort, color = color, icon = CatIcons.guess(n), income = inc)) }
+                            nn = ""
+                        }
+                    ) { Text("افزودن") }
+                }
             }
         }
             }

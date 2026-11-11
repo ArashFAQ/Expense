@@ -53,8 +53,10 @@ object Ingest {
             val merchant = Banks.merchantFor(ctx, p.amount, ts)
             if (merchant != null && Banks.savingsWords(ctx).any { merchant.contains(it) }) reason = 3
         }
+        val profitCat = if (p.tag == "profit") db.cat().list().firstOrNull { it.income && it.icon == "trend" }?.id else null
         val id = db.tx().insert(
             Tx(
+                categoryId = profitCat,
                 isExpense = p.isExpense, amount = p.amount, balance = p.balance,
                 jDate = p.jDate, time = p.time, ym = p.ym, ts = ts, raw = body,
                 dedupKey = dedupKey(body), bank = p.bank, reason = reason, excluded = reason != 0,

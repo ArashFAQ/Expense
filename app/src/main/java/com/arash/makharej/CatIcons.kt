@@ -43,6 +43,7 @@ import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material.icons.outlined.SmokingRooms
 import androidx.compose.material.icons.outlined.Spa
+import androidx.compose.material.icons.outlined.TrendingUp
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.SyncAlt
 import androidx.compose.material.icons.outlined.VolunteerActivism
@@ -95,7 +96,8 @@ object CatIcons {
         Item("bank", "بانک", Icons.Outlined.AccountBalance),
         Item("savings", "پس‌انداز", Icons.Outlined.Savings),
         Item("cash", "پول نقد", Icons.Outlined.Payments),
-        Item("work", "کار", Icons.Outlined.Work),
+        Item("work", "کار و حقوق", Icons.Outlined.Work),
+        Item("trend", "سود", Icons.Outlined.TrendingUp),
         Item("smoke", "دخانیات", Icons.Outlined.SmokingRooms),
         Item("other", "سایر", Icons.Outlined.MoreHoriz),
         Item("category", "عمومی", Icons.Outlined.Category),
@@ -115,6 +117,8 @@ object CatIcons {
     fun guess(name: String): String {
         val n = name.trim()
         val rules = listOf(
+            listOf("حقوق", "دستمزد", "کار") to "work",
+            listOf("سود", "بهره") to "trend",
             listOf("رستوران", "خوراک", "غذا") to "food",
             listOf("فست") to "fastfood",
             listOf("کافه", "قهوه") to "cafe",

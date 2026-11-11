@@ -56,7 +56,9 @@ data class Category(
     val sort: Int = 0,
     @ColumnInfo(defaultValue = "0") val color: Int = 0,
     /** کلید آیکون (CatIcons) */
-    val icon: String = ""
+    val icon: String = "",
+    /** دسته‌ی درآمد (حقوق، سود، …) یا خرج */
+    @ColumnInfo(defaultValue = "0") val income: Boolean = false
 )
 
 /** رنگ‌های قابل انتخاب برای دسته‌ها */
@@ -468,6 +470,29 @@ private val MIGRATION_8_9 = object : Migration(8, 9) {
     }
 }
 
+/** دسته‌های پیش‌فرض درآمد: اسم، آیکون، رنگ */
+val DEFAULT_INCOME_CATS = listOf(
+    Triple("حقوق", "work", 0xFF00897B.toInt()),
+    Triple("سود", "trend", 0xFF5E35B1.toInt()),
+    Triple("هدیه", "gift", 0xFFD81B60.toInt())
+)
+
+/** نسخه‌ی ۱۰ ← ۱۱: دسته‌های درآمد؛ سود مفید به دسته‌ی «سود» */
+private val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE Category ADD COLUMN income INTEGER NOT NULL DEFAULT 0")
+        DEFAULT_INCOME_CATS.forEachIndexed { i, (n, ic, col) ->
+            db.execSQL("INSERT INTO Category(name, sort, color, icon, income) VALUES(?, ?, ?, ?, 1)", arrayOf<Any>(n, 100 + i, col, ic))
+        }
+        db.execSQL(
+            "UPDATE tx SET categoryId = (SELECT id FROM Category WHERE income = 1 AND icon = 'trend' LIMIT 1) " +
+                "WHERE bank = 'MOFID' AND isExpense = 0 AND note = 'سود' AND categoryId IS NULL"
+        )
+        // دسته‌ی قبلی واریزها (از دسته‌های خرج) برداشته می‌شود
+        db.execSQL("UPDATE tx SET categoryId = NULL WHERE isExpense = 0 AND categoryId IN (SELECT id FROM Category WHERE income = 0)")
+    }
+}
+
 /** نسخه‌ی ۹ ← ۱۰: قرض (طرف قرض) */
 private val MIGRATION_9_10 = object : Migration(9, 10) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -475,7 +500,7 @@ private val MIGRATION_9_10 = object : Migration(9, 10) {
     }
 }
 
-@Database(entities = [Tx::class, Category::class, Asset::class], version = 10, exportSchema = false)
+@Database(entities = [Tx::class, Category::class, Asset::class], version = 11, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun tx(): TxDao
     abstract fun cat(): CatDao
@@ -492,13 +517,19 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "makharej.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         DEFAULT_CATS.forEachIndexed { i, n ->
                             db.execSQL(
                                 "INSERT INTO Category(name, sort, color, icon) VALUES(?, ?, ?, ?)",
                                 arrayOf<Any>(n, i, Palette.at(i), CatIcons.guess(n))
+                            )
+                        }
+                        DEFAULT_INCOME_CATS.forEachIndexed { i, (n, ic, col) ->
+                            db.execSQL(
+                                "INSERT INTO Category(name, sort, color, icon, income) VALUES(?, ?, ?, ?, 1)",
+                                arrayOf<Any>(n, 100 + i, col, ic)
                             )
                         }
                     }

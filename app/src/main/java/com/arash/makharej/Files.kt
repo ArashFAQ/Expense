@@ -169,7 +169,7 @@ object Backup {
         val db = AppDb.get(ctx)
         val cats = JSONArray()
         db.cat().list().forEach {
-            cats.put(JSONObject().put("id", it.id).put("name", it.name).put("sort", it.sort).put("color", it.color).put("icon", it.icon))
+            cats.put(JSONObject().put("id", it.id).put("name", it.name).put("sort", it.sort).put("color", it.color).put("icon", it.icon).put("income", it.income))
         }
         val txs = JSONArray()
         db.tx().list().forEach { t ->
@@ -210,8 +210,13 @@ object Backup {
             val c = ca.getJSONObject(i)
             Category(
                 c.getLong("id"), c.getString("name"), c.optInt("sort"), c.optInt("color"),
-                c.optString("icon").ifEmpty { CatIcons.guess(c.getString("name")) }
+                c.optString("icon").ifEmpty { CatIcons.guess(c.getString("name")) },
+                c.optBoolean("income")
             )
+        }.let { l ->
+            // پشتیبان قدیمی: دسته‌های درآمد پیش‌فرض اضافه می‌شوند
+            if (l.any { it.income }) l
+            else l + DEFAULT_INCOME_CATS.mapIndexed { i, (n, ic, col) -> Category(name = n, sort = 100 + i, color = col, icon = ic, income = true) }
         }
         val ta = o.getJSONArray("tx")
         val txs = (0 until ta.length()).map { i ->
