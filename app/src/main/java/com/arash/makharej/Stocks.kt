@@ -709,7 +709,8 @@ private fun TradeDialog(h: Holding, kind: Int, onDone: (Int, Long, Long, Long, B
         title = { Text(title) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                if (needQty) OutlinedTextField(
+                var fb = 0
+                if (needQty) FormBlock(fb++, "تعداد") { OutlinedTextField(
                     value = qtyText, onValueChange = { qtyText = Fa.toEn(it).filter { c -> c.isDigit() }.take(12) },
                     label = { Text(if (kind == 2) "تعداد سهم اضافه‌شده" else "تعداد سهم") }, singleLine = true,
                     isError = tooMany,
@@ -719,8 +720,8 @@ private fun TradeDialog(h: Holding, kind: Int, onDone: (Int, Long, Long, Long, B
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
-                )
-                if (needTotal) OutlinedTextField(
+                ) }
+                if (needTotal) FormBlock(fb++, "مبلغ کل") { OutlinedTextField(
                     value = totalText, onValueChange = { totalText = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
                     label = {
                         Text(
@@ -739,12 +740,14 @@ private fun TradeDialog(h: Holding, kind: Int, onDone: (Int, Long, Long, Long, B
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
-                )
+                ) }
+                FormBlock(fb++, "تاریخ") {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                     Text("تاریخ: " + Fa.toFa("${date[0]}/${date[1]}/${date[2]}"), Modifier.weight(1f))
                     TextButton(onClick = { pickDate = true }) { Text("تغییر") }
                 }
-                if (kind != 2) Row(verticalAlignment = Alignment.CenterVertically) {
+                }
+                if (kind != 2) FormBlock(fb++) { Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(if (kind == 0) "از پول مفید خریدم" else "پولش به مفید آمد")
                         Text(
@@ -753,7 +756,7 @@ private fun TradeDialog(h: Holding, kind: Int, onDone: (Int, Long, Long, Long, B
                         )
                     }
                     Switch(checked = mofid, onCheckedChange = { mofid = it })
-                }
+                } }
             }
         },
         confirmButton = {

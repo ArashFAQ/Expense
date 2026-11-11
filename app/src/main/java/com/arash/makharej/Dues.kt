@@ -493,11 +493,15 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit) {
         title = { Text(if (initial == null) "چک یا قسط جدید" else "ویرایش") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+                var fb = 0
+                FormBlock(fb++, "نوع") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Dues.kinds.forEachIndexed { i, k ->
                         FilterChip(selected = kind == i, onClick = { kind = i }, label = { Text(k) })
                     }
                 }
+                }
+                FormBlock(fb++, "عنوان") {
                 OutlinedTextField(
                     value = title, onValueChange = { title = it.take(40) }, singleLine = true,
                     label = {
@@ -512,6 +516,8 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit) {
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
+                }
+                FormBlock(fb++, "مبلغ") {
                 OutlinedTextField(
                     value = amountText, onValueChange = { amountText = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
                     label = { Text(if (kind == 0) "مبلغ هر قسط" else "مبلغ") }, suffix = { Text("تومان") }, singleLine = true,
@@ -519,6 +525,8 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit) {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
+                }
+                FormBlock(fb++, "تاریخ") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         (if (kind == 0 || kind == 3) "اولین سررسید: " else "تاریخ چک: ") + Fa.toFa("${date[0]}/${date[1]}/${date[2]}"),
@@ -526,6 +534,8 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit) {
                     )
                     TextButton(onClick = { pickDate = true }) { Text("تغییر") }
                 }
+                }
+                if (kind == 0 || kind == 3) FormBlock(fb++) {
                 if (kind == 0) Row {
                     OutlinedTextField(
                         value = countText, onValueChange = { countText = Fa.toEn(it).filter { c -> c.isDigit() }.take(3) },
@@ -545,6 +555,8 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit) {
                     FilterChip(selected = period == 1, onClick = { period = 1 }, label = { Text("ماهانه") })
                     FilterChip(selected = period == 12, onClick = { period = 12 }, label = { Text("سالانه") })
                 }
+                }
+                FormBlock(fb++, "حساب") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         when (kind) {
@@ -568,10 +580,13 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit) {
                         "اگر برداشت یا واریزی با همین مبلغ نزدیک سررسید بیاید، خودکار تیک می‌خورد.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                }
+                FormBlock(fb++) {
                 OutlinedTextField(
                     value = note, onValueChange = { note = it.take(80) }, singleLine = true,
                     label = { Text("توضیح (اختیاری)") }, modifier = Modifier.fillMaxWidth()
                 )
+                }
             }
         },
         confirmButton = {

@@ -394,9 +394,11 @@ private fun NewGroupDialog(cats: List<Category>, onSave: (String, Long?, List<St
         title = { Text("گروه دنگ جدید") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+                var fb = 0
+                FormBlock(fb++, "اسم گروه") {
                 OutlinedTextField(value = name, onValueChange = { name = it.take(40) }, singleLine = true, label = { Text("اسم (مثلا سفر شمال)") }, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                Text("اعضا (خودت خودکار هستی)", style = MaterialTheme.typography.labelLarge)
+                }
+                FormBlock(fb++, "اعضا (خودت خودکار هستی)") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(value = member, onValueChange = { member = it.take(30) }, singleLine = true, label = { Text("اسم") }, modifier = Modifier.weight(1f))
                     TextButton(enabled = member.isNotBlank(), onClick = { members += member.trim(); member = "" }) { Text("افزودن") }
@@ -405,9 +407,10 @@ private fun NewGroupDialog(cats: List<Category>, onSave: (String, Long?, List<St
                     AssistChip(onClick = {}, label = { Text("من") })
                     members.forEach { m -> AssistChip(onClick = { members.remove(m) }, label = { Text("$m ✕") }) }
                 }
-                Spacer(Modifier.height(8.dp))
-                Text("دسته‌ی سهم من در خرج‌ها", style = MaterialTheme.typography.labelLarge)
+                }
+                FormBlock(fb++, "دسته‌ی سهم من در خرج‌ها") {
                 CatDropdown(cats.filter { !it.income }, cat) { cat = it }
+                }
             }
         },
         confirmButton = {
@@ -590,10 +593,14 @@ fun GroupExpenseDialog(data: GData, g: DGroup, cats: List<Category>, linked: Tx?
         title = { Text("هزینه‌ی «" + g.name + "»") },
         text = {
             Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState())) {
+                var fb = 0
+                FormBlock(fb++, "عنوان") {
                 OutlinedTextField(value = title, onValueChange = { title = it.take(40) }, singleLine = true, label = { Text("عنوان (مثلا شام)") }, modifier = Modifier.fillMaxWidth())
                 if (titles.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     titles.forEach { t -> AssistChip(onClick = { title = t }, label = { Text(t) }) }
                 }
+                }
+                FormBlock(fb++, "مبلغ و پرداخت‌کننده") {
                 if (linked == null) {
                     OutlinedTextField(
                         value = amountText, onValueChange = { amountText = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
@@ -610,7 +617,8 @@ fun GroupExpenseDialog(data: GData, g: DGroup, cats: List<Category>, linked: Tx?
                         }
                     }
                 } else Text(Fa.toman(linked.amount) + " · پرداخت: من (" + Banks.name(linked.bank) + ")", fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
+                }
+                FormBlock(fb++) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("بین چه کسانی؟", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                     Text("سهم دلخواه", style = MaterialTheme.typography.labelMedium)
@@ -631,8 +639,8 @@ fun GroupExpenseDialog(data: GData, g: DGroup, cats: List<Category>, linked: Tx?
                     "جمع سهم‌ها " + Fa.toman(sum) + " است؛ باید " + Fa.toman(amount) + " شود",
                     color = ExpenseColor, style = MaterialTheme.typography.bodySmall
                 )
-                if (me != null && (shares[me.id] ?: 0) > 0) {
-                    Spacer(Modifier.height(6.dp))
+                }
+                if (me != null && (shares[me.id] ?: 0) > 0) FormBlock(fb++) {
                     Text("سهم من (" + Fa.toman(shares[me.id] ?: 0) + ") در خرج‌ها با دسته‌ی:", style = MaterialTheme.typography.labelLarge)
                     CatDropdown(cats.filter { !it.income }, myCat) { myCat = it }
                 }

@@ -901,6 +901,8 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                             style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
                             color = if (isExpense) ExpenseColor else IncomeColor
                         )
+                        var fb = 0
+                        FormBlock(fb++) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 "تاریخ: " + (if (isToday) "امروز، " else "") +
@@ -912,7 +914,9 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                             )
                             TextButton(onClick = { pickDate = true }) { Text("تغییر تاریخ") }
                         }
+                        }
                         Spacer(Modifier.height(14.dp))
+                        FormBlock(fb++, "مبلغ") {
                         OutlinedTextField(
                             value = amountText,
                             onValueChange = { v -> amountText = Fa.toEn(v).filter { it.isDigit() }.take(13) },
@@ -923,7 +927,9 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth().focusRequester(focus)
                         )
+                        }
                         Spacer(Modifier.height(8.dp))
+                        FormBlock(fb++) {
                         Text(if (isExpense) "دسته" else "دسته (اختیاری)", style = MaterialTheme.typography.titleSmall)
                         Spacer(Modifier.height(8.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -937,7 +943,9 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                                 )
                             }
                         }
+                        }
                         Spacer(Modifier.height(8.dp))
+                        FormBlock(fb++) {
                         OutlinedTextField(
                             value = note, onValueChange = { note = it },
                             label = { Text("توضیح (اختیاری)") },
@@ -946,6 +954,7 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                         NoteSuggestions(stats, sel, note) { n, c ->
                             note = n
                             if (sel == null && c != null && cats.any { it.id == c && it.income == !isExpense }) sel = c
+                        }
                         }
                     }
                     Spacer(Modifier.height(12.dp))

@@ -655,19 +655,22 @@ private fun AssetEditDialog(
         title = { Text(if (initial == null) "افزودن دارایی" else "ویرایش دارایی") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                if (initial == null) {
+                var fb = 0
+                if (initial == null) FormBlock(fb++, "نوع") {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("usd", "emami", "nim", "rob", "gold18", "fund", "cash", "other").forEach { k ->
                             FilterChip(selected = kind == k, onClick = { kind = k }, label = { Text(Prices.names[k] ?: k) })
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
                 }
+                FormBlock(fb++, "اسم") {
                 OutlinedTextField(
                     value = name, onValueChange = { name = it }, singleLine = true,
                     label = { Text("اسم (اختیاری)") }, placeholder = { Text(Prices.names[kind] ?: "") },
                     modifier = Modifier.fillMaxWidth()
                 )
+                }
+                FormBlock(fb++, "مقدار") {
                 if (priced) {
                     OutlinedTextField(
                         value = qty, onValueChange = { qty = Fa.toEn(it).filter { c -> c.isDigit() || c == '.' }.take(12) },
@@ -683,7 +686,8 @@ private fun AssetEditDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-                if (kind != "cash") OutlinedTextField(
+                }
+                if (kind != "cash") FormBlock(fb++, "خرید") { OutlinedTextField(
                     value = buy, onValueChange = { buy = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
                     label = { Text(if (kind == "fund") "مبلغ سرمایه‌گذاری‌شده (اختیاری)" else "بهای کل خرید (اختیاری)") },
                     suffix = { Text("تومان") }, singleLine = true,
@@ -695,7 +699,7 @@ private fun AssetEditDialog(
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
-                )
+                ) }
             }
         },
         confirmButton = {

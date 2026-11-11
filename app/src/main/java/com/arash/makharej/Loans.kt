@@ -203,6 +203,8 @@ fun LoanPersonDialog(
         title = { Text(title) },
         text = {
             Column {
+                var fb = 0
+                FormBlock(fb++, label) {
                 OutlinedTextField(
                     value = name, onValueChange = { name = it.take(40) }, singleLine = true,
                     label = { Text(label) }, modifier = Modifier.fillMaxWidth()
@@ -213,18 +215,19 @@ fun LoanPersonDialog(
                         sug.forEach { p -> AssistChip(onClick = { name = p }, label = { Text(p) }) }
                     }
                 }
+                }
                 if (askAmount) {
-                    OutlinedTextField(
+                    FormBlock(fb++, "مبلغ") { OutlinedTextField(
                         value = text, onValueChange = { text = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
                         label = { Text("مبلغ") }, suffix = { Text("تومان") }, singleLine = true,
                         supportingText = { if (v != null) Text(Fa.toman(v * 10)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
-                    )
-                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth()
+                    ) }
+                    FormBlock(fb++) { OutlinedTextField(
                         value = note, onValueChange = { note = it.take(80) }, singleLine = true,
                         label = { Text("توضیح (اختیاری)") }, modifier = Modifier.fillMaxWidth()
-                    )
+                    ) }
                 }
             }
         },
