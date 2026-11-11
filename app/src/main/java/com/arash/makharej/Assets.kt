@@ -387,6 +387,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
 
         // ---- طلب‌ها
         item { DuesCard(db, dues) }
+        item { GroupsCard(cats) }
         item { LoansCard(txs, db, cats, debt = false) }
         item { LoansCard(txs, db, cats, debt = true) }
 

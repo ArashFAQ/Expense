@@ -253,6 +253,24 @@ object Backup {
             .put("splits", JSONArray().apply {
                 db.split().list().forEach { p -> put(JSONObject().put("id", p.id).put("txId", p.txId).put("categoryId", p.categoryId).put("amount", p.amount)) }
             })
+            .put("groups", JSONObject().apply {
+                val gd = db.group()
+                put("g", JSONArray().apply { gd.groupList().forEach { put(JSONObject().put("id", it.id).put("name", it.name).put("cat", it.categoryId ?: JSONObject.NULL).put("closed", it.closed).put("ts", it.ts)) } })
+                put("m", JSONArray().apply { gd.memberList().forEach { put(JSONObject().put("id", it.id).put("g", it.groupId).put("name", it.name).put("me", it.me)) } })
+                put("e", JSONArray().apply {
+                    gd.expenseList().forEach {
+                        put(
+                            JSONObject().put("id", it.id).put("g", it.groupId).put("title", it.title).put("amount", it.amount).put("payer", it.payerId)
+                                .put("ts", it.ts).put("shares", it.shares).put("tx", it.txId ?: JSONObject.NULL).put("my", it.myTxId ?: JSONObject.NULL)
+                        )
+                    }
+                })
+                put("s", JSONArray().apply {
+                    gd.settleList().forEach {
+                        put(JSONObject().put("id", it.id).put("g", it.groupId).put("from", it.fromId).put("to", it.toId).put("amount", it.amount).put("ts", it.ts).put("tx", it.txId ?: JSONObject.NULL))
+                    }
+                })
+            })
             .put("dues", JSONArray().apply {
                 db.due().list().forEach { d ->
                     put(
@@ -284,7 +302,8 @@ object Backup {
         val stocks: List<Stock> = emptyList(), val trades: List<StockTrade> = emptyList(),
         val prefs: JSONObject? = null,
         val dues: List<Due> = emptyList(),
-        val splits: List<Split> = emptyList()
+        val splits: List<Split> = emptyList(),
+        val groups: JSONObject? = null
     )
 
     fun parse(bytes: ByteArray): Content {
@@ -363,7 +382,7 @@ object Backup {
             val p = spa.getJSONObject(i)
             Split(p.getLong("id"), p.getLong("txId"), p.getLong("categoryId"), p.getLong("amount"))
         }
-        return Content(cats, txs, assets, stocks, trades, o.optJSONObject("prefs"), dues, splits)
+        return Content(cats, txs, assets, stocks, trades, o.optJSONObject("prefs"), dues, splits, o.optJSONObject("groups"))
     }
 
     /** همه‌ی داده‌های فعلی با محتوای پشتیبان جایگزین می‌شود */
@@ -384,6 +403,24 @@ object Backup {
             db.due().insertAll(c.dues)
             db.split().deleteAll()
             db.split().insertAll(c.splits)
+            val gd = db.group()
+            gd.deleteAllSettles(); gd.deleteAllExpenses(); gd.deleteAllMembers(); gd.deleteAllGroups()
+            c.groups?.let { j ->
+                fun arr(k: String) = j.optJSONArray(k) ?: JSONArray()
+                fun JSONObject.lOrNull(k: String) = if (isNull(k)) null else optLong(k)
+                arr("g").let { a -> gd.insertGroups((0 until a.length()).map { a.getJSONObject(it) }.map { DGroup(it.getLong("id"), it.getString("name"), it.lOrNull("cat"), it.optBoolean("closed"), it.optLong("ts")) }) }
+                arr("m").let { a -> gd.insertMembers((0 until a.length()).map { a.getJSONObject(it) }.map { DMember(it.getLong("id"), it.getLong("g"), it.getString("name"), it.optBoolean("me")) }) }
+                arr("e").let { a ->
+                    gd.insertExpenses((0 until a.length()).map { a.getJSONObject(it) }.map {
+                        DExpense(it.getLong("id"), it.getLong("g"), it.optString("title"), it.getLong("amount"), it.getLong("payer"), it.getLong("ts"), it.optString("shares"), it.lOrNull("tx"), it.lOrNull("my"))
+                    })
+                }
+                arr("s").let { a ->
+                    gd.insertSettles((0 until a.length()).map { a.getJSONObject(it) }.map {
+                        DSettle(it.getLong("id"), it.getLong("g"), it.getLong("from"), it.getLong("to"), it.getLong("amount"), it.getLong("ts"), it.lOrNull("tx"))
+                    })
+                }
+            }
         }
         c.prefs?.let { Prefs.restore(ctx, it) }
         Learned.reset()
@@ -530,6 +567,8 @@ object Excel {
                             t.reason == 8 -> "قرض از " + (t.person ?: "")
                             t.reason == 9 -> "پرداخت بدهی"
                             t.reason == 10 -> "برگشت خورد"
+                            t.reason == 11 -> "دنگ گروه " + (t.person ?: "")
+                            t.reason == 12 -> "تسویه‌ی دنگ " + (t.person ?: "")
                             else -> "حساب خودم"
                         }
                     )

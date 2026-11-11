@@ -389,7 +389,7 @@ object Banks {
      */
     suspend fun rematchAll(ctx: Context) {
         val dao = AppDb.get(ctx).tx()
-        dao.list().filter { !it.isExpense && it.reason !in listOf(1, 3, 4, 7, 8) && it.bank != MANUAL }
+        dao.list().filter { !it.isExpense && it.reason !in listOf(1, 3, 4, 7, 8, 12) && it.bank != MANUAL }
             .sortedBy { it.ts }
             .forEach { d ->
                 val fresh = dao.get(d.id) ?: return@forEach

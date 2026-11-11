@@ -204,15 +204,16 @@ object Notifier {
             .putExtra("exclude", true)
         b.addAction(0, "کجا خرج شد؟", openPicker(ctx, tx.id, 9))
         b.addAction(0, "حساب خودم", PendingIntent.getBroadcast(ctx, nid * 10 + 5, ownAcc, FLAGS))
-        b.addAction(
-            0, "قرض / بدهی",
-            PendingIntent.getActivity(
-                ctx, nid * 10 + 4,
-                Intent(ctx, CategorizeActivity::class.java).putExtra("tx", tx.id).putExtra("loan", true)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-                FLAGS
-            )
-        )
+        // دکمه‌ی سوم: اگر گروه دنگ باز هست «دنگ …»، وگرنه «قرض / بدهی»
+        val openGroups = try { AppDb.get(ctx).group().groupList().filter { !it.closed } } catch (_: Exception) { emptyList() }
+        val third = Intent(ctx, CategorizeActivity::class.java).putExtra("tx", tx.id)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val label = when (openGroups.size) {
+            0 -> { third.putExtra("loan", true); "قرض / بدهی" }
+            1 -> { third.putExtra("group", openGroups[0].id); "دنگ " + openGroups[0].name }
+            else -> { third.putExtra("loan", true); "دنگ / قرض" }
+        }
+        b.addAction(0, label, PendingIntent.getActivity(ctx, nid * 10 + 4, third, FLAGS))
 
         try {
             NotificationManagerCompat.from(ctx).notify(nid, b.build())

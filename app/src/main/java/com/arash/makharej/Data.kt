@@ -123,7 +123,7 @@ interface TxDao {
     suspend fun clearRoleIgnore(bank: String, e: Boolean)
 
     @Query(
-        "SELECT * FROM tx WHERE isExpense = :e AND bank != :notBank AND bank != 'MANUAL' AND reason NOT IN (1, 3, 6, 7, 8, 9) " +
+        "SELECT * FROM tx WHERE isExpense = :e AND bank != :notBank AND bank != 'MANUAL' AND reason NOT IN (1, 3, 6, 7, 8, 9, 11, 12) " +
             "AND ts BETWEEN :from AND :to"
     )
     suspend fun transferCandidates(e: Boolean, notBank: String, from: Long, to: Long): List<Tx>
@@ -191,6 +191,10 @@ interface TxDao {
     /** «قرض نگرفتم»: واریز دوباره در انتظار تأیید */
     @Query("UPDATE tx SET reason = 5, excluded = 1, person = NULL WHERE id = :id")
     suspend fun clearDebt(id: Long)
+
+    /** دنگ گروهی: ۱۱ = هزینه‌ای که من برای گروه دادم، ۱۲ = تسویه بین من و عضو گروه؛ هیچ‌کدام خرج/درآمد نیست */
+    @Query("UPDATE tx SET reason = :r, excluded = 1, person = :p, categoryId = NULL, refundOf = NULL WHERE id = :id")
+    suspend fun setGroupTx(id: Long, r: Int, p: String)
 
     /** پرداخت بدهی (reason = 9) */
     @Query("UPDATE tx SET refundOf = :debtId, excluded = 1, reason = 9, categoryId = NULL WHERE id = :id")
@@ -539,7 +543,26 @@ private val MIGRATION_13_14 = object : Migration(13, 14) {
     }
 }
 
-@Database(entities = [Tx::class, Category::class, Asset::class, Stock::class, StockTrade::class, Due::class, Split::class], version = 14, exportSchema = false)
+/** نسخه‌ی ۱۴ ← ۱۵: دنگ گروهی */
+private val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `DGroup` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `categoryId` INTEGER, `closed` INTEGER NOT NULL, `ts` INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `DMember` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `groupId` INTEGER NOT NULL, `name` TEXT NOT NULL, `me` INTEGER NOT NULL)")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `DExpense` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `groupId` INTEGER NOT NULL, `title` TEXT NOT NULL, " +
+                "`amount` INTEGER NOT NULL, `payerId` INTEGER NOT NULL, `ts` INTEGER NOT NULL, `shares` TEXT NOT NULL, `txId` INTEGER, `myTxId` INTEGER)"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `DSettle` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `groupId` INTEGER NOT NULL, `fromId` INTEGER NOT NULL, " +
+                "`toId` INTEGER NOT NULL, `amount` INTEGER NOT NULL, `ts` INTEGER NOT NULL, `txId` INTEGER)"
+        )
+    }
+}
+
+@Database(
+    entities = [Tx::class, Category::class, Asset::class, Stock::class, StockTrade::class, Due::class, Split::class, DGroup::class, DMember::class, DExpense::class, DSettle::class],
+    version = 15, exportSchema = false
+)
 abstract class AppDb : RoomDatabase() {
     abstract fun tx(): TxDao
     abstract fun cat(): CatDao
@@ -547,6 +570,7 @@ abstract class AppDb : RoomDatabase() {
     abstract fun stock(): StockDao
     abstract fun due(): DueDao
     abstract fun split(): SplitDao
+    abstract fun group(): GroupDao
 
     companion object {
         val DEFAULT_CATS = listOf(
@@ -559,7 +583,7 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "makharej.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         DEFAULT_CATS.forEachIndexed { i, n ->

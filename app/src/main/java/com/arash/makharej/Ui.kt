@@ -283,6 +283,7 @@ class CategorizeActivity : ComponentActivity() {
         val refundMode = intent.getBooleanExtra("refund", false)
         val loanMode = intent.getBooleanExtra("loan", false)
         val incomeMode = intent.getBooleanExtra("incomeCat", false)
+        val groupId = intent.getLongExtra("group", 0L)
         ThemeSettings.load(this)
         setContent {
             AppTheme {
@@ -296,6 +297,14 @@ class CategorizeActivity : ComponentActivity() {
                     Refunds.update(all)
                     val d = tx
                     if (d != null) RepayPicker(d, all, cats, onDone = { finish() }, onDismiss = { finish() })
+                    return@AppTheme
+                }
+                if (groupId > 0) {
+                    val gdata = rememberGroups()
+                    val g = gdata.groups.firstOrNull { it.id == groupId }
+                    val d = tx
+                    if (d != null && g != null && gdata.membersOf(g.id).isNotEmpty() && cats.isNotEmpty())
+                        GroupExpenseDialog(gdata, g, cats, d, onDone = { finish() }, onDismiss = { finish() })
                     return@AppTheme
                 }
                 if (incomeMode) {
@@ -673,6 +682,8 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
         t.reason == 6 -> { title = "قرض به " + (t.person ?: ""); bg = neutral }
         t.excluded && t.reason == 7 -> { title = if (t.note == "بخشیده شد") "قرض بخشیده شد" else "بازپرداخت قرض"; bg = neutral }
         t.reason == 8 -> { title = "قرض از " + (t.person ?: ""); bg = neutral }
+        t.reason == 11 -> { title = "دنگ گروه · " + (t.person ?: ""); bg = neutral }
+        t.reason == 12 -> { title = "تسویه‌ی دنگ · " + (t.person ?: ""); bg = neutral }
         t.excluded && t.reason == 9 -> { title = if (t.note == "بخشیده شد") "بدهی بخشیده شد" else "پرداخت بدهی"; bg = neutral }
         t.excluded -> { title = "حساب خودم"; bg = neutral }
         cat != null -> { title = cat.name; bg = cat.uiColor() }
@@ -700,6 +711,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
                 t.excluded && t.reason == 3 -> CatIcons.savingsIcon
                 t.excluded && t.reason == 4 -> CatIcons.dang
                 t.reason in 6..9 -> CatIcons.loan
+                t.reason == 11 || t.reason == 12 -> CatIcons.dang
                 t.excluded -> CatIcons.transfer
                 cat != null -> cat.uiIcon()
                 else -> CatIcons.unknown
@@ -1543,7 +1555,7 @@ fun TxEditor(
                 val all by remember { db!!.tx().all() }.collectAsState(initial = emptyList())
                 RepayPicker(tx, all, cats, onDone = { pickDang = false; onCancel() }, onDismiss = { pickDang = false })
             }
-        } else if (tx.reason !in 4..10) {
+        } else if (tx.reason !in 4..12) {
         Spacer(Modifier.height(16.dp))
         Row(
             Modifier
@@ -1620,7 +1632,7 @@ fun TxEditor(
             if (sel == null && c != null && cats.any { it.id == c && it.income == !tx.isExpense }) sel = c
         }
         // دنگ: برای خرج‌ها و واریزهایی که انتقال/پس‌انداز نیستند
-        if (db != null && tx.reason != 1 && tx.reason != 3 && (!tx.isExpense || !excluded || tx.reason == 6 || tx.reason == 9)) DangSection(tx, db, cats, onCancel)
+        if (db != null && tx.reason != 1 && tx.reason != 3 && (!tx.isExpense || !excluded || tx.reason == 6 || tx.reason == 9 || tx.reason == 11 || tx.reason == 12)) DangSection(tx, db, cats, onCancel)
     }
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

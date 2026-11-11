@@ -120,7 +120,8 @@ val Tx.eff: Long get() = if (isExpense) (amount - refunded).coerceAtLeast(0L) el
 @Composable
 fun ExpensePickerDialog(
     deposit: Tx, txs: List<Tx>, cats: List<Category>, onPick: (Tx) -> Unit, onDismiss: () -> Unit,
-    onBorrow: (() -> Unit)? = null
+    onBorrow: (() -> Unit)? = null,
+    top: (@Composable () -> Unit)? = null
 ) {
     var q by remember { mutableStateOf("") }
     val catById = cats.associateBy { it.id }
@@ -154,6 +155,7 @@ fun ExpensePickerDialog(
                 Spacer(Modifier.height(6.dp))
                 if (list.isEmpty() && loans.isEmpty()) Text("قرض باز یا خرجی در ۶۰ روز قبل از این واریز پیدا نشد.")
                 LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    if (top != null) item { Column { top() } }
                     if (loans.isNotEmpty()) item {
                         Text("قرض‌های باز", style = MaterialTheme.typography.labelLarge, color = LoanColor, modifier = Modifier.padding(top = 4.dp))
                     }

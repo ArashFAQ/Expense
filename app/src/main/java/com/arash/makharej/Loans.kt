@@ -306,23 +306,36 @@ fun OutPicker(w: Tx, txs: List<Tx>, onDone: () -> Unit, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var lend by remember { mutableStateOf(false) }
     var target by remember { mutableStateOf<Tx?>(null) }
+    val gdata = rememberGroups()
+    var groupExp by remember { mutableStateOf<DGroup?>(null) }
+    var settleTo by remember { mutableStateOf<Pair<DGroup, DMember>?>(null) }
+    val allCats by remember { AppDb.get(ctx).cat().all() }.collectAsState(initial = emptyList())
     val debts = Loans.open(txs, debt = true).filter { it.loan.ts <= w.ts + 60_000 }
+    val hasGroups = gdata.open().isNotEmpty()
     val t = target
+    val ge = groupExp
+    val st = settleTo
     when {
+        ge != null -> GroupExpenseDialog(gdata, ge, allCats, w, onDone = onDone, onDismiss = { groupExp = null })
+        st != null -> {
+            val me = gdata.me(st.first.id)
+            if (me != null) SettleDialog(gdata, st.first, me.id, st.second.id, w.amount, w, onDone = onDone, onDismiss = { settleTo = null })
+        }
         t != null -> LinkFlow(w, t, txs, emptyList(), onDone)
-        lend || debts.isEmpty() -> LoanPersonDialog(
+        lend || (debts.isEmpty() && !hasGroups) -> LoanPersonDialog(
             Fa.toman(w.amount) + " قرض به چه کسی؟", Loans.persons(txs),
             onOk = { p, _, _ -> scope.launch { Loans.mark(ctx, w.id, p); onDone() } },
-            onDismiss = { if (debts.isEmpty()) onDismiss() else lend = false }
+            onDismiss = { if (debts.isEmpty() && !hasGroups) onDismiss() else lend = false }
         )
         else -> AlertDialog(
             onDismissRequest = onDismiss,
             title = { Text(Fa.toman(w.amount) + " بابت چه بود؟") },
             text = {
                 Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+                    GroupOptionsForWithdrawal(gdata, w, onExpense = { groupExp = it }, onSettle = { g, m, _ -> settleTo = g to m })
                     Button(onClick = { lend = true }, modifier = Modifier.fillMaxWidth()) { Text("قرض دادم به کسی") }
                     Spacer(Modifier.height(8.dp))
-                    Text("یا پرداخت بدهی‌ام به:", style = MaterialTheme.typography.labelLarge, color = DebtColor)
+                    if (debts.isNotEmpty()) Text("یا پرداخت بدهی‌ام به:", style = MaterialTheme.typography.labelLarge, color = DebtColor)
                     debts.forEach { o ->
                         Row(
                             Modifier
@@ -360,15 +373,25 @@ fun RepayPicker(deposit: Tx, txs: List<Tx>, cats: List<Category>, onDone: () -> 
     val scope = rememberCoroutineScope()
     var target by remember { mutableStateOf<Tx?>(null) }
     var borrow by remember { mutableStateOf(false) }
+    val gdata = rememberGroups()
+    var settleFrom by remember { mutableStateOf<Pair<DGroup, DMember>?>(null) }
     val t = target
+    val sf = settleFrom
     when {
+        sf != null -> {
+            val me = gdata.me(sf.first.id)
+            if (me != null) SettleDialog(gdata, sf.first, sf.second.id, me.id, deposit.amount, deposit, onDone = onDone, onDismiss = { settleFrom = null })
+        }
         t != null -> LinkFlow(deposit, t, txs, cats, onDone)
         borrow -> LoanPersonDialog(
             Fa.toman(deposit.amount) + " از چه کسی قرض گرفتی؟", Loans.persons(txs), label = "از چه کسی؟",
             onOk = { p, _, _ -> scope.launch { Loans.markDebt(ctx, deposit.id, p); onDone() } },
             onDismiss = { borrow = false }
         )
-        else -> ExpensePickerDialog(deposit, txs, cats, onPick = { target = it }, onDismiss = onDismiss, onBorrow = { borrow = true })
+        else -> ExpensePickerDialog(
+            deposit, txs, cats, onPick = { target = it }, onDismiss = onDismiss, onBorrow = { borrow = true },
+            top = if (gdata.open().isNotEmpty()) ({ GroupDebtorsForDeposit(gdata, deposit) { g, m -> settleFrom = g to m } }) else null
+        )
     }
 }
 
@@ -705,6 +728,23 @@ fun DangSection(tx: Tx, db: AppDb, cats: List<Category>, onClose: () -> Unit = {
     ) {
         val target = me.refundOf?.let { id -> all.firstOrNull { it.id == id } }
         when {
+            me.reason == 11 || me.reason == 12 -> {
+                val gdata = rememberGroups()
+                val e = gdata.expenses.firstOrNull { it.txId == me.id }
+                val s = gdata.settles.firstOrNull { it.txId == me.id }
+                Text(if (e != null) "هزینه‌ی گروه «" + (me.person ?: "") + "»" else "تسویه‌ی دنگ «" + (me.person ?: "") + "»", fontWeight = FontWeight.SemiBold)
+                if (e != null) Text(
+                    e.title + " · سهم من " + Fa.toman(Groups.parseShares(e.shares).firstOrNull { p -> gdata.me(e.groupId)?.id == p.first }?.second ?: 0),
+                    style = MaterialTheme.typography.bodySmall
+                )
+                if (s != null) Text(gdata.name(s.fromId) + " ← " + gdata.name(s.toId), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = {
+                    scope.launch {
+                        if (e != null) Groups.deleteExpense(ctx, e) else if (s != null) Groups.deleteSettle(ctx, s)
+                        onClose()
+                    }
+                }) { Text("از گروه بردار", color = MaterialTheme.colorScheme.error) }
+            }
             Loans.isLoan(me) -> LoanDetails(me, all, cats, onClose)
 
             // پرداخت بدهی یا بازپرداخت قرض
@@ -774,6 +814,10 @@ fun DangSection(tx: Tx, db: AppDb, cats: List<Category>, onClose: () -> Unit = {
                             )
                         }
                         OutlinedButton(onClick = { pickOut = true }) { Text("انتخاب") }
+                    }
+                    if (rememberGroups().open().isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
+                        Text("دنگ گروهی", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                        OutlinedButton(onClick = { pickOut = true }) { Text("انتخاب گروه") }
                     }
                 }
             }
