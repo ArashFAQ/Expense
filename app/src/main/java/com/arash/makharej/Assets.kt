@@ -196,7 +196,7 @@ object Wealth {
      * آخرین مانده‌ی هر بانک. اگر موجودی دستی تازه‌تر از آخرین پیامک باشد، همان مبنا می‌شود
      * و تراکنش‌های بعد از آن (که مانده ندارند) رویش اعمال می‌شوند.
      */
-    fun latestBalances(ctx: Context, txs: List<Tx>): List<Tx> {
+    fun latestBalances(ctx: Context, txs: List<Tx>, trades: List<StockTrade> = emptyList()): List<Tx> {
         val banks = (txs.filter { it.balance != null && it.bank != Banks.MANUAL }.map { it.bank } +
             Banks.all(ctx).filter { manual(ctx, it) != null }).distinct()
         return banks.mapNotNull { bank ->
@@ -210,7 +210,9 @@ object Wealth {
                 sms != null -> sms
                 else -> return@mapNotNull null
             }
-            if (bank == Banks.MOFID) mofidBalance(txs, anchor) else applyAfter(txs, anchor)
+            if (bank == Banks.MOFID) mofidBalance(txs, anchor).let { m ->
+                m.copy(balance = (m.balance ?: 0) + Stocks.mofidDelta(trades, anchor.ts))
+            } else applyAfter(txs, anchor)
         }.sortedByDescending { it.balance }
     }
 
@@ -301,7 +303,10 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
     }
 
     // tick برای خواندن دوباره‌ی قیمت‌ها و تنظیمات
-    val balances = remember(txs, tick) { Wealth.latestBalances(ctx, txs) }
+    val stocks by remember { db.stock().all() }.collectAsState(initial = emptyList())
+    val trades by remember { db.stock().trades() }.collectAsState(initial = emptyList())
+    val holdings = remember(stocks, trades) { stocks.map { s -> Holding(s, trades.filter { it.stockId == s.id }) } }
+    val balances = remember(txs, tick, trades) { Wealth.latestBalances(ctx, txs, trades) }
     var balEdit by remember { mutableStateOf<Tx?>(null) }
     val visible = balances.filter { !Wealth.hidden(ctx, it.bank) }
     val hidden = balances.filter { Wealth.hidden(ctx, it.bank) }
@@ -311,7 +316,8 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
     val investTotal = values.values.sum()
     val loanTotal = Loans.total(txs)
     val debtTotal = Loans.total(txs, debt = true)
-    val total = bankTotal + investTotal + loanTotal - debtTotal
+    val stockTotal = remember(holdings, tick) { Stocks.total(ctx, holdings) }
+    val total = bankTotal + investTotal + stockTotal + loanTotal - debtTotal
     LaunchedEffect(total) { Wealth.saveSnapshot(ctx, total) }
 
     LazyColumn(
@@ -328,6 +334,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                     Spacer(Modifier.height(10.dp))
                     Row(Modifier.fillMaxWidth()) {
                         MiniStat("بانک‌ها", bankTotal, BankColor, Modifier.weight(1f))
+                        if (stockTotal > 0) MiniStat("سهام", stockTotal, Color(0xFF3949AB), Modifier.weight(1f))
                         MiniStat("سرمایه‌گذاری و سایر", investTotal, GoldColor, Modifier.weight(1f))
                         if (loanTotal > 0) MiniStat("طلب‌ها", loanTotal, LoanColor, Modifier.weight(1f))
                         if (debtTotal > 0) MiniStat("بدهی‌ها (−)", debtTotal, DebtColor, Modifier.weight(1f))
@@ -371,6 +378,9 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                 }
             }
         }
+
+        // ---- سهام
+        item { StocksCard(db, holdings, tick) { tick++ } }
 
         // ---- طلب‌ها
         item { LoansCard(txs, db, cats, debt = false) }

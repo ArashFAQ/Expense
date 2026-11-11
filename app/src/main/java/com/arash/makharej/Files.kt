@@ -197,10 +197,27 @@ object Backup {
                     )
                 }
             })
+            .put("stocks", JSONArray().apply {
+                db.stock().list().forEach { s ->
+                    put(JSONObject().put("id", s.id).put("insCode", s.insCode).put("symbol", s.symbol).put("name", s.name).put("sort", s.sort))
+                }
+            })
+            .put("trades", JSONArray().apply {
+                db.stock().tradeList().forEach { t ->
+                    put(
+                        JSONObject().put("id", t.id).put("stockId", t.stockId).put("kind", t.kind).put("qty", t.qty)
+                            .put("total", t.total).put("ts", t.ts).put("jDate", t.jDate).put("fromMofid", t.fromMofid)
+                            .put("txId", t.txId ?: JSONObject.NULL)
+                    )
+                }
+            })
             .toString().toByteArray(Charsets.UTF_8)
     }
 
-    data class Content(val cats: List<Category>, val txs: List<Tx>, val assets: List<Asset> = emptyList())
+    data class Content(
+        val cats: List<Category>, val txs: List<Tx>, val assets: List<Asset> = emptyList(),
+        val stocks: List<Stock> = emptyList(), val trades: List<StockTrade> = emptyList()
+    )
 
     fun parse(bytes: ByteArray): Content {
         val o = JSONObject(String(bytes, Charsets.UTF_8))
@@ -250,7 +267,21 @@ object Backup {
                 a.optLong("buyTotal"), a.optLong("value"), a.optInt("sort")
             )
         }
-        return Content(cats, txs, assets)
+        val sa = o.optJSONArray("stocks") ?: JSONArray()
+        val stocks = (0 until sa.length()).map { i ->
+            val s = sa.getJSONObject(i)
+            Stock(s.getLong("id"), s.getString("insCode"), s.getString("symbol"), s.optString("name"), s.optInt("sort"))
+        }
+        val tr = o.optJSONArray("trades") ?: JSONArray()
+        val trades = (0 until tr.length()).map { i ->
+            val t = tr.getJSONObject(i)
+            StockTrade(
+                t.getLong("id"), t.getLong("stockId"), t.getInt("kind"), t.optLong("qty"), t.optLong("total"),
+                t.getLong("ts"), t.optString("jDate"), t.optBoolean("fromMofid"),
+                if (t.isNull("txId")) null else t.optLong("txId")
+            )
+        }
+        return Content(cats, txs, assets, stocks, trades)
     }
 
     /** همه‌ی داده‌های فعلی با محتوای پشتیبان جایگزین می‌شود */
@@ -263,6 +294,10 @@ object Backup {
             db.tx().insertAll(c.txs)
             db.asset().deleteAll()
             db.asset().insertAll(c.assets)
+            db.stock().deleteAllTrades()
+            db.stock().deleteAll()
+            db.stock().insertAll(c.stocks)
+            db.stock().insertTrades(c.trades)
         }
     }
 
