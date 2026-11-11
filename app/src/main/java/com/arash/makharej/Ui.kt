@@ -686,7 +686,9 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
             ) {
                 Icon(icon, null, tint = if (colored) fg else titleColor, modifier = Modifier.size(22.dp))
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(6.dp))
+            BankBadge(t.bank, 32.dp)
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.Bold, color = titleColor)
                 Text(

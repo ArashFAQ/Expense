@@ -354,7 +354,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                     visible.forEach { t ->
                         AssetRow(
                             Icons.Outlined.AccountBalance, BankColor, Banks.name(t.bank),
-                            "به‌روز شده " + ago(t.ts), Fa.toman(t.balance ?: 0)
+                            "به‌روز شده " + ago(t.ts), Fa.toman(t.balance ?: 0), bank = t.bank
                         ) { balEdit = t }
                     }
                     if (hidden.isNotEmpty()) {
@@ -550,12 +550,12 @@ private fun MiniStat(title: String, rial: Long, color: Color, modifier: Modifier
 }
 
 @Composable
-private fun AssetRow(icon: ImageVector, color: Color, title: String, sub: String, value: String, onClick: () -> Unit) {
+private fun AssetRow(icon: ImageVector, color: Color, title: String, sub: String, value: String, bank: String? = null, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CatBadge(color, icon, 40.dp)
+        if (bank != null) BankBadge(bank, 40.dp) else CatBadge(color, icon, 40.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold)
