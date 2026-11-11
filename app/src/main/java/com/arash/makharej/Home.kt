@@ -38,6 +38,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -251,11 +252,15 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                     slices.forEach { s ->
                         val frac = if (totalOut > 0) s.sum.toFloat() / totalOut else 0f
                         val open = openCat == s.key
+                        val faded by androidx.compose.animation.core.animateFloatAsState(
+                            if (openCat != null && !open) 0.4f else 1f, label = "fade"
+                        )
                         Column(
                             Modifier
                                 .fillMaxWidth()
+                                .alpha(faded)
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(if (open) s.color.copy(alpha = 0.10f) else Color.Transparent)
+                                .background(if (open) s.color.copy(alpha = 0.16f) else Color.Transparent)
                                 .clickable { openCat = if (open) null else s.key }
                                 .padding(horizontal = 6.dp, vertical = 8.dp)
                         ) {
