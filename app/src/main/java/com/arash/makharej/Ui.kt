@@ -679,15 +679,20 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
                 cat != null -> cat.uiIcon()
                 else -> CatIcons.unknown
             }
-            Box(
-                Modifier.size(40.dp).clip(CircleShape)
-                    .background(if (colored) Color.White.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, null, tint = if (colored) fg else titleColor, modifier = Modifier.size(22.dp))
+            // درآمد بدون دسته: علامت سؤال لازم نیست، فقط لوگوی بانک
+            if (!t.isExpense && cat == null && !t.excluded) {
+                BankBadge(t.bank, 40.dp)
+            } else {
+                Box(
+                    Modifier.size(40.dp).clip(CircleShape)
+                        .background(if (colored) Color.White.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, null, tint = if (colored) fg else titleColor, modifier = Modifier.size(22.dp))
+                }
+                Spacer(Modifier.width(6.dp))
+                BankBadge(t.bank, 32.dp)
             }
-            Spacer(Modifier.width(6.dp))
-            BankBadge(t.bank, 32.dp)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.Bold, color = titleColor)
