@@ -411,12 +411,12 @@ object Backup {
                         if (it.isNull("deal") || !it.has("deal")) null else it.optLong("deal")
                     )
                 }
-            }),
+            },
             (o.optJSONArray("assetDeals") ?: JSONArray()).let { a ->
                 (0 until a.length()).map { a.getJSONObject(it) }.map {
                     AssetDeal(it.getLong("id"), it.getString("kind"), it.optBoolean("buy"), it.optDouble("q"), it.optLong("target"), it.optBoolean("closed"), it.optLong("ts"))
                 }
-            }
+            })
     }
 
     /** همه‌ی داده‌های فعلی با محتوای پشتیبان جایگزین می‌شود */
