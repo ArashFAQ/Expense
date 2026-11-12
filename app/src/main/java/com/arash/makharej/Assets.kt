@@ -428,6 +428,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
         // ---- سرمایه‌گذاری (جمع‌شده)
         item {
             FoldRow("inv", "سرمایه‌گذاری و طلا", "دلار، سکه، صندوق", Fa.toman(investTotal), null, kindIcon("emami"), GoldColor) {
+                OpenDealsList()
             Card(shape = RoundedCornerShape(20.dp), colors = cardColors()) {
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

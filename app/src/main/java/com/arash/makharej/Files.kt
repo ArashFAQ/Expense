@@ -260,7 +260,12 @@ object Backup {
             })
             .put("assetTrades", JSONArray().apply {
                 db.assetTrade().list().forEach { t ->
-                    put(JSONObject().put("id", t.id).put("a", t.assetId).put("tx", t.txId).put("buy", t.isBuy).put("q", t.qty).put("total", t.total).put("cost", t.cost).put("ts", t.ts))
+                    put(JSONObject().put("id", t.id).put("a", t.assetId).put("tx", t.txId).put("buy", t.isBuy).put("q", t.qty).put("total", t.total).put("cost", t.cost).put("ts", t.ts).put("deal", t.dealId ?: JSONObject.NULL))
+                }
+            })
+            .put("assetDeals", JSONArray().apply {
+                db.assetDeal().list().forEach { d ->
+                    put(JSONObject().put("id", d.id).put("kind", d.kind).put("buy", d.isBuy).put("q", d.qty).put("target", d.target).put("closed", d.closed).put("ts", d.ts))
                 }
             })
             .put("splits", JSONArray().apply {
@@ -318,7 +323,8 @@ object Backup {
         val splits: List<Split> = emptyList(),
         val groups: JSONObject? = null,
         val receipts: JSONObject? = null,
-        val assetTrades: List<AssetTrade> = emptyList()
+        val assetTrades: List<AssetTrade> = emptyList(),
+        val assetDeals: List<AssetDeal> = emptyList()
     )
 
     fun parse(bytes: ByteArray): Content {
@@ -400,9 +406,17 @@ object Backup {
         return Content(cats, txs, assets, stocks, trades, o.optJSONObject("prefs"), dues, splits, o.optJSONObject("groups"), o.optJSONObject("receipts"),
             (o.optJSONArray("assetTrades") ?: JSONArray()).let { a ->
                 (0 until a.length()).map { a.getJSONObject(it) }.map {
-                    AssetTrade(it.getLong("id"), it.getLong("a"), it.getLong("tx"), it.optBoolean("buy"), it.optDouble("q"), it.optLong("total"), it.optLong("cost"), it.getLong("ts"))
+                    AssetTrade(
+                        it.getLong("id"), it.getLong("a"), it.getLong("tx"), it.optBoolean("buy"), it.optDouble("q"), it.optLong("total"), it.optLong("cost"), it.getLong("ts"),
+                        if (it.isNull("deal") || !it.has("deal")) null else it.optLong("deal")
+                    )
                 }
-            })
+            }),
+            (o.optJSONArray("assetDeals") ?: JSONArray()).let { a ->
+                (0 until a.length()).map { a.getJSONObject(it) }.map {
+                    AssetDeal(it.getLong("id"), it.getString("kind"), it.optBoolean("buy"), it.optDouble("q"), it.optLong("target"), it.optBoolean("closed"), it.optLong("ts"))
+                }
+            }
     }
 
     /** همه‌ی داده‌های فعلی با محتوای پشتیبان جایگزین می‌شود */
@@ -425,6 +439,8 @@ object Backup {
             db.split().insertAll(c.splits)
             db.assetTrade().deleteAll()
             db.assetTrade().insertAll(c.assetTrades)
+            db.assetDeal().deleteAll()
+            db.assetDeal().insertAll(c.assetDeals)
             val gd = db.group()
             gd.deleteAllSettles(); gd.deleteAllExpenses(); gd.deleteAllMembers(); gd.deleteAllGroups()
             c.groups?.let { j ->
