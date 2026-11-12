@@ -123,7 +123,7 @@ interface TxDao {
     suspend fun clearRoleIgnore(bank: String, e: Boolean)
 
     @Query(
-        "SELECT * FROM tx WHERE isExpense = :e AND bank != :notBank AND bank != 'MANUAL' AND reason NOT IN (1, 3, 6, 7, 8, 9, 11, 12) " +
+        "SELECT * FROM tx WHERE isExpense = :e AND bank != :notBank AND bank != 'MANUAL' AND reason NOT IN (1, 3, 6, 7, 8, 9, 11, 12, 13, 14) " +
             "AND ts BETWEEN :from AND :to"
     )
     suspend fun transferCandidates(e: Boolean, notBank: String, from: Long, to: Long): List<Tx>
@@ -559,9 +559,19 @@ private val MIGRATION_14_15 = object : Migration(14, 15) {
     }
 }
 
+/** نسخه‌ی ۱۵ ← ۱۶: خرید و فروش دلار/سکه/طلا از پیامک */
+private val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `AssetTrade` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `assetId` INTEGER NOT NULL, " +
+                "`txId` INTEGER NOT NULL, `isBuy` INTEGER NOT NULL, `qty` REAL NOT NULL, `total` INTEGER NOT NULL, `cost` INTEGER NOT NULL, `ts` INTEGER NOT NULL)"
+        )
+    }
+}
+
 @Database(
-    entities = [Tx::class, Category::class, Asset::class, Stock::class, StockTrade::class, Due::class, Split::class, DGroup::class, DMember::class, DExpense::class, DSettle::class],
-    version = 15, exportSchema = false
+    entities = [Tx::class, Category::class, Asset::class, Stock::class, StockTrade::class, Due::class, Split::class, DGroup::class, DMember::class, DExpense::class, DSettle::class, AssetTrade::class],
+    version = 16, exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
     abstract fun tx(): TxDao
@@ -571,6 +581,7 @@ abstract class AppDb : RoomDatabase() {
     abstract fun due(): DueDao
     abstract fun split(): SplitDao
     abstract fun group(): GroupDao
+    abstract fun assetTrade(): AssetTradeDao
 
     companion object {
         val DEFAULT_CATS = listOf(
@@ -583,7 +594,7 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "makharej.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         DEFAULT_CATS.forEachIndexed { i, n ->

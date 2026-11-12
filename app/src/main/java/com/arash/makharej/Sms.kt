@@ -209,7 +209,7 @@ object Notifier {
         val third = Intent(ctx, CategorizeActivity::class.java).putExtra("tx", tx.id)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val label = when (openGroups.size) {
-            0 -> { third.putExtra("loan", true); "قرض / بدهی" }
+            0 -> { third.putExtra("loan", true); "قرض / دارایی" }
             1 -> { third.putExtra("group", openGroups[0].id); "دنگ " + openGroups[0].name }
             else -> { third.putExtra("loan", true); "دنگ / قرض" }
         }

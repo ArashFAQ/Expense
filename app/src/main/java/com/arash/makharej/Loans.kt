@@ -312,6 +312,7 @@ fun OutPicker(w: Tx, txs: List<Tx>, onDone: () -> Unit, onDismiss: () -> Unit) {
     val gdata = rememberGroups()
     var groupExp by remember { mutableStateOf<DGroup?>(null) }
     var settleTo by remember { mutableStateOf<Pair<DGroup, DMember>?>(null) }
+    var buying by remember { mutableStateOf(false) }
     val allCats by remember { AppDb.get(ctx).cat().all() }.collectAsState(initial = emptyList())
     val debts = Loans.open(txs, debt = true).filter { it.loan.ts <= w.ts + 60_000 }
     val hasGroups = gdata.open().isNotEmpty()
@@ -319,16 +320,17 @@ fun OutPicker(w: Tx, txs: List<Tx>, onDone: () -> Unit, onDismiss: () -> Unit) {
     val ge = groupExp
     val st = settleTo
     when {
+        buying -> AssetTradeDialog(w, onDone = onDone, onDismiss = { buying = false })
         ge != null -> GroupExpenseDialog(gdata, ge, allCats, w, onDone = onDone, onDismiss = { groupExp = null })
         st != null -> {
             val me = gdata.me(st.first.id)
             if (me != null) SettleDialog(gdata, st.first, me.id, st.second.id, w.amount, w, onDone = onDone, onDismiss = { settleTo = null })
         }
         t != null -> LinkFlow(w, t, txs, emptyList(), onDone)
-        lend || (debts.isEmpty() && !hasGroups) -> LoanPersonDialog(
+        lend -> LoanPersonDialog(
             Fa.toman(w.amount) + " قرض به چه کسی؟", Loans.persons(txs),
             onOk = { p, _, _ -> scope.launch { Loans.mark(ctx, w.id, p); onDone() } },
-            onDismiss = { if (debts.isEmpty() && !hasGroups) onDismiss() else lend = false }
+            onDismiss = { lend = false }
         )
         else -> AlertDialog(
             onDismissRequest = onDismiss,
@@ -337,6 +339,7 @@ fun OutPicker(w: Tx, txs: List<Tx>, onDone: () -> Unit, onDismiss: () -> Unit) {
                 Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
                     GroupOptionsForWithdrawal(gdata, w, onExpense = { groupExp = it }, onSettle = { g, m, _ -> settleTo = g to m })
                     Button(onClick = { lend = true }, modifier = Modifier.fillMaxWidth()) { Text("قرض دادم به کسی") }
+                    OutlinedButton(onClick = { buying = true }, modifier = Modifier.fillMaxWidth()) { Text("خرید دلار، سکه یا طلا") }
                     Spacer(Modifier.height(8.dp))
                     if (debts.isNotEmpty()) Text("یا پرداخت بدهی‌ام به:", style = MaterialTheme.typography.labelLarge, color = DebtColor)
                     debts.forEach { o ->
@@ -378,9 +381,11 @@ fun RepayPicker(deposit: Tx, txs: List<Tx>, cats: List<Category>, onDone: () -> 
     var borrow by remember { mutableStateOf(false) }
     val gdata = rememberGroups()
     var settleFrom by remember { mutableStateOf<Pair<DGroup, DMember>?>(null) }
+    var selling by remember { mutableStateOf(false) }
     val t = target
     val sf = settleFrom
     when {
+        selling -> AssetTradeDialog(deposit, onDone = onDone, onDismiss = { selling = false })
         sf != null -> {
             val me = gdata.me(sf.first.id)
             if (me != null) SettleDialog(gdata, sf.first, sf.second.id, me.id, deposit.amount, deposit, onDone = onDone, onDismiss = { settleFrom = null })
@@ -393,7 +398,8 @@ fun RepayPicker(deposit: Tx, txs: List<Tx>, cats: List<Category>, onDone: () -> 
         )
         else -> ExpensePickerDialog(
             deposit, txs, cats, onPick = { target = it }, onDismiss = onDismiss, onBorrow = { borrow = true },
-            top = if (gdata.open().isNotEmpty()) ({ GroupDebtorsForDeposit(gdata, deposit) { g, m -> settleFrom = g to m } }) else null
+            top = if (gdata.open().isNotEmpty()) ({ GroupDebtorsForDeposit(gdata, deposit) { g, m -> settleFrom = g to m } }) else null,
+            onSellAsset = { selling = true }
         )
     }
 }
@@ -731,6 +737,16 @@ fun DangSection(tx: Tx, db: AppDb, cats: List<Category>, onClose: () -> Unit = {
     ) {
         val target = me.refundOf?.let { id -> all.firstOrNull { it.id == id } }
         when {
+            me.reason == 13 || me.reason == 14 -> {
+                Text(me.person ?: "", fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (me.reason == 13) "خرج حساب نمی‌شود؛ به دارایی‌ها اضافه شد." else "درآمد حساب نمی‌شود؛ از دارایی‌ها کم شد.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                TextButton(onClick = { scope.launch { AssetTrades.undo(ctx, me); onClose() } }) {
+                    Text("لغو (خرید/فروش نبود)", color = MaterialTheme.colorScheme.error)
+                }
+            }
             me.reason == 11 || me.reason == 12 -> {
                 val gdata = rememberGroups()
                 val e = gdata.expenses.firstOrNull { it.txId == me.id }
@@ -809,7 +825,7 @@ fun DangSection(tx: Tx, db: AppDb, cats: List<Category>, onClose: () -> Unit = {
                     HorizontalDivider(Modifier.padding(vertical = 8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("قرض دادم / بدهی‌ام را دادم", fontWeight = FontWeight.SemiBold)
+                            Text("قرض، بدهی یا خرید دلار و سکه", fontWeight = FontWeight.SemiBold)
                             Text(
                                 "خرج حساب نمی‌شود؛ طلب ثبت می‌شود یا از بدهی کم می‌شود",
                                 style = MaterialTheme.typography.bodySmall,
@@ -840,7 +856,7 @@ fun DangSection(tx: Tx, db: AppDb, cats: List<Category>, onClose: () -> Unit = {
             }
 
             else -> Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("بازپرداخت قرض یا دنگ، یا قرض گرفتی؟", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                Text("بازپرداخت، قرض یا فروش دلار و سکه؟", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                 OutlinedButton(onClick = { pickRepay = true }) { Text("انتخاب") }
             }
         }

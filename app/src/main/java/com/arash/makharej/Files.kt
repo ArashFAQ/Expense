@@ -258,6 +258,11 @@ object Backup {
                     }
                 }
             })
+            .put("assetTrades", JSONArray().apply {
+                db.assetTrade().list().forEach { t ->
+                    put(JSONObject().put("id", t.id).put("a", t.assetId).put("tx", t.txId).put("buy", t.isBuy).put("q", t.qty).put("total", t.total).put("cost", t.cost).put("ts", t.ts))
+                }
+            })
             .put("splits", JSONArray().apply {
                 db.split().list().forEach { p -> put(JSONObject().put("id", p.id).put("txId", p.txId).put("categoryId", p.categoryId).put("amount", p.amount)) }
             })
@@ -312,7 +317,8 @@ object Backup {
         val dues: List<Due> = emptyList(),
         val splits: List<Split> = emptyList(),
         val groups: JSONObject? = null,
-        val receipts: JSONObject? = null
+        val receipts: JSONObject? = null,
+        val assetTrades: List<AssetTrade> = emptyList()
     )
 
     fun parse(bytes: ByteArray): Content {
@@ -391,7 +397,12 @@ object Backup {
             val p = spa.getJSONObject(i)
             Split(p.getLong("id"), p.getLong("txId"), p.getLong("categoryId"), p.getLong("amount"))
         }
-        return Content(cats, txs, assets, stocks, trades, o.optJSONObject("prefs"), dues, splits, o.optJSONObject("groups"), o.optJSONObject("receipts"))
+        return Content(cats, txs, assets, stocks, trades, o.optJSONObject("prefs"), dues, splits, o.optJSONObject("groups"), o.optJSONObject("receipts"),
+            (o.optJSONArray("assetTrades") ?: JSONArray()).let { a ->
+                (0 until a.length()).map { a.getJSONObject(it) }.map {
+                    AssetTrade(it.getLong("id"), it.getLong("a"), it.getLong("tx"), it.optBoolean("buy"), it.optDouble("q"), it.optLong("total"), it.optLong("cost"), it.getLong("ts"))
+                }
+            })
     }
 
     /** همه‌ی داده‌های فعلی با محتوای پشتیبان جایگزین می‌شود */
@@ -412,6 +423,8 @@ object Backup {
             db.due().insertAll(c.dues)
             db.split().deleteAll()
             db.split().insertAll(c.splits)
+            db.assetTrade().deleteAll()
+            db.assetTrade().insertAll(c.assetTrades)
             val gd = db.group()
             gd.deleteAllSettles(); gd.deleteAllExpenses(); gd.deleteAllMembers(); gd.deleteAllGroups()
             c.groups?.let { j ->
@@ -585,6 +598,7 @@ object Excel {
                             t.reason == 10 -> "برگشت خورد"
                             t.reason == 11 -> "دنگ گروه " + (t.person ?: "")
                             t.reason == 12 -> "تسویه‌ی دنگ " + (t.person ?: "")
+                            t.reason == 13 || t.reason == 14 -> t.person ?: "خرید/فروش دارایی"
                             else -> "حساب خودم"
                         }
                     )

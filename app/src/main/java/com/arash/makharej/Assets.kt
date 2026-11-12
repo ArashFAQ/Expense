@@ -268,7 +268,7 @@ private fun ago(ts: Long): String {
     }
 }
 
-private fun kindIcon(kind: String): ImageVector = when (kind) {
+fun kindIcon(kind: String): ImageVector = when (kind) {
     "usd" -> Icons.Outlined.AttachMoney
     "emami", "nim", "rob", "gerami", "gold18" -> Icons.Outlined.Toll
     "fund" -> Icons.Outlined.Savings
@@ -281,7 +281,7 @@ private val UsdColor = Color(0xFF2E7D32)
 private val FundColor = Color(0xFF5C6BC0)
 private val BankColor = Color(0xFF00897B)
 
-private fun kindColor(kind: String) = when (kind) {
+fun kindColor(kind: String) = when (kind) {
     "usd" -> UsdColor
     "emami", "nim", "rob", "gerami", "gold18" -> GoldColor
     "fund" -> FundColor
@@ -308,6 +308,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
 
     // tick برای خواندن دوباره‌ی قیمت‌ها و تنظیمات
     val stocks by remember { db.stock().all() }.collectAsState(initial = emptyList())
+    val assetTrades by remember { db.assetTrade().all() }.collectAsState(initial = emptyList())
     val trades by remember { db.stock().trades() }.collectAsState(initial = emptyList())
     val holdings = remember(stocks, trades) { stocks.map { s -> Holding(s, trades.filter { it.stockId == s.id }) } }
     val balances = remember(txs, tick, trades) { Wealth.latestBalances(ctx, txs, trades) }
@@ -450,6 +451,12 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                                 if (isNotEmpty()) append("  ·  ")
                                 append((if (pct >= 0) "سود " else "زیان ") + Fa.toFa(String.format(java.util.Locale.US, "%.1f", kotlin.math.abs(pct))) + "٪")
                             }
+                            // سود/زیان فروش‌هایی که از پیامک ثبت شده
+                            val realized = assetTrades.filter { it.assetId == a.id && !it.isBuy }.sumOf { it.total - it.cost }
+                            if (realized != 0L) {
+                                if (isNotEmpty()) append("  ·  ")
+                                append((if (realized > 0) "سود فروش‌ها " else "زیان فروش‌ها ") + Fa.toman(kotlin.math.abs(realized)))
+                            }
                             if (a.kind == "fund" && a.buyTotal <= 0 && savedFromSms > 0) {
                                 if (isNotEmpty()) append("  ·  ")
                                 append("واریزی از پیامک‌ها " + Fa.toman(savedFromSms))
@@ -588,7 +595,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
     }
 }
 
-private fun fmtQty(q: Double): String =
+fun fmtQty(q: Double): String =
     if (q == Math.floor(q)) q.toLong().toString() else String.format(java.util.Locale.US, "%.2f", q).trimEnd('0').trimEnd('.')
 
 @Composable

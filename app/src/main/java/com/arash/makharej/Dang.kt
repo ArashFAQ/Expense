@@ -121,7 +121,8 @@ val Tx.eff: Long get() = if (isExpense) (amount - refunded).coerceAtLeast(0L) el
 fun ExpensePickerDialog(
     deposit: Tx, txs: List<Tx>, cats: List<Category>, onPick: (Tx) -> Unit, onDismiss: () -> Unit,
     onBorrow: (() -> Unit)? = null,
-    top: (@Composable () -> Unit)? = null
+    top: (@Composable () -> Unit)? = null,
+    onSellAsset: (() -> Unit)? = null
 ) {
     var q by remember { mutableStateOf("") }
     val catById = cats.associateBy { it.id }
@@ -151,6 +152,9 @@ fun ExpensePickerDialog(
                 )
                 if (onBorrow != null) OutlinedButton(onClick = onBorrow, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
                     Text("قرض گرفتم (بدهکار شدم)")
+                }
+                if (onSellAsset != null) OutlinedButton(onClick = onSellAsset, modifier = Modifier.fillMaxWidth()) {
+                    Text("فروش دلار، سکه یا طلا")
                 }
                 Spacer(Modifier.height(6.dp))
                 if (list.isEmpty() && loans.isEmpty()) Text("قرض باز یا خرجی در ۶۰ روز قبل از این واریز پیدا نشد.")

@@ -690,6 +690,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
         t.excluded && t.reason == 7 -> { title = if (t.note == "بخشیده شد") "قرض بخشیده شد" else "بازپرداخت قرض"; bg = neutral }
         t.reason == 8 -> { title = "قرض از " + (t.person ?: ""); bg = neutral }
         t.reason == 11 -> { title = "دنگ گروه · " + (t.person ?: ""); bg = neutral }
+        t.reason == 13 || t.reason == 14 -> { title = t.person ?: "خرید/فروش دارایی"; bg = neutral }
         t.reason == 12 -> { title = "تسویه‌ی دنگ · " + (t.person ?: ""); bg = neutral }
         t.excluded && t.reason == 9 -> { title = if (t.note == "بخشیده شد") "بدهی بخشیده شد" else "پرداخت بدهی"; bg = neutral }
         t.excluded -> { title = "حساب خودم"; bg = neutral }
@@ -719,6 +720,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
                 t.excluded && t.reason == 4 -> CatIcons.dang
                 t.reason in 6..9 -> CatIcons.loan
                 t.reason == 11 || t.reason == 12 -> CatIcons.dang
+                t.reason == 13 || t.reason == 14 -> CatIcons.savingsIcon
                 t.excluded -> CatIcons.transfer
                 cat != null -> cat.uiIcon()
                 else -> CatIcons.unknown
@@ -1581,7 +1583,7 @@ fun TxEditor(
                 val all by remember { db!!.tx().all() }.collectAsState(initial = emptyList())
                 RepayPicker(tx, all, cats, onDone = { pickDang = false; onCancel() }, onDismiss = { pickDang = false })
             }
-        } else if (tx.reason !in 4..12) {
+        } else if (tx.reason !in 4..14) {
         Spacer(Modifier.height(16.dp))
         Row(
             Modifier
@@ -1659,7 +1661,7 @@ fun TxEditor(
         }
         if (tx.id > 0) ReceiptSection(tx.id)
         // دنگ: برای خرج‌ها و واریزهایی که انتقال/پس‌انداز نیستند
-        if (db != null && tx.reason != 1 && tx.reason != 3 && (!tx.isExpense || !excluded || tx.reason == 6 || tx.reason == 9 || tx.reason == 11 || tx.reason == 12)) DangSection(tx, db, cats, onCancel)
+        if (db != null && tx.reason != 1 && tx.reason != 3 && (!tx.isExpense || !excluded || tx.reason == 6 || tx.reason == 9 || tx.reason == 11 || tx.reason == 12 || tx.reason == 13 || tx.reason == 14)) DangSection(tx, db, cats, onCancel)
     }
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
