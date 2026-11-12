@@ -60,11 +60,11 @@ class PricesWidget : AppWidgetProvider() {
         const val ACTION_REFRESH = "com.arash.makharej.PRICES_REFRESH"
         private val changeIds = mapOf(
             "usd" to R.id.c_usd, "emami" to R.id.c_emami, "nim" to R.id.c_nim,
-            "rob" to R.id.c_rob, "gold18" to R.id.c_gold18
+            "rob" to R.id.c_rob, "gold18" to R.id.c_gold18, "ons" to R.id.c_ons
         )
         private val ids = mapOf(
             "usd" to R.id.p_usd, "emami" to R.id.p_emami, "nim" to R.id.p_nim,
-            "rob" to R.id.p_rob, "gold18" to R.id.p_gold18
+            "rob" to R.id.p_rob, "gold18" to R.id.p_gold18, "ons" to R.id.p_ons
         )
 
         fun render(ctx: Context, busy: Boolean = false) {

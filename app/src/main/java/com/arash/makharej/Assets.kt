@@ -80,9 +80,10 @@ object Prices {
         "nim" to "nim",
         "rob" to "rob",
         "gold18" to "geram18",
+        "ons" to "ons",
     )
     val names = mapOf(
-        "usd" to "دلار", "emami" to "سکه امامی", "nim" to "نیم‌سکه", "rob" to "ربع‌سکه", "gerami" to "سکه گرمی", "gold18" to "طلای ۱۸ عیار",
+        "usd" to "دلار", "emami" to "سکه امامی", "nim" to "نیم‌سکه", "rob" to "ربع‌سکه", "gerami" to "سکه گرمی", "gold18" to "طلای ۱۸ عیار", "ons" to "انس طلا",
         "fund" to "صندوق سرمایه‌گذاری", "cash" to "پول نقد", "other" to "سایر"
     )
     private val urls = listOf(
@@ -142,7 +143,9 @@ object Prices {
                 val p0 = prefs(ctx)
                 keys.forEach { (kind, key) ->
                     val o = cur.optJSONObject(key) ?: return@forEach
-                    val v = o.optString("p").replace(",", "").substringBefore('.').toLongOrNull() ?: return@forEach
+                    val raw = o.optString("p").replace(",", "")
+                    // انس به دلار است؛ ×۱۰ ذخیره می‌شود تا مثل بقیه با Fa.num نمایش داده شود
+                    val v = (if (kind == "ons") raw.toDoubleOrNull()?.let { (it * 10).toLong() } else raw.substringBefore('.').toLongOrNull()) ?: return@forEach
                     if (v > 0) {
                         // قیمت روز قبل برای مقایسه (اگر tgju درصد تغییر نداد)
                         val oldDay = p0.getInt("priceDay_$kind", 0)
@@ -496,7 +499,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                Text(p?.let { Fa.toman(it.first) } ?: "—", fontWeight = FontWeight.Bold)
+                                Text(p?.let { if (k == "ons") Fa.num(it.first) + " دلار" else Fa.toman(it.first) } ?: "—", fontWeight = FontWeight.Bold)
                             }
                             HorizontalDivider()
                         }
@@ -570,8 +573,8 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
             text = {
                 OutlinedTextField(
                     value = text, onValueChange = { text = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
-                    label = { Text("قیمت هر واحد") }, suffix = { Text("تومان") }, singleLine = true,
-                    supportingText = { if (v != null) Text(Fa.toman(v * 10)) },
+                    label = { Text("قیمت هر واحد") }, suffix = { Text(if (k == "ons") "دلار" else "تومان") }, singleLine = true,
+                    supportingText = { if (v != null) Text(if (k == "ons") Fa.num(v * 10) + " دلار" else Fa.toman(v * 10)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
             },
