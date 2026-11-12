@@ -405,7 +405,12 @@ fun DueRow(d: Due, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         CatBadge(Dues.color(d.kind), Dues.icon(d.kind), 40.dp)
-        Spacer(Modifier.width(12.dp))
+        // لوگوی بانکی که از آن کم می‌شود / به آن واریز می‌شود
+        if (d.bank != null) {
+            Spacer(Modifier.width(6.dp))
+            BankBadge(d.bank, 32.dp)
+        }
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(Dues.kinds[d.kind] + " · " + d.title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val n = Dues.next(d)
