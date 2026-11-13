@@ -328,7 +328,7 @@ fun GroupsCard(cats: List<Category>) {
     val openGroups = data.open()
     val closed = data.groups.filter { it.closed }
 
-    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    Card(shape = RoundedCornerShape(20.dp), colors = cardColors()) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {

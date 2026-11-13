@@ -7,6 +7,8 @@ import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Cake
 import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.CallMade
+import androidx.compose.material.icons.outlined.CallReceived
 import androidx.compose.material.icons.outlined.Chair
 import androidx.compose.material.icons.outlined.Checkroom
 import androidx.compose.material.icons.outlined.ChildCare
@@ -110,6 +112,9 @@ object CatIcons {
     val savingsIcon: ImageVector = Icons.Outlined.Savings
     val dang: ImageVector = Icons.Outlined.Groups
     val loan: ImageVector = Icons.Outlined.Payments
+    /** طلب: پولی که به من برمی‌گردد؛ بدهی: پولی که باید بدهم */
+    val loanIn: ImageVector = Icons.Outlined.CallReceived
+    val loanOut: ImageVector = Icons.Outlined.CallMade
 
     fun of(key: String?): ImageVector? = key?.let { byKey[it]?.icon }
 

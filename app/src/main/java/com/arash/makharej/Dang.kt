@@ -172,7 +172,7 @@ fun ExpensePickerDialog(
                                 .padding(vertical = 8.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            CatBadge(LoanColor, CatIcons.loan, 38.dp)
+                            CatBadge(LoanColor, CatIcons.loanIn, 38.dp)
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text("قرض به " + (o.loan.person ?: ""), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)

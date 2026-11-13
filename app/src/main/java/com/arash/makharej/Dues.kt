@@ -362,7 +362,7 @@ fun DuesCard(db: AppDb, dues: List<Due>) {
     val active = dues.filter { Dues.open(it) }.sortedBy { Dues.nextMillis(it) ?: Long.MAX_VALUE }
     val closed = dues.filter { !Dues.open(it) }
 
-    Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    Card(shape = RoundedCornerShape(20.dp), colors = cardColors()) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -618,7 +618,7 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit) {
 fun UpcomingDuesCard(dues: List<Due>, onOpen: () -> Unit) {
     val soon = dues.filter { Dues.open(it) }.filter { (Dues.daysTo(it) ?: 99) <= 7 }.sortedBy { Dues.nextMillis(it) }
     if (soon.isEmpty()) return
-    Card(onClick = onOpen, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    Card(onClick = onOpen, shape = RoundedCornerShape(20.dp), colors = cardColors()) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
             Text("پرداخت‌های پیش‌رو", fontWeight = FontWeight.Bold)
             soon.forEach { d -> DueRow(d, onOpen) }

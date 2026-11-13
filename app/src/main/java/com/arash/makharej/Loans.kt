@@ -351,7 +351,7 @@ fun OutPicker(w: Tx, txs: List<Tx>, onDone: () -> Unit, onDismiss: () -> Unit) {
                                 .padding(vertical = 8.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            CatBadge(DebtColor, CatIcons.loan, 36.dp)
+                            CatBadge(DebtColor, CatIcons.loanOut, 36.dp)
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(o.loan.person ?: "", fontWeight = FontWeight.SemiBold)
@@ -639,7 +639,7 @@ fun LoansCard(txs: List<Tx>, db: AppDb, cats: List<Category>, debt: Boolean) {
     if (debt && all.isEmpty() && !adding) {
         // کارت خالی بدهی جا نمی‌گیرد؛ فقط یک دکمه
         TextButton(onClick = { adding = true }) { Text("+ ثبت بدهی (قرض گرفتم)") }
-    } else Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    } else Card(shape = RoundedCornerShape(20.dp), colors = cardColors()) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -655,7 +655,7 @@ fun LoansCard(txs: List<Tx>, db: AppDb, cats: List<Category>, debt: Boolean) {
             active.groupBy { it.loan.person ?: "" }.entries.sortedByDescending { e -> e.value.sumOf { it.left } }.forEach { (p, l) ->
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    CatBadge(color, CatIcons.loan, 36.dp)
+                    CatBadge(color, if (debt) CatIcons.loanOut else CatIcons.loanIn, 36.dp)
                     Spacer(Modifier.width(10.dp))
                     Text(p, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                     Text(Fa.toman(l.sumOf { it.left }), fontWeight = FontWeight.Bold, color = color)

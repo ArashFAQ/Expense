@@ -457,7 +457,8 @@ fun MainScreen(startTab: Int = 0) {
         androidx.compose.foundation.pager.HorizontalPager(
             state = pager,
             modifier = Modifier.padding(pad).fillMaxSize(),
-            key = { it }
+            key = { it },
+            verticalAlignment = Alignment.Top
         ) { page ->
             when (page) {
                 0 -> HomeTab(txs, cats, ym, onYm = { ym = it }, onOpenExpenses = { goTab(1) }, onOpenAssets = { goTab(4) })
@@ -1043,15 +1044,7 @@ fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: 
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item { MonthRow(txs, true, ym, onYm) }
-        item {
-            HeroCard(
-                title = "خرج ${Fa.monthName(ym)}",
-                rial = counted.sumOf { it.eff },
-                subtitle = Fa.toFa(counted.size.toString()) + " تراکنش" +
-                    if (uncat > 0) "  ·  " + Fa.toFa(uncat.toString()) + " بدون دسته" else "",
-                gradient = ExpenseGradient
-            )
-        }
+        item { ExpenseSummaryCard(txs, cats, ym, counted.size, uncat) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 FilterChip(selected = !onlyUncat, onClick = { onlyUncat = false }, label = { Text("همه") })
@@ -1258,7 +1251,7 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
         }
         .sortedByDescending { it.sum }
     var openCat by rememberSaveable(ym) { mutableStateOf<Long?>(null) }
-    var year by rememberSaveable { mutableIntStateOf(ym / 100) }
+    val year = ym / 100
 
 
     LazyColumn(
@@ -1287,14 +1280,7 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
             Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
                 Column(Modifier.fillMaxWidth().padding(18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("خرج سال", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        IconButton(onClick = { year-- }, enabled = year > minYear) {
-                            Icon(Icons.Filled.KeyboardArrowRight, contentDescription = "سال قبل")
-                        }
-                        Text(Fa.toFa(year.toString()), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                        IconButton(onClick = { year++ }, enabled = year < nowYm / 100) {
-                            Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = "سال بعد")
-                        }
+                        Text("خرج سال " + Fa.toFa(year.toString()), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(Modifier.height(8.dp))
                     YearChart(yearOut, lastIdx)
@@ -1305,7 +1291,7 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
                     val peak = shown.withIndex().maxByOrNull { it.value }
                     if (peak != null && peak.value > 0) {
                         Spacer(Modifier.height(6.dp))
-                        StatLine("پرخرج‌ترین ماه", Fa.monthName(yearMonths[peak.index]) + "  (" + Fa.toman(peak.value) + ")", null)
+                        StatLine("پرخرج‌ترین ماه", Fa.monthName(yearMonths[peak.index]) + " · " + Fa.toman(peak.value), null)
                     }
                 }
             }

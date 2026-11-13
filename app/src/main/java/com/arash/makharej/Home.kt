@@ -195,7 +195,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                 val diff = if (prevOut > 0 && totalOut > 0) ((totalOut - prevOut) * 100 / prevOut).toInt() else null
                 SummaryCell(
                     "خرج", totalOut, ExpenseColor, Modifier.weight(1f),
-                    extra = diff?.let { "(" + (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪)" },
+                    extra = diff?.let { (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪" },
                     extraColor = if ((diff ?: 0) > 0) ExpenseColor else IncomeColor,
                     tint = if (LocalDark.current) ExpenseColor.copy(alpha = 0.16f) else Color(0xFFFFEBEE),
                     numSize = numSize
@@ -204,7 +204,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                 val diffIn = if (prevIn > 0 && totalIn > 0) ((totalIn - prevIn) * 100 / prevIn).toInt() else null
                 SummaryCell(
                     "درآمد", totalIn, IncomeColor, Modifier.weight(1f),
-                    extra = diffIn?.let { "(" + (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪)" },
+                    extra = diffIn?.let { (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪" },
                     extraColor = if ((diffIn ?: 0) >= 0) IncomeColor else ExpenseColor,
                     tint = if (LocalDark.current) IncomeColor.copy(alpha = 0.16f) else Color(0xFFE8F5E9),
                     numSize = numSize
@@ -402,8 +402,11 @@ private fun SummaryCell(
                     modifier = Modifier.align(Alignment.CenterVertically)
                 )
                 if (extra != null) Text(
-                    " " + extra, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = extraColor,
-                    maxLines = 1, softWrap = false, modifier = Modifier.align(Alignment.CenterVertically)
+                    extra, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = extraColor,
+                    maxLines = 1, softWrap = false,
+                    modifier = Modifier.align(Alignment.CenterVertically).padding(start = 6.dp)
+                        .clip(RoundedCornerShape(8.dp)).background(extraColor.copy(alpha = 0.14f))
+                        .padding(horizontal = 6.dp, vertical = 1.dp)
                 )
             }
             Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -500,6 +503,51 @@ fun CatBreakdown(
                         }
                     }
             }
+        }
+    }
+}
+
+
+/** بالای تب خرج‌ها: جمع ماه، مقایسه با ماه قبل و دونات کوچک دسته‌ها */
+@Composable
+fun ExpenseSummaryCard(txs: List<Tx>, cats: List<Category>, ym: Int, count: Int, uncat: Int) {
+    val catById = cats.associateBy { it.id }
+    val counted = txs.filter { !it.excluded }
+    val month = counted.filter { it.ym == ym && it.isExpense }.expandSplits()
+    val total = month.sumOf { it.eff }
+    val today = Jalali.fromMillis(System.currentTimeMillis())
+    val isCurrent = ym == today[0] * 100 + today[1]
+    val prev = counted.filter { t ->
+        t.ym == Jalali.shiftYm(ym, -1) && t.isExpense &&
+            (!isCurrent || (t.jDate.substringAfterLast('/').toIntOrNull() ?: 0) <= today[2])
+    }.sumOf { it.eff }
+    val slices = month.groupBy { it.categoryId }
+        .map { (id, l) -> l.sumOf { it.eff }.toFloat() to (id?.let { catById[it] }?.uiColor() ?: Color(0xFFB0BEC5)) }
+        .sortedByDescending { it.first }
+    androidx.compose.material3.Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("خرج " + Fa.monthName(ym), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(Fa.num(total), fontSize = 26.sp, fontWeight = FontWeight.Black, color = ExpenseColor, maxLines = 1, softWrap = false)
+                Text(
+                    "تومان · " + Fa.toFa(count.toString()) + " تراکنش" + if (uncat > 0) " · " + Fa.toFa(uncat.toString()) + " بدون دسته" else "",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (prev > 0 && total > 0) {
+                    val d = ((total - prev) * 100 / prev).toInt()
+                    val col = if (d > 0) ExpenseColor else IncomeColor
+                    Text(
+                        (if (d > 0) "▲ " else "▼ ") + Fa.toFa(kotlin.math.abs(d).toString()) + "٪ نسبت به " + Fa.monthName(Jalali.shiftYm(ym, -1)),
+                        fontSize = 12.sp, fontWeight = FontWeight.Bold, color = col,
+                        modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).background(col.copy(alpha = 0.14f))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            AnimatedDonut(
+                slices, -1, onSelect = {}, animKey = ym, modifier = Modifier.size(110.dp),
+                track = MaterialTheme.colorScheme.surfaceVariant
+            )
         }
     }
 }
