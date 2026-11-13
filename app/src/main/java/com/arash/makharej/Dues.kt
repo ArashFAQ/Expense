@@ -353,20 +353,24 @@ class DueBootReceiver : BroadcastReceiver() {
 
 /** کارت «چک و قسط» در تب دارایی */
 @Composable
-fun DuesCard(db: AppDb, dues: List<Due>) {
+fun DuesCard(
+    db: AppDb, allDues: List<Due>, kinds: Set<Int> = setOf(0, 1, 2, 3),
+    title: String = "چک و قسط", empty: String = "چک یا قسطی ثبت نشده.", tint: Color? = null
+) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf<Due?>(null) }
     var adding by remember { mutableStateOf(false) }
     var showDone by remember { mutableStateOf(false) }
+    val dues = allDues.filter { it.kind in kinds }
     val active = dues.filter { Dues.open(it) }.sortedBy { Dues.nextMillis(it) ?: Long.MAX_VALUE }
     val closed = dues.filter { !Dues.open(it) }
 
-    Card(shape = RoundedCornerShape(20.dp), colors = cardColors()) {
+    Card(shape = RoundedCornerShape(20.dp), colors = if (tint != null) CardDefaults.cardColors(containerColor = sectionBg(tint)) else cardColors()) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("چک و قسط", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     Text(
                         "یادآوری یک روز قبل، ساعت ۱۲ ظهر",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -374,7 +378,7 @@ fun DuesCard(db: AppDb, dues: List<Due>) {
                 }
                 TextButton(onClick = { adding = true }) { Text("+ افزودن") }
             }
-            if (active.isEmpty()) Text("چک یا قسطی ثبت نشده.", Modifier.padding(top = 8.dp))
+            if (active.isEmpty()) Text(empty, Modifier.padding(top = 8.dp))
             active.forEach { d -> DueRow(d) { editing = d } }
             if (closed.isNotEmpty()) {
                 TextButton(onClick = { showDone = !showDone }) {
@@ -385,7 +389,7 @@ fun DuesCard(db: AppDb, dues: List<Due>) {
         }
     }
 
-    if (adding) DueEditDialog(null, onSave = { d -> adding = false; scope.launch { db.due().upsert(d); DueReminder.check(ctx) } }, onDismiss = { adding = false })
+    if (adding) DueEditDialog(null, defaultKind = kinds.min(), onSave = { d -> adding = false; scope.launch { db.due().upsert(d); DueReminder.check(ctx) } }, onDismiss = { adding = false })
     editing?.let { d ->
         DueActionsDialog(d, onPaid = {
             editing = null; scope.launch { Dues.markPaid(ctx, d.id) }
@@ -471,9 +475,9 @@ private fun DueActionsDialog(d: Due, onPaid: () -> Unit, onSave: (Due) -> Unit, 
 
 /** افزودن / ویرایش چک یا قسط */
 @Composable
-fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit) {
+fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, defaultKind: Int = 0) {
     val ctx = LocalContext.current
-    var kind by remember { mutableStateOf(initial?.kind ?: 0) }
+    var kind by remember { mutableStateOf(initial?.kind ?: defaultKind) }
     var title by remember { mutableStateOf(initial?.title ?: "") }
     var amountText by remember { mutableStateOf(initial?.amount?.let { (it / 10).toString() } ?: "") }
     var countText by remember { mutableStateOf(initial?.count?.takeIf { it > 0 }?.toString() ?: "") }

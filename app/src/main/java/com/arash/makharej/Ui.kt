@@ -1262,7 +1262,18 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
         item {
             val pctx = LocalContext.current
             val dues by remember { AppDb.get(pctx).due().all() }.collectAsState(initial = emptyList())
-            DuesCard(AppDb.get(pctx), dues)
+            DuesCard(
+                AppDb.get(pctx), dues, kinds = setOf(0, 3), title = "قسط‌ها و پرداخت‌های تکراری",
+                empty = "قسط یا پرداخت تکراری ثبت نشده.", tint = Color(0xFF8D6E63)
+            )
+        }
+        item {
+            val pctx = LocalContext.current
+            val dues by remember { AppDb.get(pctx).due().all() }.collectAsState(initial = emptyList())
+            DuesCard(
+                AppDb.get(pctx), dues, kinds = setOf(1, 2), title = "چک‌ها",
+                empty = "چکی ثبت نشده.", tint = Color(0xFF1565C0)
+            )
         }
         item { GroupsCard(cats) }
 

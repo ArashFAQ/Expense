@@ -11,8 +11,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+
+/** پس‌زمینه‌ی کم‌رنگ هم‌رنگ یک بخش (برای جدا دیده شدن کارت‌ها) */
+@Composable
+fun sectionBg(c: androidx.compose.ui.graphics.Color) =
+    c.copy(alpha = if (LocalDark.current) 0.20f else 0.10f).compositeOver(MaterialTheme.colorScheme.surface)
 
 /**
  * یک بخش از فرم با پس‌زمینه‌ی جدا؛ بخش‌ها یکی‌درمیان روشن و خاکستری‌اند
