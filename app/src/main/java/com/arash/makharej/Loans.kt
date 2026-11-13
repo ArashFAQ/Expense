@@ -446,8 +446,13 @@ fun LinkFlow(payment: Tx, target: Tx, txs: List<Tx>, cats: List<Category>, onDon
         return
     }
     if (pickCat) {
-        CatPickDialog(
+        if (out) CatPickDialog(
             "خرج " + Fa.toman(excess), "مثلا سهم دنگ تو. دسته‌اش؟", allCats.filter { !it.income },
+            onPick = { finish(1, it) }, onDismiss = { pickCat = false }
+        ) else CatPickDialog(
+            // دسته‌ی درآمد؛ «سود» اول فهرست
+            "درآمد " + Fa.toman(excess), "بابت چه بود؟",
+            allCats.filter { it.income }.sortedByDescending { it.icon == "trend" },
             onPick = { finish(1, it) }, onDismiss = { pickCat = false }
         )
         return
@@ -469,7 +474,7 @@ fun LinkFlow(payment: Tx, target: Tx, txs: List<Tx>, cats: List<Category>, onDon
                 )
                 Spacer(Modifier.height(10.dp))
                 if (out) Button(onClick = { pickCat = true }, modifier = Modifier.fillMaxWidth()) { Text("خرج (مثلا سهم دنگ)") }
-                else Button(onClick = { finish(1) }, modifier = Modifier.fillMaxWidth()) { Text("درآمد (سود، هدیه…)") }
+                else Button(onClick = { pickCat = true }, modifier = Modifier.fillMaxWidth()) { Text("درآمد (سود، هدیه…)") }
                 if (others.isNotEmpty()) OutlinedButton(onClick = { finish(2) }, modifier = Modifier.fillMaxWidth()) {
                     Text(
                         (if (out) "بدهی‌های دیگرم به " else "قرض‌های دیگر ") + (person ?: "") +
@@ -521,8 +526,9 @@ suspend fun Refunds.handleExcess(
     if (rest > 0) dao.insert(
         row(
             rest,
-            (if (out) "سهم من" else "اضافه‌ی بازپرداخت") + (who?.let { " · $it" } ?: ""),
-            0, false, null, c = if (out) cat else null
+            (if (out) "سهم من" else if (target.reason == 6 && cat != null && AppDb.get(ctx).cat().list().any { it.id == cat && it.icon == "trend" }) "سود قرض" else "اضافه‌ی بازپرداخت") +
+                (who?.let { " · $it" } ?: ""),
+            0, false, null, c = cat
         )
     )
     SummaryWidget.refresh(ctx)
