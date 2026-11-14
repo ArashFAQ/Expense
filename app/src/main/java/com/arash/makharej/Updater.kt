@@ -136,7 +136,7 @@ fun UpdateSection() {
         Column(Modifier.padding(16.dp)) {
             Text("به‌روزرسانی", style = MaterialTheme.typography.titleMedium)
             Text(
-                "نسخه‌ی فعلی: " + Fa.toFa(BuildConfig.VERSION_CODE.toString()),
+                "نسخه‌ی فعلی: " + Fa.toFa(BuildConfig.VERSION_NAME),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -169,11 +169,11 @@ fun UpdateSection() {
                             if (r == null || r.version <= BuildConfig.VERSION_CODE) {
                                 status = "آخرین نسخه نصب است."
                             } else {
-                                status = "دانلود نسخه‌ی ${Fa.toFa(r.version.toString())}…"
+                                status = "دانلود نسخه‌ی ${Fa.toFa("0." + r.version)}…"
                                 progress = 0f
                                 val f = Updater.download(ctx, r) { progress = it }
                                 ready = f
-                                status = "نسخه‌ی ${Fa.toFa(r.version.toString())} آماده‌ی نصب است. داده‌هایت حفظ می‌شوند."
+                                status = "نسخه‌ی ${Fa.toFa("0." + r.version)} آماده‌ی نصب است. داده‌هایت حفظ می‌شوند."
                                 if (Updater.canInstall(ctx)) Updater.install(ctx, f)
                             }
                         } catch (e: Exception) {

@@ -1100,13 +1100,12 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
     var editing by remember { mutableStateOf<Tx?>(null) }
     var dangFor by remember { mutableStateOf<Tx?>(null) }
     var incomeFor by remember { mutableStateOf<Tx?>(null) }
-    var showMoves by rememberSaveable { mutableStateOf(false) }
     val catById = cats.associateBy { it.id }
     val all = txs.filter { it.ym == ym && !it.isExpense }
     val pending = all.filter { it.reason == 5 }.sortedByDescending { it.ts }
     val income = all.filter { !it.excluded }
     val moves = all.filter { it.excluded && it.reason != 5 }
-    val shown = if (showMoves) income + moves else income
+    val shown = income + moves // جابه‌جایی‌ها و بازپرداخت‌ها کم‌رنگ
 
     fun setKind(t: Tx, own: Boolean) = scope.launch {
         db.tx().setDepositKind(t.id, own); Notifier.cancel(ctx, t.id)
@@ -1177,10 +1176,6 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
 
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (moves.isNotEmpty()) FilterChip(
-                    selected = showMoves, onClick = { showMoves = !showMoves },
-                    label = { Text("جابه‌جایی‌ها و بازپرداخت‌ها (" + Fa.toFa(moves.size.toString()) + ")") }
-                )
                 Spacer(Modifier.weight(1f))
                 SearchButton(onSearch)
                 Spacer(Modifier.width(8.dp))
@@ -1862,7 +1857,7 @@ val SettingsPages = listOf(
     SettingsPage("lock", "قفل و حریم خصوصی", "اثر انگشت، پنهان کردن روی صفحه‌ی قفل و ویجت"),
     SettingsPage("samples", "نمونه پیامک بانک‌ها", "آموزش بانک جدید، وضعیت همه‌ی بانک‌ها"),
     SettingsPage("misc", "پیامک‌ها و کار در پس‌زمینه", "خواندن دوباره‌ی پیامک‌ها، Autostart و باتری"),
-    SettingsPage("update", "به‌روزرسانی اپ", "نسخه‌ی " + Fa.toFa(BuildConfig.VERSION_CODE.toString())),
+    SettingsPage("update", "به‌روزرسانی اپ", "نسخه‌ی " + Fa.toFa(BuildConfig.VERSION_NAME)),
 )
 
 @Composable

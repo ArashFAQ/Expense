@@ -17,7 +17,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = buildNumber
-        versionName = "1.0.$buildNumber"
+        versionName = "0.$buildNumber"
         buildConfigField("String", "REPO", "\"$repo\"")
     }
 
