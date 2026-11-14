@@ -150,10 +150,14 @@ object InboxImporter {
         val dao = AppDb.get(ctx).tx()
         // نصب تازه (هنوز هیچ تراکنشی نیست): پیامک‌های قبل از این ماه فقط برای موجودی و یادگیری خوانده می‌شوند
         val fresh = !pr.getBoolean("oldPolicy", false) && dao.count() == 0
+        val before = dao.maxId() ?: 0L
         val n = scan(ctx)
         if (!pr.getBoolean("oldPolicy", false)) {
             if (fresh) dao.markOld(Jalali.currentYm())
             pr.edit().putBoolean("oldPolicy", true).apply()
+        } else if (n > 0) {
+            // بانکی که تازه پشتیبانی شده: پیامک‌های ماه‌های قبلش هم «قدیمی» ثبت می‌شوند
+            dao.markOldAfter(Jalali.currentYm(), before)
         }
         return n
     }

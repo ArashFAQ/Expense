@@ -248,7 +248,7 @@ private fun openAppSettings(ctx: Context) {
 
 internal fun List<Tx>.counted() = filter { !it.excluded }
 
-private const val IMPORT_VERSION = 11
+private const val IMPORT_VERSION = 12
 
 // ================================================================ Activities
 

@@ -147,7 +147,8 @@
    "id": "DAY",
    "name": "دی",
    "senders": [],
-   "templates": []
+   "templates": [],
+   "builtin": true
   },
   {
    "id": "GARDESHGARI",

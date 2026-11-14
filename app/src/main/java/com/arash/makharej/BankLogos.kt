@@ -99,6 +99,7 @@ object BankLogos {
         Banks.SADERAT -> Color(0xFF0D47A1)
         Banks.SEPAH -> Color(0xFF283593)
         Banks.GARDESHGARI -> Color(0xFFC62828)
+        Banks.DAY -> Color(0xFF00695C)
         Banks.MOFID -> Color(0xFF00897B)
         else -> Color(0xFF607D8B)
     }

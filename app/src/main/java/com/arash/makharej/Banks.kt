@@ -25,9 +25,10 @@ object Banks {
     const val SEPAH = "SEPAH"
     const val GARDESHGARI = "GARDESHGARI"
     const val MOFID = "MOFID"
+    const val DAY = "DAY"
     const val MANUAL = "MANUAL"
 
-    val builtIn = listOf(BLU, MELLAT, EN, PASARGAD, TEJARAT, MELLI, SADERAT, SEPAH, GARDESHGARI, MOFID)
+    val builtIn = listOf(BLU, MELLAT, EN, PASARGAD, TEJARAT, MELLI, SADERAT, SEPAH, GARDESHGARI, DAY, MOFID)
 
     /** بانک‌های داخلی + بانک‌هایی که با نمونه آموخته شده‌اند */
     fun all(ctx: Context): List<String> =
@@ -44,6 +45,7 @@ object Banks {
         SADERAT -> "صادرات"
         SEPAH -> "سپه"
         GARDESHGARI -> "گردشگری"
+        DAY -> "دی"
         MOFID -> "کارگزاری مفید"
         MANUAL -> "دستی"
         else -> Learned.nameOf(b) ?: "بانک"
@@ -74,7 +76,7 @@ object Banks {
         val t = BluParser.normalize(body).trim()
         if (BluParser.hasPassword(t)) return null
         return mofid(t, ts) ?: tejarat(t, ts) ?: melliSaderat(t, ts, sender) ?: sepah(t, ts) ?: gardeshgari(t, ts) ?:
-            mellat(t, ts) ?: en(t, ts) ?: pasargad(t, ts)
+            mellat(t, ts) ?: en(t, ts) ?: pasargad(t, ts) ?: day(t, ts, sender)
     }
 
     // ---- علامت مثبت/منفی قبل یا بعد از عدد (ترتیب نمایش راست‌به‌چپ ممکن است جابه‌جا شود)
@@ -366,6 +368,33 @@ object Banks {
             if (sign.isEmpty()) continue
             val amount = num(m.groupValues[2]) ?: continue
             return build(sign == "-", amount, psBal.find(t)?.let { num(it.groupValues[1]) }, t, ts, PASARGAD)
+        }
+        return null
+    }
+
+    /**
+     * دی (نام بانک در متن نیست):
+     *   0306273810003
+     *   +27,500,000          (برداشت: -27,165,735)
+     *   08/21-8:12
+     *   مانده 27,500,000
+     *   از 6500              (یا «قسط»)
+     */
+    private val dyAcc = Regex("""^\d{10,16}$""")
+    private val dyBal = Regex("""مانده\s*:?\s*(\d[\d,]*)""")
+
+    private fun day(t: String, ts: Long, sender: String?): Parsed? {
+        val lines = t.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val bySender = sender != null && Learned.normSender(sender).contains("day")
+        if (!bySender && (lines.isEmpty() || !dyAcc.matches(lines[0]))) return null
+        val bal = dyBal.find(t)?.let { num(it.groupValues[1]) } ?: return null
+        for (l in lines) {
+            if (dyAcc.matches(l)) continue
+            val m = psAmt.matchEntire(l) ?: continue
+            val sign = m.groupValues[1].ifEmpty { m.groupValues[3] }
+            if (sign.isEmpty()) continue
+            val amount = num(m.groupValues[2]) ?: continue
+            return build(sign == "-", amount, bal, t, ts, DAY)
         }
         return null
     }

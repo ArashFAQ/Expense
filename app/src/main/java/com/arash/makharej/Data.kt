@@ -153,6 +153,12 @@ interface TxDao {
     )
     suspend fun unarchive(id: Long)
 
+    @Query("UPDATE tx SET reason = 15, excluded = 1 WHERE ym < :ym AND id > :afterId AND bank != 'MANUAL' AND ((reason = 0 AND excluded = 0) OR reason = 5)")
+    suspend fun markOldAfter(ym: Int, afterId: Long)
+
+    @Query("SELECT MAX(id) FROM tx")
+    suspend fun maxId(): Long?
+
     @Query("SELECT COUNT(*) FROM tx")
     suspend fun count(): Int
 
