@@ -1810,6 +1810,7 @@ fun IconPickerGrid(selected: String, color: Color, onPick: (String) -> Unit) {
 class SettingsPage(val id: String, val title: String, val subtitle: String)
 
 val SettingsPages = listOf(
+    SettingsPage("help", "راهنما", "آموزش کامل همه‌ی بخش‌های اپ با مثال"),
     SettingsPage("cats", "دسته‌ها", "افزودن، ویرایش، رنگ و حذف دسته‌ها"),
     SettingsPage("banks", "بانک‌ها و حساب‌ها", "کدام بانک‌ها خوانده شوند، خرج و درآمد، پس‌انداز"),
     SettingsPage("backup", "پشتیبان‌گیری", "Google Drive، فایل پشتیبان، بازگردانی"),
@@ -1924,6 +1925,7 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
             }
         }
             }
+            "help" -> { item { HelpScreen() } }
             "lock" -> {
         item { LockSettings() }
             }
