@@ -55,6 +55,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.Path
@@ -324,13 +326,17 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
     val loanTotalRaw = Loans.total(txs)
     // چک و قسط: اقساط باقی‌مانده و چک‌های صادره بدهی‌اند، چک‌های دریافتی طلب
     val dues by remember { db.due().all() }.collectAsState(initial = emptyList())
-    val debtTotal = Loans.total(txs, debt = true) + Dues.liabilities(dues)
+    // جمع دارایی = پولی که الان داری؛ اقساط و چک‌ها تعهد آینده‌اند و جدا نشان داده می‌شوند
+    val debtTotal = Loans.total(txs, debt = true)
+    val instFuture = dues.filter { it.kind == 0 }.sumOf { Dues.remaining(it) }
+    val checksOut = dues.filter { it.kind == 1 }.sumOf { Dues.remaining(it) }
+    val checksIn = Dues.receivables(dues)
     val stockTotal = remember(holdings, tick) { Stocks.total(ctx, holdings) }
     // قیمت سهام حتی وقتی بخش سهام بسته است به‌روز می‌شود
     LaunchedEffect(holdings.filter { it.qty > 0 }.map { it.stock.insCode }) {
         if (Tse.refreshPrices(ctx, holdings.filter { it.qty > 0 }.map { it.stock.insCode })) tick++
     }
-    val loanTotal = loanTotalRaw + Dues.receivables(dues)
+    val loanTotal = loanTotalRaw
     // بخش‌های خالی پنهان‌اند؛ با دکمه‌های «افزودن» باز می‌شوند
     var forceShow by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
     val total = bankTotal + investTotal + stockTotal + loanTotal - debtTotal
@@ -359,6 +365,30 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
+                    // تعهدات آینده: فقط برای اطلاع، از عدد بالا کم نمی‌شود
+                    if (instFuture > 0 || checksOut > 0 || checksIn > 0) {
+                        Spacer(Modifier.height(10.dp))
+                        Column(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                "تعهدات آینده: " + listOfNotNull(
+                                    if (instFuture > 0) "اقساط " + millionsText(instFuture) else null,
+                                    if (checksOut > 0) "چک صادره " + millionsText(checksOut) else null,
+                                    if (checksIn > 0) "چک دریافتی +" + millionsText(checksIn) else null
+                                ).joinToString("  ·  "),
+                                style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Text(
+                                "خالص بعد از تعهدات: " + Fa.toman(total - instFuture - checksOut + checksIn),
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                     val snaps = Wealth.snapshots(ctx)
                     if (snaps.size >= 2) {
                         Spacer(Modifier.height(12.dp))
@@ -413,20 +443,15 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
 
         // ---- طلب‌ها و بدهی‌ها (جمع‌شده)
         item {
-            if (loanTotal > 0 || Loans.all(txs).isNotEmpty() || "loans" in forceShow) FoldRow("loans", "طلب‌ها", Fa.toFa(Loans.open(txs).map { it.loan.person }.distinct().size.toString()) + " نفر" +
-                (if (Dues.receivables(dues) > 0) " · چک دریافتی" else ""), Fa.toman(loanTotal), null, CatIcons.loanIn, LoanColor, startOpen = "loans" in forceShow) {
+            if (loanTotal > 0 || Loans.all(txs).isNotEmpty() || "loans" in forceShow) FoldRow("loans", "طلب‌ها", Fa.toFa(Loans.open(txs).map { it.loan.person }.distinct().size.toString()) + " نفر",
+                Fa.toman(loanTotal), null, CatIcons.loanIn, LoanColor, startOpen = "loans" in forceShow) {
                 LoansCard(txs, db, cats, debt = false)
             }
         }
         item {
             if (debtTotal > 0 || Loans.all(txs, debt = true).isNotEmpty() || "debts" in forceShow)
-            FoldRow("debts", "بدهی‌ها", "قرض، اقساط، چک صادره", Fa.toman(debtTotal), null, CatIcons.loanOut, DebtColor, startOpen = "debts" in forceShow) {
+            FoldRow("debts", "بدهی‌ها", "قرض‌هایی که از کسی گرفته‌ای", Fa.toman(debtTotal), null, CatIcons.loanOut, DebtColor, startOpen = "debts" in forceShow) {
                 LoansCard(txs, db, cats, debt = true)
-                if (Dues.liabilities(dues) > 0) Text(
-                    "اقساط و چک‌های صادره: " + Fa.toman(Dues.liabilities(dues)) + " (جزئیات در تب برنامه)",
-                    Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
 
