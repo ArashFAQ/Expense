@@ -112,8 +112,17 @@ object BankLogos {
 
     fun has(bank: String) = cache.containsKey(bank)
 
+    /** لوگوهای داخل اپ (assets/logos): بدون اینترنت */
+    private fun bundled(ctx: Context, bank: String, name: String?): android.graphics.Bitmap? {
+        val n = when (bank) { Banks.BLU -> "blu"; Banks.MOFID -> "mofid"; else -> libKey(bank, name) } ?: return null
+        return try { ctx.assets.open("logos/$n.png").use { BitmapFactory.decodeStream(it) } } catch (_: Exception) { null }
+    }
+
     suspend fun load(ctx: Context, bank: String, name: String? = null) {
         if (cache.containsKey(bank)) return
+        withContext(Dispatchers.IO) { bundled(ctx, bank, name ?: Banks.name(bank)) }?.let {
+            cache[bank] = it.asImageBitmap(); return
+        }
         val urls = urls(bank, name ?: Banks.name(bank)) ?: return
         val key = storeKey(bank, name ?: Banks.name(bank))
         lock.withLock {
