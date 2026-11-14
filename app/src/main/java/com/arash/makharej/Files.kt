@@ -612,6 +612,7 @@ object Excel {
                             t.reason == 8 -> "قرض از " + (t.person ?: "")
                             t.reason == 9 -> "پرداخت بدهی"
                             t.reason == 10 -> "برگشت خورد"
+                            t.reason == 15 -> "قدیمی (حساب نمی‌شود)"
                             t.reason == 11 -> "دنگ گروه " + (t.person ?: "")
                             t.reason == 12 -> "تسویه‌ی دنگ " + (t.person ?: "")
                             t.reason == 13 || t.reason == 14 -> t.person ?: "خرید/فروش دارایی"

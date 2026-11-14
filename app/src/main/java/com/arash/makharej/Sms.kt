@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 object Ingest {
@@ -140,7 +141,24 @@ object OtpNoteCleanup {
 
 object InboxImporter {
     /** پیامک‌های بانکی قبلی را از صندوق می‌خواند (بدون نوتیفیکیشن). تعداد موارد جدید را برمی‌گرداند. */
-    suspend fun run(ctx: Context): Int = withContext(Dispatchers.IO) {
+    private val lock = kotlinx.coroutines.sync.Mutex()
+
+    suspend fun run(ctx: Context): Int = withContext(Dispatchers.IO) { lock.withLock { runLocked(ctx) } }
+
+    private suspend fun runLocked(ctx: Context): Int {
+        val pr = prefs(ctx)
+        val dao = AppDb.get(ctx).tx()
+        // نصب تازه (هنوز هیچ تراکنشی نیست): پیامک‌های قبل از این ماه فقط برای موجودی و یادگیری خوانده می‌شوند
+        val fresh = !pr.getBoolean("oldPolicy", false) && dao.count() == 0
+        val n = scan(ctx)
+        if (!pr.getBoolean("oldPolicy", false)) {
+            if (fresh) dao.markOld(Jalali.currentYm())
+            pr.edit().putBoolean("oldPolicy", true).apply()
+        }
+        return n
+    }
+
+    private suspend fun scan(ctx: Context): Int {
         var n = 0
         ctx.contentResolver.query(
             Telephony.Sms.Inbox.CONTENT_URI,
@@ -154,7 +172,7 @@ object InboxImporter {
                 if (Ingest.handle(ctx, body, c.getLong(1), notify = false, sender = c.getString(2))) n++
             }
         }
-        n
+        return n
     }
 }
 

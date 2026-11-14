@@ -37,7 +37,7 @@ object OwnAccounts {
 
     private fun learnFrom(ctx: Context, src: List<Tx>, all: List<Tx>) {
         val byBank = all.filter { it.raw.isNotBlank() }.groupBy { it.bank }
-            .mapValues { (_, l) -> l.map { Fa.toEn(it.raw) to (it.excluded && it.reason != 5) } }
+            .mapValues { (_, l) -> l.map { Fa.toEn(it.raw) to (it.excluded && it.reason != 5 && it.reason != 15) } }
         val add = mutableSetOf<String>()
         src.filter { it.bank != Banks.MANUAL && it.raw.isNotBlank() }.forEach { t ->
             val sameBank = byBank[t.bank] ?: return@forEach

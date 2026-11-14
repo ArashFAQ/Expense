@@ -136,6 +136,26 @@ interface TxDao {
     @Query("SELECT * FROM tx WHERE isExpense = 1 AND reason = 3 AND ts BETWEEN :from AND :to")
     suspend fun savingsOut(from: Long, to: Long): List<Tx>
 
+    /** نصب تازه: تراکنش‌های قبل از ماه نصب «قدیمی» (۱۵) می‌شوند و حساب نمی‌شوند */
+    @Query("UPDATE tx SET reason = 15, excluded = 1 WHERE ym < :ym AND bank != 'MANUAL' AND ((reason = 0 AND excluded = 0) OR reason = 5)")
+    suspend fun markOld(ym: Int)
+
+    /** تراکنش‌های قدیمی یک ماه حساب شوند (واریز بی‌دسته به «در انتظار تأیید» می‌رود) */
+    @Query(
+        "UPDATE tx SET excluded = CASE WHEN isExpense = 1 OR categoryId IS NOT NULL THEN 0 ELSE 1 END, " +
+            "reason = CASE WHEN isExpense = 1 OR categoryId IS NOT NULL THEN 0 ELSE 5 END WHERE ym = :ym AND reason = 15"
+    )
+    suspend fun unarchiveMonth(ym: Int)
+
+    @Query(
+        "UPDATE tx SET excluded = CASE WHEN isExpense = 1 OR categoryId IS NOT NULL THEN 0 ELSE 1 END, " +
+            "reason = CASE WHEN isExpense = 1 OR categoryId IS NOT NULL THEN 0 ELSE 5 END WHERE id = :id AND reason = 15"
+    )
+    suspend fun unarchive(id: Long)
+
+    @Query("SELECT COUNT(*) FROM tx")
+    suspend fun count(): Int
+
     @Query("UPDATE tx SET excluded = 1, reason = 1 WHERE id IN (:ids)")
     suspend fun markTransfer(ids: List<Long>)
 

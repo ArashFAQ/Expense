@@ -684,6 +684,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
         t.excluded && t.reason == 1 -> { title = "انتقال بین حساب‌ها"; bg = neutral }
         t.excluded && t.reason == 3 -> { title = "انتقال به مفید"; bg = neutral }
         t.reason == 10 -> { title = "درخواست وجه (برگشت خورد)"; bg = neutral }
+        t.reason == 15 -> { title = "قدیمی (حساب نمی‌شود)"; bg = neutral }
         t.excluded && t.reason == 2 -> { title = "حساب نمی‌شود"; bg = neutral }
         t.excluded && t.reason == 4 -> { title = "بازپرداخت دنگ"; bg = neutral }
         t.excluded && t.reason == 5 -> { title = "در انتظار تأیید"; bg = neutral }
@@ -1045,6 +1046,7 @@ fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: 
     ) {
         item { MonthRow(txs, true, ym, onYm) }
         item { ExpenseSummaryCard(txs, cats, ym, counted.size, uncat) }
+        item { OldTxNote(txs, ym, db) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 FilterChip(selected = !onlyUncat, onClick = { onlyUncat = false }, label = { Text("همه") })
@@ -1062,6 +1064,31 @@ fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: 
     }
 
     editing?.let { t -> EditDialog(t, cats, db) { editing = null } }
+}
+
+/** تراکنش‌های «قدیمی» (قبل از نصب) این ماه: با یک دکمه همه حساب شوند */
+@Composable
+fun OldTxNote(txs: List<Tx>, ym: Int, db: AppDb) {
+    val n = txs.count { it.ym == ym && it.reason == 15 }
+    if (n == 0) return
+    val scope = rememberCoroutineScope()
+    var ask by remember(ym) { mutableStateOf(false) }
+    Card(shape = RoundedCornerShape(18.dp), colors = cardColors()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                Fa.toFa(n.toString()) + " تراکنش این ماه قبل از نصب اپ بوده و حساب نمی‌شود.",
+                Modifier.weight(1f), style = MaterialTheme.typography.bodySmall
+            )
+            TextButton(onClick = { ask = true }) { Text("همه را حساب کن") }
+        }
+    }
+    if (ask) AlertDialog(
+        onDismissRequest = { ask = false },
+        title = { Text("حساب کردن تراکنش‌های قدیمی") },
+        text = { Text("همه‌ی برداشت‌های قدیمی این ماه جزو خرج‌ها می‌آیند (بدون دسته) و واریزها به «در انتظار تأیید» می‌روند. انتقال‌ها و موارد دیگر دست نمی‌خورند.") },
+        confirmButton = { TextButton(onClick = { ask = false; scope.launch { db.tx().unarchiveMonth(ym) } }) { Text("حساب کن") } },
+        dismissButton = { TextButton(onClick = { ask = false }) { Text("انصراف") } }
+    )
 }
 
 // ================================================================ Income
@@ -1091,6 +1118,7 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item { MonthRow(txs, false, ym, onYm) }
+        item { OldTxNote(txs, ym, db) }
         // ---- نمودار دایره‌ای درآمد و فهرست دسته‌ها
         item {
             val total = income.sumOf { it.eff }
@@ -1579,6 +1607,22 @@ fun TxEditor(
             if (pickDang) {
                 val all by remember { db!!.tx().all() }.collectAsState(initial = emptyList())
                 RepayPicker(tx, all, cats, onDone = { pickDang = false; onCancel() }, onDismiss = { pickDang = false })
+            }
+        } else if (tx.reason == 15 && db != null) {
+            val ctxO = LocalContext.current
+            val scopeO = rememberCoroutineScope()
+            Spacer(Modifier.height(16.dp))
+            FormBlock(1, "تراکنش قدیمی") {
+                Text(
+                    "این تراکنش قبل از نصب اپ بوده و در جمع‌ها و نمودارها حساب نمی‌شود. اگر می‌خواهی حساب شود، «حساب کن» را بزن" +
+                        (if (tx.isExpense) " و دسته‌اش را انتخاب کن." else "؛ بعد می‌پرسد این واریز چه بوده."),
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(6.dp))
+                Button(onClick = {
+                    if (tx.isExpense) excluded = false
+                    else scopeO.launch { db.tx().unarchive(tx.id); onCancel() }
+                }, enabled = excluded) { Text("حساب کن") }
             }
         } else if (tx.reason !in 4..14) {
         Spacer(Modifier.height(16.dp))
