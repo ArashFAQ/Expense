@@ -169,11 +169,11 @@ fun UpdateSection() {
                             if (r == null || r.version <= BuildConfig.VERSION_CODE) {
                                 status = "آخرین نسخه نصب است."
                             } else {
-                                status = "دانلود نسخه‌ی ${Fa.toFa("0." + r.version)}…"
+                                status = "دانلود نسخه‌ی ${Fa.toFa("1." + String.format(java.util.Locale.US, "%02d", r.version - 100))}…"
                                 progress = 0f
                                 val f = Updater.download(ctx, r) { progress = it }
                                 ready = f
-                                status = "نسخه‌ی ${Fa.toFa("0." + r.version)} آماده‌ی نصب است. داده‌هایت حفظ می‌شوند."
+                                status = "نسخه‌ی ${Fa.toFa("1." + String.format(java.util.Locale.US, "%02d", r.version - 100))} آماده‌ی نصب است. داده‌هایت حفظ می‌شوند."
                                 if (Updater.canInstall(ctx)) Updater.install(ctx, f)
                             }
                         } catch (e: Exception) {

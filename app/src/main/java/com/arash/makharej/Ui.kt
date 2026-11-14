@@ -490,18 +490,43 @@ fun PermissionBanner() {
             if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
         }.toTypedArray()
     }
+    fun smsOk() = hasPerm(ctx, Manifest.permission.READ_SMS) && hasPerm(ctx, Manifest.permission.RECEIVE_SMS)
     var ok by remember { mutableStateOf(perms.all { hasPerm(ctx, it) }) }
+    // بعد از یک بار درخواست، اگر مجوز پیامک داده نشد: راهنمای «تنظیمات محدود» اندروید
+    var blocked by remember { mutableStateOf(!smsOk() && prefs(ctx).getBoolean("smsAsked", false)) }
 
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        ok = perms.all { p -> hasPerm(ctx, p) }
+    fun importIfNeeded() {
         val pr = prefs(ctx)
         if (hasPerm(ctx, Manifest.permission.READ_SMS) && !pr.getBoolean("imported", false)) {
+            pr.edit().putBoolean("imported", true).apply()
             scope.launch {
                 val n = try { InboxImporter.run(ctx) } catch (_: Exception) { 0 }
-                pr.edit().putBoolean("imported", true).apply()
                 Toast.makeText(ctx, "${Fa.toFa(n.toString())} تراکنش از پیامک‌های قبلی ثبت شد", Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    fun recheck() {
+        ok = perms.all { hasPerm(ctx, it) }
+        if (smsOk()) blocked = false
+        importIfNeeded()
+    }
+
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        prefs(ctx).edit().putBoolean("smsAsked", true).apply()
+        recheck()
+        if (!smsOk()) blocked = true
+    }
+
+    // برگشت از تنظیمات گوشی: دوباره بررسی شود
+    @Suppress("DEPRECATION")
+    val owner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(owner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) recheck()
+        }
+        owner.lifecycle.addObserver(obs)
+        onDispose { owner.lifecycle.removeObserver(obs) }
     }
 
     if (!ok) {
@@ -510,12 +535,40 @@ fun PermissionBanner() {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
         ) {
             Column(Modifier.padding(16.dp)) {
-                Text("برای ثبت خودکار، اپ باید اجازه‌ی خواندن پیامک و نمایش اعلان داشته باشد.")
-                Spacer(Modifier.height(8.dp))
-                Row {
-                    Button(onClick = { launcher.launch(perms) }) { Text("اجازه دادن") }
-                    Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = { openAppSettings(ctx) }) { Text("تنظیمات اپ") }
+                if (blocked) {
+                    Text("اندروید جلوی مجوز پیامک را گرفته", fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "چون اپ از کافه‌بازار یا گوگل‌پلی نصب نشده، اندروید پنجره‌ی مجوز پیامک را نشان نمی‌دهد. یک بار این کار را بکن:",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    listOf(
+                        "«باز کردن اطلاعات اپ» را بزن.",
+                        "منوی سه‌نقطه‌ی بالای صفحه ← «Allow restricted settings» (اجازه به تنظیمات محدود) و تأیید. اگر این گزینه نبود، رد شو.",
+                        "Permissions (مجوزها) ← SMS (پیامک) ← Allow.",
+                        "در شیائومی: «Other permissions» (سایر مجوزها) ← خواندن پیامک و پیامک اعلان را هم روشن کن.",
+                        "به اپ برگرد؛ خودش ادامه می‌دهد."
+                    ).forEachIndexed { i, l ->
+                        Row(Modifier.padding(vertical = 2.dp)) {
+                            Text(Fa.toFa((i + 1).toString()) + ".", Modifier.width(20.dp), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                            Text(l, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row {
+                        Button(onClick = { openAppSettings(ctx) }) { Text("باز کردن اطلاعات اپ") }
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = { launcher.launch(perms) }) { Text("دوباره امتحان") }
+                    }
+                } else {
+                    Text("برای ثبت خودکار، اپ باید اجازه‌ی خواندن پیامک و نمایش اعلان داشته باشد.")
+                    Spacer(Modifier.height(8.dp))
+                    Row {
+                        Button(onClick = { launcher.launch(perms) }) { Text("اجازه دادن") }
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = { openAppSettings(ctx) }) { Text("تنظیمات اپ") }
+                    }
                 }
             }
         }
