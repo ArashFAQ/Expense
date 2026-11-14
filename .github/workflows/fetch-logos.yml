@@ -6,17 +6,10 @@ jobs:
     steps:
       - run: |
           mkdir out && cd out
-          get() { curl -sSL -A "Mozilla/5.0" --max-time 20 -o "$1" "$2" && file "$1" | grep -qiE "image|icon" && echo "OK $1 $(stat -c%s $1)" || { echo "FAIL $1 $2"; rm -f "$1"; }; }
-          get blu-touch.png https://www.blubank.com/apple-touch-icon.png
+          get() { curl -sSL -A "Mozilla/5.0" --max-time 20 -o "$1" "$2" && file "$1" | grep -qiE "image|icon|svg" && { echo "OK $1 $(file -b $1)"; echo "B64BEGIN $1"; base64 -w0 "$1"; echo; echo "B64END $1"; } || { echo "FAIL $1"; rm -f "$1"; }; }
           get blu-g.png "https://www.google.com/s2/favicons?domain=www.blubank.com&sz=256"
           get blu-ddg.ico https://icons.duckduckgo.com/ip3/www.blubank.com.ico
-          get blu-fav.ico https://www.blubank.com/favicon.ico
-          get mofid-touch.png https://emofid.com/apple-touch-icon.png
-          get mofid-g.png "https://www.google.com/s2/favicons?domain=emofid.com&sz=256"
-          get mofid-ddg.ico https://icons.duckduckgo.com/ip3/emofid.com.ico
-          get mofid-fav.ico https://emofid.com/favicon.ico
-          curl -sSL -A "Mozilla/5.0" --max-time 20 https://www.blubank.com/ -o blu.html || true
-          curl -sSL -A "Mozilla/5.0" --max-time 20 https://emofid.com/ -o mofid.html || true
-          grep -oiE '<link[^>]+(icon|apple)[^>]*>|<meta[^>]+og:image[^>]*>' blu.html mofid.html | head -20
-      - uses: actions/upload-artifact@v4
-        with: { name: logos, path: out }
+          get mofid-touch.png https://emofid.com/favicon/apple-touch-icon.png
+          get mofid-pin.svg https://emofid.com/favicon/safari-pinned-tab.svg
+          get mofid-og.jpg https://emofidapi.mofid.dc/wp-content/uploads/2024/01/mofid.jpg
+          curl -sSL -A "Mozilla/5.0" --max-time 20 https://www.blubank.com/ -o blu.html; echo "blu html $(stat -c%s blu.html)"; grep -oiE '<link[^>]+>|<meta[^>]+image[^>]*>' blu.html | grep -iE "icon|image|manifest" | head
