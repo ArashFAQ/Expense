@@ -523,7 +523,7 @@ fun MonthSummaryCard(txs: List<Tx>, cats: List<Category>, ym: Int, count: Int, e
     val today = Jalali.fromMillis(System.currentTimeMillis())
     val isCurrent = ym == today[0] * 100 + today[1]
     val prev = counted.filter { t ->
-        t.ym == Jalali.shiftYm(ym, -1) && t.isExpense &&
+        t.ym == Jalali.shiftYm(ym, -1) && t.isExpense == isExpense &&
             (!isCurrent || (t.jDate.substringAfterLast('/').toIntOrNull() ?: 0) <= today[2])
     }.sumOf { it.eff }
     val slices = month.groupBy { it.categoryId }
@@ -532,15 +532,15 @@ fun MonthSummaryCard(txs: List<Tx>, cats: List<Category>, ym: Int, count: Int, e
     androidx.compose.material3.Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("خرج " + Fa.monthName(ym), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(Fa.num(total), fontSize = 26.sp, fontWeight = FontWeight.Black, color = ExpenseColor, maxLines = 1, softWrap = false)
+                Text((if (isExpense) "خرج " else "درآمد ") + Fa.monthName(ym), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(Fa.num(total), fontSize = 26.sp, fontWeight = FontWeight.Black, color = if (isExpense) ExpenseColor else IncomeColor, maxLines = 1, softWrap = false)
                 Text(
-                    "تومان · " + Fa.toFa(count.toString()) + " تراکنش" + if (uncat > 0) " · " + Fa.toFa(uncat.toString()) + " بدون دسته" else "",
+                    "تومان · " + Fa.toFa(count.toString()) + " تراکنش" + if (extra != null) " · $extra" else "",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (prev > 0 && total > 0) {
                     val d = ((total - prev) * 100 / prev).toInt()
-                    val col = if (d > 0) ExpenseColor else IncomeColor
+                    val col = if ((d > 0) == isExpense) ExpenseColor else IncomeColor
                     Text(
                         (if (d > 0) "▲ " else "▼ ") + Fa.toFa(kotlin.math.abs(d).toString()) + "٪ نسبت به " + Fa.monthName(Jalali.shiftYm(ym, -1)),
                         fontSize = 12.sp, fontWeight = FontWeight.Bold, color = col,
