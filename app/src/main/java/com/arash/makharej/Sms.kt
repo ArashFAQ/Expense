@@ -32,6 +32,8 @@ object Ingest {
         if (Banks.handleMofidBounce(ctx, body, ts)) return false
         val p = Banks.parseFull(ctx, body, sender, ts) ?: return false
         if (!Banks.enabled(ctx, p.bank)) return false
+        // تراکنشی که کاربر حذف کرده دوباره ثبت نمی‌شود
+        if (dedupKey(body) in Tombstones.keys(ctx)) return false
         val db = AppDb.get(ctx)
         // همان تراکنش قبلا ثبت شده؟ (همان بانک، نوع، مبلغ، روز، ساعت و موجودی یکسان یا نامعلوم)
         // مبلغ و موجودی از متن اصلی پیامک مقایسه می‌شود، تا اگر مبلغ را دستی ویرایش کرده‌ای باز هم تکراری ثبت نشود
@@ -76,25 +78,39 @@ object Ingest {
 
         // انتقال بین حساب‌های خودم؟
         val tx = db.tx().get(id) ?: return true
-        if (Banks.matchMofidDeposit(ctx, tx)) return true
-        if (Banks.matchMofidRequest(ctx, tx)) return true
+        // هر کاری که اپ خودش انجام می‌دهد (فقط برای پیامک تازه) در «کارهای خودکار» ثبت و بی‌صدا خبر داده می‌شود
+        fun auto(kind: String, other: Long = 0, due: Long = 0, extra: String = "") {
+            if (!notify) return
+            AutoLog.add(ctx, kind, tx.id, other, due)
+            AutoLog.notify(ctx, kind, tx, extra)
+        }
+        (Banks.matchMofidDeposit(ctx, tx) ?: Banks.matchMofidRequest(ctx, tx))?.let { o ->
+            auto("transfer", o)
+            return true
+        }
         if (reason != 3 && reason != 1) {
             val other = Banks.matchTransfer(ctx, tx)
             if (other != null) {
                 Notifier.cancel(ctx, other)
+                val ob = db.tx().get(other)?.bank
+                auto("transfer", other, extra = ob?.let { (if (p.isExpense) " ← " else " از ") + Banks.name(it) } ?: "")
                 return true
             }
         }
+        if (reason == 3) auto("savings")
+        if (p.tag == "profit" || p.tag == "subsidy") auto("benefit")
         // حساب خودی که قبلا یاد گرفته شده؟
         if (reason == 0 || reason == 5) {
             if (OwnAccounts.matches(ctx, tx)) {
                 if (p.isExpense) db.tx().setExcluded(tx.id, true) else db.tx().setDepositKind(tx.id, true)
+                auto("own")
                 return true
             }
         }
         // قسط یا چکی که سررسیدش نزدیک است؟ (فقط پیامک تازه، نه خواندن پیامک‌های قبلی)
         if (notify) {
             val due = try { Dues.matchPayment(ctx, tx) } catch (_: Exception) { null }
+            if (due != null) auto("due", due = due.id, extra = " · " + due.title)
             if (due != null && p.isExpense && (due.kind == 0 || due.kind == 3) &&
                 AppDb.get(ctx).cat().list().any { !it.income && it.icon == "installment" }
             ) return true
@@ -151,6 +167,9 @@ object InboxImporter {
     /** پیامک‌های بانکی قبلی را از صندوق می‌خواند (بدون نوتیفیکیشن). تعداد موارد جدید را برمی‌گرداند. */
     private val lock = kotlinx.coroutines.sync.Mutex()
 
+    /** پیشرفت خواندن پیامک‌ها (خوانده‌شده، کل) برای نمایش؛ null یعنی در حال خواندن نیست */
+    val progress = kotlinx.coroutines.flow.MutableStateFlow<Pair<Int, Int>?>(null)
+
     suspend fun run(ctx: Context): Int = withContext(Dispatchers.IO) { lock.withLock { runLocked(ctx) } }
 
     private suspend fun runLocked(ctx: Context): Int {
@@ -160,12 +179,14 @@ object InboxImporter {
         val fresh = !pr.getBoolean("oldPolicy", false) && dao.count() == 0
         val before = dao.maxId() ?: 0L
         val n = scan(ctx)
+        // هفته‌ی اول ماه: ماه قبل هم حساب می‌شود تا اپ خالی دیده نشود
+        val cut = Jalali.currentYm().let { if (Jalali.fromMillis(System.currentTimeMillis())[2] <= 7) Jalali.shiftYm(it, -1) else it }
         if (!pr.getBoolean("oldPolicy", false)) {
-            if (fresh) dao.markOld(Jalali.currentYm())
+            if (fresh) dao.markOld(cut)
             pr.edit().putBoolean("oldPolicy", true).apply()
         } else if (n > 0) {
             // بانکی که تازه پشتیبانی شده: پیامک‌های ماه‌های قبلش هم «قدیمی» ثبت می‌شوند
-            dao.markOldAfter(Jalali.currentYm(), before)
+            dao.markOldAfter(cut, before)
         }
         return n
     }
@@ -221,9 +242,17 @@ object InboxImporter {
             null,
             "${Telephony.Sms.DATE} ASC"
         )?.use { c ->
-            while (c.moveToNext()) {
-                val body = c.getString(0) ?: continue
-                if (Ingest.handle(ctx, body, c.getLong(1), notify = false, sender = c.getString(2))) n++
+            val total = c.count
+            var i = 0
+            try {
+                while (c.moveToNext()) {
+                    if (i % 25 == 0) progress.value = i to total
+                    i++
+                    val body = c.getString(0) ?: continue
+                    if (Ingest.handle(ctx, body, c.getLong(1), notify = false, sender = c.getString(2))) n++
+                }
+            } finally {
+                progress.value = null
             }
         }
         return n
@@ -459,6 +488,8 @@ class ActionReceiver : BroadcastReceiver() {
 class SmsCatchUpWorker(ctx: Context, params: androidx.work.WorkerParameters) : androidx.work.CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         try { InboxImporter.catchUp(applicationContext) } catch (_: Exception) {}
+        // روزی دو بار: اگر نسخه‌ی تازه‌ای آمده، یک نوتیفیکیشن
+        try { UpdateCheck.check(applicationContext, notify = true) } catch (_: Exception) {}
         return Result.success()
     }
 }

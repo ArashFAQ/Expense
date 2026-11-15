@@ -36,8 +36,9 @@ object OwnAccounts {
     }
 
     private fun learnFrom(ctx: Context, src: List<Tx>, all: List<Tx>) {
+        // «خودی» فقط «حساب خودم» و انتقال‌هاست؛ قرض، دنگ، خرید دارایی و… طرف مقابلشان آدم دیگری است
         val byBank = all.filter { it.raw.isNotBlank() }.groupBy { it.bank }
-            .mapValues { (_, l) -> l.map { Fa.toEn(it.raw) to (it.excluded && it.reason != 5 && it.reason != 15) } }
+            .mapValues { (_, l) -> l.map { Fa.toEn(it.raw) to (it.excluded && (it.reason == 0 || it.reason == 1)) } }
         val add = mutableSetOf<String>()
         src.filter { it.bank != Banks.MANUAL && it.raw.isNotBlank() }.forEach { t ->
             val sameBank = byBank[t.bank] ?: return@forEach
@@ -45,6 +46,8 @@ object OwnAccounts {
                 val with = sameBank.filter { it.first.contains(tok) }
                 // شماره‌ای که در خرج‌ها/واریزهای معمولی هم آمده، شماره‌ی خود این حساب است نه طرف مقابل
                 val normal = with.count { !it.second }
+                // شماره‌ای که در بیشتر پیامک‌های این بانک هست، شماره‌ی خود همین حساب است؛ هیچ‌وقت یاد گرفته نمی‌شود
+                if (isOwnNumber(with.size, sameBank.size)) return@forEach
                 if (with.isNotEmpty() && normal * 5 <= with.size) add += tok
             }
         }
@@ -54,6 +57,24 @@ object OwnAccounts {
     fun matches(ctx: Context, t: Tx): Boolean {
         val k = known(ctx)
         return k.isNotEmpty() && tokens(t.raw).any { it in k }
+    }
+
+    /** در بیش از ۳۰٪ پیامک‌های یک بانک آمده (و آن بانک دست‌کم ۴ پیامک دارد) */
+    private fun isOwnNumber(withCount: Int, bankCount: Int) = bankCount >= 4 && withCount * 10 > bankCount * 3
+
+    fun forget(ctx: Context, toks: Set<String>) {
+        val k = known(ctx)
+        if (toks.any { it in k }) prefs(ctx).edit().putStringSet(KEY, k - toks).apply()
+    }
+
+    /** یک بار: شماره‌هایی که اشتباهی یاد گرفته شده‌اند (شماره‌ی خود حساب) پاک می‌شوند */
+    suspend fun purgeOwnNumbers(ctx: Context) {
+        val k = known(ctx)
+        if (k.isEmpty()) return
+        val byBank = AppDb.get(ctx).tx().list().filter { it.raw.isNotBlank() && it.bank != Banks.MANUAL }
+            .groupBy { it.bank }.mapValues { (_, l) -> l.map { Fa.toEn(it.raw) } }
+        val bad = k.filter { tok -> byBank.values.any { raws -> isOwnNumber(raws.count { it.contains(tok) }, raws.size) } }.toSet()
+        if (bad.isNotEmpty()) prefs(ctx).edit().putStringSet(KEY, k - bad).apply()
     }
 
     fun forgetAll(ctx: Context) = prefs(ctx).edit().remove(KEY).apply()

@@ -233,15 +233,15 @@ object Banks {
      * واریز به مفید ↔ پرداختی که قبلا با رمز پویا «پس‌انداز» (۳) ثبت شده: هر دو انتقال بین حساب‌ها می‌شوند
      * تا پس‌انداز دو بار حساب نشود. true اگر جفت پیدا شد.
      */
-    suspend fun matchMofidDeposit(ctx: Context, t: Tx): Boolean {
-        if (t.bank != MOFID || t.isExpense || t.tag() == "profit") return false
+    suspend fun matchMofidDeposit(ctx: Context, t: Tx): Long? {
+        if (t.bank != MOFID || t.isExpense || t.tag() == "profit") return null
         val dao = AppDb.get(ctx).tx()
         val w = dao.savingsOut(t.ts - 2 * 24 * 60 * 60_000L, t.ts + 10 * 60_000L)
             .filter { it.amount >= t.amount && it.amount - t.amount <= minOf(t.amount / 100, 1_000_000L) }
-            .minByOrNull { kotlin.math.abs(it.ts - t.ts) } ?: return false
+            .minByOrNull { kotlin.math.abs(it.ts - t.ts) } ?: return null
         dao.markTransfer(listOf(t.id, w.id))
         Notifier.cancel(ctx, t.id)
-        return true
+        return w.id
     }
 
     private fun Tx.tag() = if (note == "سود") "profit" else ""
@@ -273,25 +273,40 @@ object Banks {
         return true
     }
 
-    suspend fun matchMofidRequest(ctx: Context, t: Tx): Boolean {
+    /** id تراکنش جفت‌شده، یا null */
+    suspend fun matchMofidRequest(ctx: Context, t: Tx): Long? {
         val dao = AppDb.get(ctx).tx()
         val window = 4 * 24 * 60 * 60_000L
         if (t.bank == MOFID && t.isExpense && t.note.startsWith("درخواست وجه")) {
             val dep = dao.depositsWithAmount(t.amount, MOFID, t.ts - 60 * 60_000L, t.ts + window)
-                .filter { it.reason != 1 && it.reason != 4 }.minByOrNull { it.ts } ?: return false
+                .filter { undecided(ctx, it) }.minByOrNull { it.ts } ?: return null
             dao.markTransfer(listOf(dep.id))
             Notifier.cancel(ctx, dep.id)
-            return true
+            return dep.id
         }
-        if (!t.isExpense && t.bank != MOFID && t.reason != 1) {
-            val req = dao.mofidRequests(t.amount, t.ts - window, t.ts + 60 * 60_000L).maxByOrNull { it.ts } ?: return false
+        if (!t.isExpense && t.bank != MOFID && undecided(ctx, t)) {
+            val req = dao.mofidRequests(t.amount, t.ts - window, t.ts + 60 * 60_000L).maxByOrNull { it.ts } ?: return null
             // اگر این درخواست قبلا با واریز دیگری جفت شده، دوباره استفاده نشود
             val already = dao.depositsWithAmount(t.amount, MOFID, req.ts - 60 * 60_000L, t.ts - 1).any { it.reason == 1 && it.id != t.id }
-            if (already) return false
+            if (already) return null
             dao.markTransfer(listOf(t.id))
-            return true
+            return req.id
         }
-        return false
+        return null
+    }
+
+    /**
+     * هنوز تصمیمی درباره‌اش گرفته نشده، پس می‌شود خودکار «انتقال» شود.
+     * خرجی که دسته یا دنگ دارد، واریزی که درآمد تأیید شده، قرض، دنگ، خرید دارایی و هر تراکنشی که کاربر
+     * جفت‌شدنش را برگردانده، هیچ‌وقت خودکار عوض نمی‌شوند.
+     */
+    fun undecided(ctx: Context, o: Tx): Boolean {
+        if (o.bank == MANUAL || NoAuto.has(ctx, o.id)) return false
+        return if (o.isExpense) {
+            o.reason == 2 || o.reason == 15 || (o.reason == 0 && (o.excluded || (o.categoryId == null && !o.shared)))
+        } else {
+            o.reason == 5 || o.reason == 2 || o.reason == 15 || (o.reason == 0 && o.excluded)
+        }
     }
 
     /**
@@ -442,7 +457,7 @@ object Banks {
     private val nameInText = listOf(
         "بانک ملت" to MELLAT, "بانک ملی" to MELLI, "بانک صادرات" to SADERAT, "بانک تجارت" to TEJARAT,
         "بانک سپه" to SEPAH, "پاسارگاد" to PASARGAD, "اقتصاد نوین" to EN, "گردشگری" to GARDESHGARI,
-        "پارسیان" to PARSIAN, "بانک دی" to DAY, "بلو" to BLU
+        "پارسیان" to PARSIAN, "بانک دی" to DAY
     )
     private val nameInSender = listOf(
         "mellat" to MELLAT, "melli" to MELLI, "bmi" to MELLI, "saderat" to SADERAT, "tejarat" to TEJARAT,
@@ -450,17 +465,19 @@ object Banks {
         "gardeshgari" to GARDESHGARI, "parsian" to PARSIAN, "day" to DAY, "blu" to BLU
     )
 
+    private val bfKind = Regex("""واریز\s+(یارانه|سود)""")
+
     private fun benefit(t: String, ts: Long, sender: String?): Parsed? {
-        if (!t.contains("واریز")) return null
-        val tag = when {
-            t.contains("یارانه") -> "subsidy"
-            t.contains("سود") -> "profit"
+        // فقط خود عبارت «واریز یارانه» یا «واریز سود…» (نه هر پیامکی که این کلمه‌ها جایی در آن باشد)
+        val tag = when (bfKind.find(t)?.groupValues?.get(1)) {
+            "یارانه" -> "subsidy"
+            "سود" -> "profit"
             else -> return null
         }
         if (!bfAcc.containsMatchIn(t)) return null
         val amount = bfAmt.find(t)?.let { num(it.groupValues[1]) } ?: return null
-        val bank = nameInText.firstOrNull { t.contains(it.first) }?.second
-            ?: sender?.let { s -> Learned.normSender(s).let { n -> nameInSender.firstOrNull { n.contains(it.first) }?.second } }
+        val bank = sender?.let { s -> Learned.normSender(s).let { n -> nameInSender.firstOrNull { n.contains(it.first) }?.second } }
+            ?: nameInText.firstOrNull { t.contains(it.first) }?.second
             ?: return null
         return build(false, amount, null, t, ts, bank)?.copy(tag = tag)
     }
@@ -484,12 +501,13 @@ object Banks {
      */
     suspend fun rematchAll(ctx: Context) {
         val dao = AppDb.get(ctx).tx()
-        dao.list().filter { !it.isExpense && it.reason !in listOf(1, 3, 4, 7, 8, 12, 14) && it.bank != MANUAL }
+        // فقط واریزهایی که هنوز تصمیمی درباره‌شان گرفته نشده (درآمد تأییدشده و… دست نمی‌خورد)
+        dao.list().filter { !it.isExpense && undecided(ctx, it) }
             .sortedBy { it.ts }
             .forEach { d ->
                 val fresh = dao.get(d.id) ?: return@forEach
-                if (fresh.reason == 1) return@forEach
-                if (!matchMofidDeposit(ctx, fresh) && !matchMofidRequest(ctx, fresh)) matchTransfer(ctx, fresh)
+                if (!undecided(ctx, fresh)) return@forEach
+                if (matchMofidDeposit(ctx, fresh) == null && matchMofidRequest(ctx, fresh) == null) matchTransfer(ctx, fresh)
             }
     }
 
@@ -559,10 +577,11 @@ object Banks {
     private fun slow(raw: String) = raw.contains("پایا") || raw.contains("ساتنا")
 
     suspend fun matchTransfer(ctx: Context, t: Tx): Long? {
-        if (t.bank == MANUAL) return null
+        if (t.bank == MANUAL || !undecided(ctx, t)) return null
         val dao = AppDb.get(ctx).tx()
         val (from, to) = if (t.isExpense) (t.ts - BEFORE) to (t.ts + SLOW) else (t.ts - SLOW) to (t.ts + BEFORE)
         val other = dao.transferCandidates(!t.isExpense, t.bank, from, to)
+            .filter { o -> undecided(ctx, o) }
             .filter { o -> if (t.isExpense) feeOk(t.amount, o.amount) else feeOk(o.amount, t.amount) }
             .filter { o ->
                 // فاصله‌ی برداشت تا واریز

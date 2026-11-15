@@ -169,7 +169,7 @@ object FileOut {
  */
 object Prefs {
     private fun skip(k: String) =
-        k in setOf("importVer", "imported", "depositsPending", "otpNotesCleared", "lastBackup", "catchTs", "smsAsked", "xiaomiHide") ||
+        k in setOf("importVer", "imported", "depositsPending", "otpNotesCleared", "lastBackup", "catchTs", "smsAsked", "xiaomiHide", "updAvail", "updCheckAt", "updDismissed", "updNotified") ||
             k.startsWith("logoFail_") || k.startsWith("drive")
 
     fun export(ctx: Context): JSONObject {
@@ -489,6 +489,8 @@ object Backup {
         Learned.reset()
         RemoteBanks.reset()
         BankRules.reset()
+        Tombstones.reset()
+        NoAuto.reset()
     }
 
     /** پشتیبان در Download/Makharej و یک نسخه برای ارسال */

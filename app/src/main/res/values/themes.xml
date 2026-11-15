@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- رنگ پنجره قبل از بالا آمدن صفحه، هم‌رنگ پس‌زمینه‌ی اپ (تا موقع باز شدن سفید نشود) -->
+    <color name="app_window_bg">#F4F5FA</color>
+    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/app_window_bg</item>
+        <item name="android:statusBarColor">@color/app_window_bg</item>
+        <item name="android:navigationBarColor">@color/app_window_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

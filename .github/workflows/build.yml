@@ -38,12 +38,13 @@ jobs:
           keytool -list -keystore app/release.jks -storepass "$KEYSTORE_PASSWORD" -storetype PKCS12 > /dev/null \
             && echo "Keystore OK" || { echo "::error::Keystore or password is wrong"; exit 1; }
 
+      # آزمون نمونه پیامک بانک‌ها قبل از ساخت؛ اگر یکی خراب شده باشد نسخه منتشر نمی‌شود
       - name: Build release APK
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: gradle assembleRelease --no-daemon --stacktrace
+        run: gradle testReleaseUnitTest assembleRelease --no-daemon --stacktrace
 
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk Makharej-${{ github.run_number }}.apk

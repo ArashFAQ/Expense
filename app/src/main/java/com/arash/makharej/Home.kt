@@ -1,6 +1,7 @@
 package com.arash.makharej
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -99,9 +100,10 @@ fun MonthRow(txs: List<Tx>, isExpense: Boolean, ym: Int, onYm: (Int) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(horizontal = 2.dp)
         ) {
-            itemsIndexed((1..12).toList()) { i, m ->
+            // ماه‌های آینده نشان داده نمی‌شوند
+            itemsIndexed((1..12).filter { year * 100 + it <= now }) { i, m ->
                 val cell = year * 100 + m
-                val future = cell > now
+                val future = false
                 val sel = cell == ym
                 Column(
                     Modifier
@@ -137,9 +139,78 @@ fun MonthRow(txs: List<Tx>, isExpense: Boolean, ym: Int, onYm: (Int) -> Unit) {
 
 // ================================================================ Home
 
+/** اولین باز شدن اپ: سه قدم شروع */
 @Composable
-fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, onOpenExpenses: () -> Unit, onOpenAssets: () -> Unit = {}) {
+private fun WelcomeCard(onOpenHelp: () -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    // موقع باز شدن اپ، فهرست تراکنش‌ها یک لحظه خالی است؛ کارت با کمی تأخیر می‌آید تا برای کاربر قدیمی چشمک نزند
+    var show by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { kotlinx.coroutines.delay(450); show = true }
+    if (!show) return
+    val granted = hasPerm(ctx, android.Manifest.permission.READ_SMS)
+    val reading by InboxImporter.progress.collectAsState()
+    Column(
+        Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
+            Column(Modifier.fillMaxWidth().padding(20.dp)) {
+                Text("به مخارج خوش آمدی", fontSize = 22.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "مخارج پیامک‌های بانکی‌ات را می‌خواند و خرج و درآمد را خودش ثبت می‌کند. همه‌چیز فقط روی همین گوشی می‌ماند.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(14.dp))
+                listOf(
+                    Triple("اجازه‌ی پیامک و اعلان را بده", if (granted) "انجام شد" else "از کارت بالای همین صفحه", granted),
+                    Triple(
+                        "اپ پیامک‌های قبلی را می‌خواند",
+                        if (reading != null) "در حال خواندن…" else "موجودی بانک‌ها و تراکنش‌های این ماه خودکار می‌آیند", false
+                    ),
+                    Triple("بعد از هر خرج، در نوتیفیکیشن بگو کجا خرج شد", "بقیه‌ی حساب‌وکتاب با اپ", false)
+                ).forEachIndexed { i, (title, sub, done) ->
+                    Row(Modifier.padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(34.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(if (done) IncomeColor else sectionBg(MaterialTheme.colorScheme.primary)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                if (done) "✓" else Fa.toFa((i + 1).toString()), fontWeight = FontWeight.Black,
+                                color = if (done) Color.White else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(title, fontWeight = FontWeight.Bold)
+                            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                androidx.compose.material3.OutlinedButton(onClick = onOpenHelp, modifier = Modifier.fillMaxWidth()) { Text("راهنمای کامل اپ") }
+            }
+        }
+        if (granted && reading == null) Text(
+            "اگر پیامک بانکی داری ولی چیزی ثبت نشد، به تنظیمات ← «تأیید بانک و پیامک بانکی» ← «خوانده نشده» سر بزن؛ شاید بانکت هنوز در اپ نیست.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 6.dp)
+        )
+    }
+}
+
+@Composable
+fun HomeTab(
+    txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, onOpenExpenses: () -> Unit,
+    onOpenAssets: () -> Unit = {}, onOpenHelp: () -> Unit = {}
+) {
     val homeCtx = androidx.compose.ui.platform.LocalContext.current
+    // کاربر تازه (هنوز هیچ تراکنشی نیست): به‌جای صفرها و نمودار خالی، کارت خوش‌آمد
+    if (txs.isEmpty()) {
+        WelcomeCard(onOpenHelp)
+        return
+    }
     val dues by remember { AppDb.get(homeCtx).due().all() }.collectAsState(initial = emptyList())
     val catById = cats.associateBy { it.id }
     val counted = txs.counted()
@@ -276,7 +347,7 @@ fun HomeTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit, o
                         } else Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("مانده " + Fa.monthName(ym), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
-                                (if (totalIn < totalOut) "−" else "") + Fa.num(kotlin.math.abs(totalIn - totalOut)),
+                                if (totalIn == totalOut) "—" else (if (totalIn < totalOut) "−" else "") + Fa.num(kotlin.math.abs(totalIn - totalOut)),
                                 fontSize = 18.sp, fontWeight = FontWeight.Black, maxLines = 1,
                                 color = if (totalIn >= totalOut) IncomeColor else ExpenseColor
                             )
@@ -389,7 +460,8 @@ private fun SummaryCell(
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(title, style = MaterialTheme.typography.labelMedium, color = color.copy(alpha = 0.85f), fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
-            val num = Fa.num(rial)
+            // صفر فارسی (۰) در اندازه‌ی بزرگ شبیه یک نقطه است
+            val num = if (rial == 0L) "—" else Fa.num(rial)
             // اگر درصد کنار عدد جا نشود، زیرش می‌رود
             androidx.compose.foundation.layout.FlowRow(
                 horizontalArrangement = Arrangement.Center,
@@ -533,7 +605,7 @@ fun MonthSummaryCard(txs: List<Tx>, cats: List<Category>, ym: Int, count: Int, e
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text((if (isExpense) "خرج " else "درآمد ") + Fa.monthName(ym), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(Fa.num(total), fontSize = 26.sp, fontWeight = FontWeight.Black, color = if (isExpense) ExpenseColor else IncomeColor, maxLines = 1, softWrap = false)
+                Text(if (total == 0L) "—" else Fa.num(total), fontSize = 26.sp, fontWeight = FontWeight.Black, color = if (isExpense) ExpenseColor else IncomeColor, maxLines = 1, softWrap = false)
                 Text(
                     "تومان · " + Fa.toFa(count.toString()) + " تراکنش" + if (extra != null) " · $extra" else "",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant

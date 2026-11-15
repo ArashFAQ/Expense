@@ -87,7 +87,7 @@ object Loans {
 
     /** اسم‌هایی که قبلا استفاده شده (پرتکرارها اول) */
     fun persons(txs: List<Tx>): List<String> =
-        txs.mapNotNull { it.person?.trim()?.takeIf { p -> p.isNotEmpty() } }
+        txs.filter { it.reason == 6 || it.reason == 8 }.mapNotNull { it.person?.trim()?.takeIf { p -> p.isNotEmpty() } }
             .groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key }
 
     fun manual(

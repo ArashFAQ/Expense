@@ -63,6 +63,18 @@ import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.outlined.AutoMode
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.FactCheck
+import androidx.compose.material.icons.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.Label
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Palette as OutlinedPalette
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.Sms
+import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material.icons.outlined.AccountBalance as OutlinedBank
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -184,6 +196,45 @@ object ThemeSettings {
 
 internal val LocalDark = staticCompositionLocalOf { false }
 
+/** فونت فارسی داخل اپ (وزیرمتن، متغیر): روی همه‌ی گوشی‌ها یک‌شکل */
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+private fun vazir(w: FontWeight) = androidx.compose.ui.text.font.Font(
+    R.font.vazirmatn, w,
+    variationSettings = androidx.compose.ui.text.font.FontVariation.Settings(
+        androidx.compose.ui.text.font.FontVariation.weight(w.weight)
+    )
+)
+
+private val Vazir = androidx.compose.ui.text.font.FontFamily(
+    vazir(FontWeight.Normal), vazir(FontWeight.Medium), vazir(FontWeight.SemiBold),
+    vazir(FontWeight.Bold), vazir(FontWeight.ExtraBold), vazir(FontWeight.Black)
+)
+
+private val AppTypography = androidx.compose.material3.Typography().let { t ->
+    androidx.compose.material3.Typography(
+        displayLarge = t.displayLarge.copy(fontFamily = Vazir),
+        displayMedium = t.displayMedium.copy(fontFamily = Vazir),
+        displaySmall = t.displaySmall.copy(fontFamily = Vazir),
+        headlineLarge = t.headlineLarge.copy(fontFamily = Vazir),
+        headlineMedium = t.headlineMedium.copy(fontFamily = Vazir),
+        headlineSmall = t.headlineSmall.copy(fontFamily = Vazir),
+        titleLarge = t.titleLarge.copy(fontFamily = Vazir),
+        titleMedium = t.titleMedium.copy(fontFamily = Vazir),
+        titleSmall = t.titleSmall.copy(fontFamily = Vazir),
+        bodyLarge = t.bodyLarge.copy(fontFamily = Vazir),
+        bodyMedium = t.bodyMedium.copy(fontFamily = Vazir),
+        bodySmall = t.bodySmall.copy(fontFamily = Vazir),
+        labelLarge = t.labelLarge.copy(fontFamily = Vazir),
+        labelMedium = t.labelMedium.copy(fontFamily = Vazir),
+        labelSmall = t.labelSmall.copy(fontFamily = Vazir)
+    )
+}
+
+/** رفتن مستقیم به یک صفحه‌ی تنظیمات (از نوتیفیکیشن یا کارت «نسخه‌ی جدید») */
+object Nav {
+    val settingsPage = mutableStateOf<String?>(null)
+}
+
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
     val dark = when (ThemeSettings.mode) {
@@ -222,7 +273,7 @@ fun AppTheme(content: @Composable () -> Unit) {
         }
     }
 
-    MaterialTheme(colorScheme = scheme) {
+    MaterialTheme(colorScheme = scheme, typography = AppTypography) {
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl, LocalDark provides dark) {
             content()
         }
@@ -274,11 +325,18 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         ThemeSettings.load(this)
         Learned.banks(this)
         RemoteBanks.entries(this)
-        val startTab = when {
+        // شماره‌ی تب در نوتیفیکیشن‌ها و ویجت‌ها به ترتیب قدیم است (۰ خانه، ۱ خرج‌ها، ۲ درآمد، ۳ دارایی، ۴ برنامه، ۵ تنظیمات)
+        val old = when {
             intent?.getBooleanExtra("openSettings", false) == true -> 5
+            intent?.getStringExtra("openPage") != null -> 5
             else -> intent?.getIntExtra("openTab", 0) ?: 0
         }
-        setContent { AppTheme { if (AppLock.locked.value && AppLock.enabled(this)) LockScreen() else MainScreen(startTab) } }
+        intent?.getStringExtra("openPage")?.let { Nav.settingsPage.value = it }
+        val startTab = when (old) { 0 -> 0; 1, 2 -> 1; 3 -> 2; 4 -> 3; else -> 4 }
+        val startIncome = old == 2
+        setContent {
+            AppTheme { if (AppLock.locked.value && AppLock.enabled(this)) LockScreen() else MainScreen(startTab, startIncome) }
+        }
     }
 }
 
@@ -355,6 +413,7 @@ class CategorizeActivity : ComponentActivity() {
                             tx = t, cats = cats, notes = notes, db = db,
                             onSave = { cat, note, ex, amount ->
                                 scope.launch {
+                                    if (t.reason == 1 && !ex) NoAuto.add(ctx, t.id)
                                     db.tx().update(t.id, cat, note, ex, amount)
                         if (ex && !t.excluded) OwnAccounts.learn(ctx, t.id)
                                     Notifier.cancel(ctx, t.id)
@@ -374,7 +433,7 @@ class CategorizeActivity : ComponentActivity() {
 // ================================================================ Main
 
 @Composable
-fun MainScreen(startTab: Int = 0) {
+fun MainScreen(startTab: Int = 0, startIncome: Boolean = false) {
     val ctx = LocalContext.current
     val db = remember { AppDb.get(ctx) }
     val txs by remember { db.tx().all() }.collectAsState(initial = emptyList())
@@ -385,7 +444,9 @@ fun MainScreen(startTab: Int = 0) {
     LaunchedEffect(Unit) { Receipts.scan(ctx) }
     val cats by remember { db.cat().all() }.collectAsState(initial = emptyList())
     // جابه‌جایی بین تب‌ها با کشیدن چپ و راست
-    val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = startTab) { 6 }
+    val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = startTab) { 5 }
+    // تب «تراکنش‌ها»: خرج‌ها یا درآمد
+    var showIncome by rememberSaveable { mutableStateOf(startIncome) }
     val pagerScope = rememberCoroutineScope()
     val tab = pager.currentPage
     fun goTab(i: Int) { pagerScope.launch { pager.animateScrollToPage(i) } }
@@ -417,6 +478,13 @@ fun MainScreen(startTab: Int = 0) {
         } catch (_: Exception) {}
         try { DueReminder.check(ctx) } catch (_: Exception) {}
         try { InboxImporter.schedule(ctx) } catch (_: Exception) {}
+        // یک بار: شماره‌ی خود حساب‌ها که اشتباهی «حساب خودی» یاد گرفته شده پاک می‌شود
+        if (!pr.getBoolean("ownPurged", false)) {
+            try { OwnAccounts.purgeOwnNumbers(ctx) } catch (_: Exception) {}
+            pr.edit().putBoolean("ownPurged", true).apply()
+        }
+        // روزی دو بار: نسخه‌ی جدید؟
+        try { UpdateCheck.check(ctx) } catch (_: Exception) {}
         // یک بار: حساب‌های خودی از روی «حساب خودم»ها و انتقال‌های قبلی یاد گرفته می‌شوند
         if (!pr.getBoolean("ownLearned", false)) {
             try { OwnAccounts.learnExisting(ctx) } catch (_: Exception) {}
@@ -430,19 +498,23 @@ fun MainScreen(startTab: Int = 0) {
 
     val tabs = listOf(
         "خانه" to Icons.Filled.Home,
-        "خرج‌ها" to Icons.Filled.ShoppingCart,
-        "درآمد" to Icons.Filled.AddCircle,
+        "تراکنش‌ها" to Icons.Filled.ReceiptLong,
         "دارایی" to Icons.Filled.AccountBalance,
         "برنامه" to Icons.Filled.DateRange,
         "تنظیمات" to Icons.Filled.Settings
     )
+    // از نوتیفیکیشن یا کارت «نسخه‌ی جدید»: مستقیم به همان صفحه‌ی تنظیمات
+    LaunchedEffect(Nav.settingsPage.value) { if (Nav.settingsPage.value != null && pager.currentPage != 4) pager.scrollToPage(4) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column(Modifier.statusBarsPadding()) {
-                PermissionBanner()
-                XiaomiBanner()
+                // هشدارها فقط در صفحه‌ی خانه دیده می‌شوند (بررسی مجوز و پیامک‌های جاافتاده همیشه انجام می‌شود)
+                PermissionBanner(visible = tab == 0)
+                if (tab == 0) XiaomiBanner()
+                ImportProgressBar()
+                if (tab == 0) UpdateBanner { goTab(4) }
             }
         },
         bottomBar = {
@@ -465,12 +537,39 @@ fun MainScreen(startTab: Int = 0) {
             verticalAlignment = Alignment.Top
         ) { page ->
             when (page) {
-                0 -> HomeTab(txs, cats, ym, onYm = { ym = it }, onOpenExpenses = { goTab(1) }, onOpenAssets = { goTab(4) })
-                1 -> ExpensesTab(txs, cats, db, ym, onAdd = { adding = 1 }, onSearch = { searching = true }) { ym = it }
-                2 -> IncomeTab(txs, cats, db, ym, onAdd = { adding = 2 }, onSearch = { searching = true }) { ym = it }
-                3 -> AssetsTab(txs, db, cats)
-                4 -> ReportTab(txs, cats, ym) { ym = it }
-                else -> SettingsScreen(cats, db, active = pager.settledPage == 5)
+                0 -> HomeTab(
+                    txs, cats, ym, onYm = { ym = it },
+                    onOpenExpenses = { showIncome = false; goTab(1) }, onOpenAssets = { goTab(3) },
+                    onOpenHelp = { Nav.settingsPage.value = "help" }
+                )
+                1 -> Column {
+                    // خرج‌ها | درآمد
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                            .clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                            .padding(3.dp)
+                    ) {
+                        listOf(false to "خرج‌ها", true to "درآمد").forEach { (inc, label) ->
+                            val on = showIncome == inc
+                            Box(
+                                Modifier.weight(1f).clip(RoundedCornerShape(11.dp))
+                                    .background(if (on) (if (inc) IncomeColor else ExpenseColor) else Color.Transparent)
+                                    .clickable { showIncome = inc }.padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    label, fontWeight = FontWeight.Bold,
+                                    color = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    if (showIncome) IncomeTab(txs, cats, db, ym, onAdd = { adding = 2 }, onSearch = { searching = true }) { ym = it }
+                    else ExpensesTab(txs, cats, db, ym, onAdd = { adding = 1 }, onSearch = { searching = true }) { ym = it }
+                }
+                2 -> AssetsTab(txs, db, cats)
+                3 -> ReportTab(txs, cats, ym) { ym = it }
+                else -> SettingsScreen(cats, db, active = pager.settledPage == 4)
             }
         }
     }
@@ -484,7 +583,7 @@ fun MainScreen(startTab: Int = 0) {
 }
 
 @Composable
-fun PermissionBanner() {
+fun PermissionBanner(visible: Boolean = true) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val perms = remember {
@@ -535,10 +634,11 @@ fun PermissionBanner() {
         onDispose { owner.lifecycle.removeObserver(obs) }
     }
 
-    if (!ok) {
+    if (!ok && visible) {
         Card(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = sectionBg(Color(0xFFF59E0B)))
         ) {
             Column(Modifier.padding(16.dp)) {
                 if (blocked) {
@@ -592,7 +692,8 @@ fun XiaomiBanner() {
     if (!isXiaomi || hidden || !hasPerm(ctx, Manifest.permission.READ_SMS)) return
     Card(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = sectionBg(MaterialTheme.colorScheme.primary))
     ) {
         Column(Modifier.padding(16.dp)) {
             Text("یک تنظیم برای گوشی شیائومی", fontWeight = FontWeight.Bold)
@@ -618,6 +719,111 @@ fun XiaomiBanner() {
                 Spacer(Modifier.width(8.dp))
                 TextButton(onClick = { prefs(ctx).edit().putBoolean("xiaomiHide", true).apply(); hidden = true }) { Text("انجام دادم") }
             }
+        }
+    }
+}
+
+/** پیشرفت خواندن پیامک‌های قبلی (بار اول یا بعد از اضافه شدن بانک) */
+@Composable
+fun ImportProgressBar() {
+    val pr by InboxImporter.progress.collectAsState()
+    val (done, total) = pr ?: return
+    if (total < 50) return
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp), colors = cardColors()
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Text(
+                "در حال خواندن پیامک‌ها… " + Fa.toFa(done.toString()) + " از " + Fa.toFa(total.toString()),
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(6.dp))
+            LinearProgressIndicator(
+                progress = { if (total > 0) done.toFloat() / total else 0f },
+                modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp))
+            )
+        }
+    }
+}
+
+/** خبر «نسخه‌ی جدید آمد»: روزی دو بار از گیت‌هاب پرسیده می‌شود */
+object UpdateCheck {
+    /** شماره‌ی ساخت نسخه‌ی جدید (۰ = چیزی نیست) */
+    val available = mutableIntStateOf(0)
+    private const val EVERY = 12 * 60 * 60_000L
+
+    fun name(version: Int) = "1." + String.format(java.util.Locale.US, "%02d", version - 100)
+
+    fun load(ctx: Context) {
+        val p = prefs(ctx)
+        val v = p.getInt("updAvail", 0)
+        available.intValue = if (v > BuildConfig.VERSION_CODE && v != p.getInt("updDismissed", 0)) v else 0
+    }
+
+    fun dismiss(ctx: Context) {
+        prefs(ctx).edit().putInt("updDismissed", available.intValue).apply()
+        available.intValue = 0
+    }
+
+    suspend fun check(ctx: Context, notify: Boolean = false) {
+        val p = prefs(ctx)
+        load(ctx)
+        if (System.currentTimeMillis() - p.getLong("updCheckAt", 0L) < EVERY) return
+        val r = try { Updater.latest() } catch (_: Exception) { null } ?: return
+        p.edit().putLong("updCheckAt", System.currentTimeMillis()).putInt("updAvail", r.version).apply()
+        load(ctx)
+        if (notify && r.version > BuildConfig.VERSION_CODE && r.version != p.getInt("updNotified", 0)) {
+            p.edit().putInt("updNotified", r.version).apply()
+            showNotification(ctx, r.version)
+        }
+    }
+
+    private fun showNotification(ctx: Context, version: Int) {
+        try {
+            val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
+            if (nm.getNotificationChannel("update") == null) {
+                nm.createNotificationChannel(
+                    android.app.NotificationChannel("update", "نسخه‌ی جدید اپ", android.app.NotificationManager.IMPORTANCE_DEFAULT)
+                )
+            }
+            val open = android.app.PendingIntent.getActivity(
+                ctx, 9800,
+                Intent(ctx, MainActivity::class.java).putExtra("openPage", "update")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            val n = androidx.core.app.NotificationCompat.Builder(ctx, "update")
+                .setSmallIcon(R.drawable.ic_stat)
+                .setContentTitle("نسخه‌ی " + Fa.toFa(name(version)) + " مخارج آماده است")
+                .setContentText("برای به‌روزرسانی بزن")
+                .setAutoCancel(true)
+                .setContentIntent(open)
+                .build()
+            androidx.core.app.NotificationManagerCompat.from(ctx).notify(9800, n)
+        } catch (_: Exception) {
+        }
+    }
+}
+
+@Composable
+fun UpdateBanner(onOpen: () -> Unit) {
+    val ctx = LocalContext.current
+    val v = UpdateCheck.available.intValue
+    if (v <= BuildConfig.VERSION_CODE) return
+    Card(
+        onClick = { Nav.settingsPage.value = "update"; onOpen() },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Row(Modifier.padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "نسخه‌ی " + Fa.toFa(UpdateCheck.name(v)) + " آماده است",
+                Modifier.weight(1f), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Text("به‌روزرسانی ←", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            TextButton(onClick = { UpdateCheck.dismiss(ctx) }) { Text("بعدا") }
         }
     }
 }
@@ -943,6 +1149,8 @@ fun EditDialog(t: Tx, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
                 tx = t, cats = cats, notes = notes, db = db,
                 onSave = { cat, note, ex, amount ->
                     scope.launch {
+                        // «انتقال» را دستی برگردانده: دیگر خودکار جفت نشود
+                        if (t.reason == 1 && !ex) NoAuto.add(ctx, t.id)
                         db.tx().update(t.id, cat, note, ex, amount)
                         if (ex && !t.excluded) OwnAccounts.learn(ctx, t.id)
                         Notifier.cancel(ctx, t.id)
@@ -951,10 +1159,7 @@ fun EditDialog(t: Tx, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
                 },
                 onCancel = onClose,
                 onDelete = {
-                    scope.launch {
-                        if (t.isExpense) Refunds.releaseAll(ctx, t.id)
-                        db.tx().delete(t.id)
-                    }
+                    scope.launch { TxOps.delete(ctx, t) }
                     onClose()
                 }
             )
@@ -1918,19 +2123,23 @@ fun IconPickerGrid(selected: String, color: Color, onPick: (String) -> Unit) {
     }
 }
 
-class SettingsPage(val id: String, val title: String, val subtitle: String)
+class SettingsPage(
+    val id: String, val title: String, val subtitle: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector, val group: String
+)
 
 val SettingsPages = listOf(
-    SettingsPage("help", "راهنما", "آموزش کامل همه‌ی بخش‌های اپ با مثال"),
-    SettingsPage("cats", "دسته‌ها", "افزودن، ویرایش، رنگ و حذف دسته‌ها"),
-    SettingsPage("banks", "بانک‌ها و حساب‌ها", "کدام بانک‌ها خوانده شوند، خرج و درآمد، پس‌انداز"),
-    SettingsPage("backup", "پشتیبان‌گیری", "Google Drive، فایل پشتیبان، بازگردانی"),
-    SettingsPage("theme", "ظاهر", "حالت روشن و تیره، رنگ اصلی"),
-    SettingsPage("lock", "قفل و حریم خصوصی", "اثر انگشت، پنهان کردن روی صفحه‌ی قفل و ویجت"),
-    SettingsPage("verify", "تأیید بانک و پیامک بانکی", "بانک هر پیامک را ببین و درست کن، پیامک‌هایی که خوانده نشدند"),
-    SettingsPage("samples", "نمونه پیامک بانک‌ها", "آموزش بانک جدید، وضعیت همه‌ی بانک‌ها"),
-    SettingsPage("misc", "پیامک‌ها و کار در پس‌زمینه", "خواندن دوباره‌ی پیامک‌ها، Autostart و باتری"),
-    SettingsPage("update", "به‌روزرسانی اپ", "نسخه‌ی " + Fa.toFa(BuildConfig.VERSION_NAME)),
+    SettingsPage("help", "راهنما", "آموزش کامل همه‌ی بخش‌های اپ با مثال", Icons.Outlined.HelpOutline, "عمومی"),
+    SettingsPage("cats", "دسته‌ها", "افزودن، ویرایش، رنگ و حذف دسته‌ها", Icons.Outlined.Label, "عمومی"),
+    SettingsPage("theme", "ظاهر", "حالت روشن و تیره، رنگ اصلی", Icons.Outlined.OutlinedPalette, "عمومی"),
+    SettingsPage("banks", "بانک‌ها و حساب‌ها", "کدام بانک‌ها خوانده شوند، خرج و درآمد، پس‌انداز", Icons.Outlined.OutlinedBank, "بانک و پیامک"),
+    SettingsPage("auto", "کارهای خودکار", "هر کاری که اپ خودش انجام داده، با دکمه‌ی برگردان", Icons.Outlined.AutoMode, "بانک و پیامک"),
+    SettingsPage("verify", "تأیید بانک و پیامک بانکی", "بانک هر پیامک را ببین و درست کن، پیامک‌هایی که خوانده نشدند", Icons.Outlined.FactCheck, "بانک و پیامک"),
+    SettingsPage("samples", "نمونه پیامک بانک‌ها", "آموزش بانک جدید، وضعیت همه‌ی بانک‌ها", Icons.Outlined.School, "بانک و پیامک"),
+    SettingsPage("misc", "پیامک‌ها و کار در پس‌زمینه", "خواندن دوباره‌ی پیامک‌ها، Autostart و باتری", Icons.Outlined.Sms, "بانک و پیامک"),
+    SettingsPage("backup", "پشتیبان‌گیری", "Google Drive، فایل پشتیبان، بازگردانی", Icons.Outlined.CloudUpload, "داده و امنیت"),
+    SettingsPage("lock", "قفل و حریم خصوصی", "اثر انگشت، پنهان کردن روی صفحه‌ی قفل و ویجت", Icons.Outlined.Lock, "داده و امنیت"),
+    SettingsPage("update", "به‌روزرسانی اپ", "نسخه‌ی " + Fa.toFa(BuildConfig.VERSION_NAME), Icons.Outlined.SystemUpdate, "درباره"),
 )
 
 @Composable
@@ -1943,8 +2152,11 @@ fun SettingsScreen(cats: List<Category>, db: AppDb, active: Boolean = true) {
     var coloring by remember { mutableStateOf<Category?>(null) }
     var page by rememberSaveable { mutableStateOf("") }
     BackHandler(enabled = active && page != "") { page = "" }
-    // رفتن به تب دیگر: دفعه‌ی بعد تنظیمات از فهرست اصلی شروع شود
-    LaunchedEffect(active) { if (!active) page = "" }
+    // رفتن به تب دیگر: دفعه‌ی بعد تنظیمات از فهرست اصلی شروع شود؛ درخواست باز شدن یک صفحه‌ی مشخص
+    LaunchedEffect(active, Nav.settingsPage.value) {
+        if (!active) page = ""
+        else Nav.settingsPage.value?.let { p -> if (SettingsPages.any { it.id == p }) page = p; Nav.settingsPage.value = null }
+    }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -1960,21 +2172,41 @@ fun SettingsScreen(cats: List<Category>, db: AppDb, active: Boolean = true) {
             }
         }
         when (page) {
-            "" -> items(SettingsPages, key = { it.id }) { pg ->
-                Card(
-                    onClick = { page = pg.id },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp), colors = cardColors()
-                ) {
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(pg.title, fontWeight = FontWeight.Bold)
-                            Text(
-                                pg.subtitle, style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+            // فهرست اصلی: چند گروه، هر گروه یک کارت با ردیف‌های آیکون‌دار
+            "" -> SettingsPages.groupBy { it.group }.forEach { (group, pages) ->
+                item(key = "g-$group") {
+                    Column {
+                        Text(
+                            group, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 8.dp, top = 6.dp, bottom = 6.dp)
+                        )
+                        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = cardColors()) {
+                            Column {
+                                pages.forEachIndexed { i, pg ->
+                                    Row(
+                                        Modifier.fillMaxWidth().clickable { page = pg.id }.padding(horizontal = 14.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            Modifier.size(38.dp).clip(CircleShape).background(sectionBg(MaterialTheme.colorScheme.primary)),
+                                            contentAlignment = Alignment.Center
+                                        ) { Icon(pg.icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) }
+                                        Spacer(Modifier.width(12.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(pg.title, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                pg.subtitle, style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Icon(Icons.Filled.KeyboardArrowLeft, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    if (i < pages.lastIndex) HorizontalDivider(
+                                        Modifier.padding(start = 64.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
                         }
-                        Icon(Icons.Filled.KeyboardArrowLeft, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -1984,6 +2216,7 @@ fun SettingsScreen(cats: List<Category>, db: AppDb, active: Boolean = true) {
             "banks" -> item { AccountsSection() }
             "samples" -> item { SamplesSection() }
             "verify" -> item { VerifySmsScreen() }
+            "auto" -> item { AutoLogScreen() }
             "cats" -> {
         for (inc in listOf(false, true)) {
             val list = cats.filter { it.income == inc }

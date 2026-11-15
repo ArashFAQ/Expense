@@ -123,7 +123,9 @@ interface TxDao {
     suspend fun clearRoleIgnore(bank: String, e: Boolean)
 
     @Query(
-        "SELECT * FROM tx WHERE isExpense = :e AND bank != :notBank AND bank != 'MANUAL' AND reason NOT IN (1, 3, 6, 7, 8, 9, 11, 12, 13, 14) " +
+        "SELECT * FROM tx WHERE isExpense = :e AND bank != :notBank AND bank != 'MANUAL' AND reason NOT IN (1, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14) " +
+            // تصمیم خود کاربر دست نمی‌خورد: خرجی که دسته دارد و واریزی که «درآمد» تأیید شده
+            "AND NOT (reason = 0 AND excluded = 0 AND (categoryId IS NOT NULL OR isExpense = 0)) " +
             "AND ts BETWEEN :from AND :to"
     )
     suspend fun transferCandidates(e: Boolean, notBank: String, from: Long, to: Long): List<Tx>
@@ -161,6 +163,10 @@ interface TxDao {
 
     @Query("UPDATE tx SET bank = :bank WHERE dedupKey = :key AND bank != :bank")
     suspend fun setBankByKey(key: String, bank: String)
+
+    /** برگرداندن یک کار خودکار: حالت تراکنش مستقیم تنظیم می‌شود */
+    @Query("UPDATE tx SET reason = :r, excluded = :ex WHERE id = :id")
+    suspend fun setState(id: Long, r: Int, ex: Boolean)
 
     @Query("SELECT COUNT(*) FROM tx")
     suspend fun count(): Int

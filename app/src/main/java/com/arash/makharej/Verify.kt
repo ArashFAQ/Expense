@@ -193,7 +193,19 @@ fun VerifySmsScreen() {
             when {
                 list == null -> Text("در حال خواندن پیامک‌ها…")
                 list.isEmpty() -> Text("هنوز پیامک بانکی‌ای خوانده نشده.")
-                else -> list.forEach { m -> ReadRow(m) { picking = m } }
+                else -> {
+                    val tomb = remember(reload) { Tombstones.keys(ctx) }
+                    list.forEach { m ->
+                        val key = remember(m) { Ingest.dedupKey(m.body) }
+                        ReadRow(m, deleted = key in tomb, onRestore = {
+                            scope.launch {
+                                Tombstones.remove(ctx, key)
+                                try { Ingest.handle(ctx, m.body, m.ts, notify = false, sender = m.sender) } catch (_: Exception) {}
+                                reload++
+                            }
+                        }) { picking = m }
+                    }
+                }
             }
             // قانون‌های یادگرفته
             val rules = remember(rulesVer, reload) { BankRules.all(ctx).filterKeys { !it.startsWith("k:") } }
@@ -318,7 +330,7 @@ fun VerifySmsScreen() {
 }
 
 @Composable
-private fun ReadRow(m: ReadSms, onPick: () -> Unit) {
+private fun ReadRow(m: ReadSms, deleted: Boolean = false, onRestore: () -> Unit = {}, onPick: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Card(onClick = { open = !open }, shape = RoundedCornerShape(16.dp), colors = cardColors()) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
@@ -349,6 +361,14 @@ private fun ReadRow(m: ReadSms, onPick: () -> Unit) {
                 m.body.trim(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = if (open) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis
             )
+            // تراکنش این پیامک را حذف کرده‌ای؛ اپ دیگر ثبتش نمی‌کند مگر این‌که برگردانی
+            if (deleted) Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "این تراکنش را حذف کرده‌ای", Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error
+                )
+                TextButton(onClick = onRestore) { Text("برگردان") }
+            }
         }
     }
 }
