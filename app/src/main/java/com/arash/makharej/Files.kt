@@ -169,7 +169,7 @@ object FileOut {
  */
 object Prefs {
     private fun skip(k: String) =
-        k in setOf("importVer", "imported", "depositsPending", "otpNotesCleared", "lastBackup") ||
+        k in setOf("importVer", "imported", "depositsPending", "otpNotesCleared", "lastBackup", "catchTs", "smsAsked", "xiaomiHide") ||
             k.startsWith("logoFail_") || k.startsWith("drive")
 
     fun export(ctx: Context): JSONObject {

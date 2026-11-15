@@ -111,7 +111,8 @@
    "id": "PARSIAN",
    "name": "پارسیان",
    "senders": [],
-   "templates": []
+   "templates": [],
+   "builtin": true
   },
   {
    "id": "SAMAN",

@@ -162,6 +162,48 @@ object InboxImporter {
         return n
     }
 
+    /**
+     * پیامک‌های تازه‌ای که شاید خبرشان به اپ نرسیده (شیائومی و…): از آخرین بررسی به بعد خوانده می‌شوند.
+     * تکراری ثبت نمی‌شود؛ برای پیامک‌های دو روز اخیر نوتیفیکیشن هم می‌آید.
+     */
+    suspend fun catchUp(ctx: Context): Int = withContext(Dispatchers.IO) {
+        val pr = prefs(ctx)
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) return@withContext 0
+        if (!pr.getBoolean("imported", false)) return@withContext 0
+        if (!lock.tryLock()) return@withContext 0
+        try {
+            val now = System.currentTimeMillis()
+            val recent = now - 2 * 86_400_000L
+            val since = pr.getLong("catchTs", 0L).takeIf { it > 0 }?.minus(10 * 60_000L) ?: recent
+            var n = 0
+            var last = since
+            ctx.contentResolver.query(
+                Telephony.Sms.Inbox.CONTENT_URI,
+                arrayOf(Telephony.Sms.BODY, Telephony.Sms.DATE, Telephony.Sms.ADDRESS),
+                "${Telephony.Sms.DATE} > ?", arrayOf(since.toString()),
+                "${Telephony.Sms.DATE} ASC"
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    val body = c.getString(0) ?: continue
+                    val ts = c.getLong(1)
+                    last = maxOf(last, ts)
+                    if (Ingest.handle(ctx, body, ts, notify = ts > recent, sender = c.getString(2))) n++
+                }
+            }
+            pr.edit().putLong("catchTs", maxOf(last, now - 10 * 60_000L)).apply()
+            if (n > 0) try { SummaryWidget.render(ctx) } catch (_: Exception) {}
+            n
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    fun schedule(ctx: Context) {
+        val req = androidx.work.PeriodicWorkRequestBuilder<SmsCatchUpWorker>(15, java.util.concurrent.TimeUnit.MINUTES).build()
+        androidx.work.WorkManager.getInstance(ctx)
+            .enqueueUniquePeriodicWork("sms-catchup", androidx.work.ExistingPeriodicWorkPolicy.KEEP, req)
+    }
+
     private suspend fun scan(ctx: Context): Int {
         var n = 0
         ctx.contentResolver.query(
@@ -402,5 +444,13 @@ class ActionReceiver : BroadcastReceiver() {
                 pending.finish()
             }
         }
+    }
+}
+
+/** پشتیبان دریافت پیامک: هر ۱۵ دقیقه پیامک‌های جاافتاده خوانده می‌شوند */
+class SmsCatchUpWorker(ctx: Context, params: androidx.work.WorkerParameters) : androidx.work.CoroutineWorker(ctx, params) {
+    override suspend fun doWork(): Result {
+        try { InboxImporter.catchUp(applicationContext) } catch (_: Exception) {}
+        return Result.success()
     }
 }

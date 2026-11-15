@@ -248,7 +248,7 @@ private fun openAppSettings(ctx: Context) {
 
 internal fun List<Tx>.counted() = filter { !it.excluded }
 
-private const val IMPORT_VERSION = 12
+private const val IMPORT_VERSION = 13
 
 // ================================================================ Activities
 
@@ -378,6 +378,7 @@ fun MainScreen(startTab: Int = 0) {
     val db = remember { AppDb.get(ctx) }
     val txs by remember { db.tx().all() }.collectAsState(initial = emptyList())
     Refunds.update(txs)
+    Transfers.update(txs)
     val splitsAll by remember { db.split().all() }.collectAsState(initial = emptyList())
     Splits.update(splitsAll)
     LaunchedEffect(Unit) { Receipts.scan(ctx) }
@@ -414,6 +415,7 @@ fun MainScreen(startTab: Int = 0) {
             if (RemoteBanks.refresh(ctx) && hasPerm(ctx, Manifest.permission.READ_SMS)) InboxImporter.run(ctx)
         } catch (_: Exception) {}
         try { DueReminder.check(ctx) } catch (_: Exception) {}
+        try { InboxImporter.schedule(ctx) } catch (_: Exception) {}
         // یک بار: حساب‌های خودی از روی «حساب خودم»ها و انتقال‌های قبلی یاد گرفته می‌شوند
         if (!pr.getBoolean("ownLearned", false)) {
             try { OwnAccounts.learnExisting(ctx) } catch (_: Exception) {}
@@ -439,6 +441,7 @@ fun MainScreen(startTab: Int = 0) {
         topBar = {
             Column(Modifier.statusBarsPadding()) {
                 PermissionBanner()
+                XiaomiBanner()
             }
         },
         bottomBar = {
@@ -510,6 +513,8 @@ fun PermissionBanner() {
         ok = perms.all { hasPerm(ctx, it) }
         if (smsOk()) blocked = false
         importIfNeeded()
+        // هر بار که اپ باز می‌شود: پیامک‌های جاافتاده
+        scope.launch { try { InboxImporter.catchUp(ctx) } catch (_: Exception) {} }
     }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -570,6 +575,47 @@ fun PermissionBanner() {
                         TextButton(onClick = { openAppSettings(ctx) }) { Text("تنظیمات اپ") }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** شیائومی/ردمی/پوکو: بدون «اجرای خودکار» و «پیامک اعلان»، خبر پیامک جدید به اپ نمی‌رسد */
+@Composable
+fun XiaomiBanner() {
+    val ctx = LocalContext.current
+    val isXiaomi = remember {
+        Build.MANUFACTURER.lowercase().let { m -> listOf("xiaomi", "redmi", "poco").any { m.contains(it) } }
+    }
+    var hidden by remember { mutableStateOf(prefs(ctx).getBoolean("xiaomiHide", false)) }
+    if (!isXiaomi || hidden || !hasPerm(ctx, Manifest.permission.READ_SMS)) return
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text("یک تنظیم برای گوشی شیائومی", fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "شیائومی خبر پیامک جدید را به اپ‌ها نمی‌دهد، مگر این سه را روشن کنی. بدون آن‌ها پیامک‌ها با تأخیر (هر ۱۵ دقیقه یا با باز کردن اپ) ثبت می‌شوند و نوتیفیکیشن لحظه‌ای نمی‌آید:",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(6.dp))
+            listOf(
+                "Autostart (اجرای خودکار) را روشن کن.",
+                "Other permissions (سایر مجوزها) ← Notification SMS (پیامک اعلان) و Read SMS را روی Allow بگذار.",
+                "Battery saver (صرفه‌جویی باتری) ← No restrictions (بدون محدودیت)."
+            ).forEachIndexed { i, l ->
+                Row(Modifier.padding(vertical = 2.dp)) {
+                    Text(Fa.toFa((i + 1).toString()) + ".", Modifier.width(20.dp), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    Text(l, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row {
+                Button(onClick = { openAppSettings(ctx) }) { Text("باز کردن اطلاعات اپ") }
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = { prefs(ctx).edit().putBoolean("xiaomiHide", true).apply(); hidden = true }) { Text("انجام دادم") }
             }
         }
     }
@@ -780,8 +826,11 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
                 cat != null -> cat.uiIcon()
                 else -> CatIcons.unknown
             }
-            // درآمد بدون دسته: علامت سؤال لازم نیست، فقط لوگوی بانک
-            if (!t.isExpense && cat == null && !t.excluded) {
+            // انتقال بین حساب‌ها: لوگوی مبدأ ← لوگوی مقصد
+            if (Transfers.isTransfer(t)) {
+                TransferBadges(t)
+            } else if (!t.isExpense && cat == null && !t.excluded) {
+                // درآمد بدون دسته: علامت سؤال لازم نیست، فقط لوگوی بانک
                 BankBadge(t.bank, 40.dp)
             } else {
                 Box(
