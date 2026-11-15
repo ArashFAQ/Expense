@@ -510,10 +510,15 @@ fun CatBreakdown(
 
 /** بالای تب خرج‌ها: جمع ماه، مقایسه با ماه قبل و دونات کوچک دسته‌ها */
 @Composable
-fun ExpenseSummaryCard(txs: List<Tx>, cats: List<Category>, ym: Int, count: Int, uncat: Int) {
+fun ExpenseSummaryCard(txs: List<Tx>, cats: List<Category>, ym: Int, count: Int, uncat: Int) =
+    MonthSummaryCard(txs, cats, ym, count, if (uncat > 0) Fa.toFa(uncat.toString()) + " بدون دسته" else null, true)
+
+/** کارت بالای تب خرج‌ها و درآمد: جمع ماه، تعداد، مقایسه با ماه قبل و دونات کوچک */
+@Composable
+fun MonthSummaryCard(txs: List<Tx>, cats: List<Category>, ym: Int, count: Int, extra: String?, isExpense: Boolean) {
     val catById = cats.associateBy { it.id }
     val counted = txs.filter { !it.excluded }
-    val month = counted.filter { it.ym == ym && it.isExpense }.expandSplits()
+    val month = counted.filter { it.ym == ym && it.isExpense == isExpense }.let { if (isExpense) it.expandSplits() else it }
     val total = month.sumOf { it.eff }
     val today = Jalali.fromMillis(System.currentTimeMillis())
     val isCurrent = ym == today[0] * 100 + today[1]
