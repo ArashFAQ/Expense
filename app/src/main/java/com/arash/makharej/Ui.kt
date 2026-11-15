@@ -469,7 +469,7 @@ fun MainScreen(startTab: Int = 0) {
                 2 -> IncomeTab(txs, cats, db, ym, onAdd = { adding = 2 }, onSearch = { searching = true }) { ym = it }
                 3 -> AssetsTab(txs, db, cats)
                 4 -> ReportTab(txs, cats, ym) { ym = it }
-                else -> SettingsScreen(cats, db)
+                else -> SettingsScreen(cats, db, active = pager.settledPage == 5)
             }
         }
     }
@@ -1914,7 +1914,7 @@ val SettingsPages = listOf(
 )
 
 @Composable
-fun SettingsScreen(cats: List<Category>, db: AppDb) {
+fun SettingsScreen(cats: List<Category>, db: AppDb, active: Boolean = true) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var newName by remember { mutableStateOf("") }
@@ -1922,7 +1922,9 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
     var deleting by remember { mutableStateOf<Category?>(null) }
     var coloring by remember { mutableStateOf<Category?>(null) }
     var page by rememberSaveable { mutableStateOf("") }
-    BackHandler(enabled = page != "") { page = "" }
+    BackHandler(enabled = active && page != "") { page = "" }
+    // رفتن به تب دیگر: دفعه‌ی بعد تنظیمات از فهرست اصلی شروع شود
+    LaunchedEffect(active) { if (!active) page = "" }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
