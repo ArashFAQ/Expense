@@ -81,7 +81,7 @@ object Banks {
         val t = BluParser.normalize(body).trim()
         if (BluParser.hasPassword(t)) return null
         return mofid(t, ts) ?: tejarat(t, ts) ?: melliSaderat(t, ts, sender) ?: sepah(t, ts) ?: gardeshgari(t, ts) ?:
-            mellat(t, ts) ?: en(t, ts) ?: pasargad(t, ts) ?: parsian(t, ts, sender) ?: day(t, ts, sender)
+            mellat(t, ts) ?: en(t, ts) ?: pasargad(t, ts) ?: parsian(t, ts, sender) ?: day(t, ts, sender) ?: benefit(t, ts, sender)
     }
 
     // ---- علامت مثبت/منفی قبل یا بعد از عدد (ترتیب نمایش راست‌به‌چپ ممکن است جابه‌جا شود)
@@ -429,6 +429,40 @@ object Banks {
             return build(sign == "-", amount, bal, t, ts, PARSIAN)
         }
         return null
+    }
+
+    /**
+     * واریز یارانه و سود بدون مانده (هر بانکی):
+     *   بانک ملت / واریز یارانه / به حساب 1837560626 / مبلغ 6,000,000 ریال / 1405/07/30
+     *   واریز سود کوتاه مدت / حساب1837560626 / مبلغ13,245 / 05/08/01      (فرستنده Bank Mellat)
+     * بانک از اسم داخل متن یا از فرستنده معلوم می‌شود؛ اگر معلوم نبود، خوانده نمی‌شود.
+     */
+    private val bfAmt = Regex("""مبلغ\s*:?\s*(\d[\d,]*)""")
+    private val bfAcc = Regex("""حساب\s*:?\s*\d{6,}""")
+    private val nameInText = listOf(
+        "بانک ملت" to MELLAT, "بانک ملی" to MELLI, "بانک صادرات" to SADERAT, "بانک تجارت" to TEJARAT,
+        "بانک سپه" to SEPAH, "پاسارگاد" to PASARGAD, "اقتصاد نوین" to EN, "گردشگری" to GARDESHGARI,
+        "پارسیان" to PARSIAN, "بانک دی" to DAY, "بلو" to BLU
+    )
+    private val nameInSender = listOf(
+        "mellat" to MELLAT, "melli" to MELLI, "bmi" to MELLI, "saderat" to SADERAT, "tejarat" to TEJARAT,
+        "sepah" to SEPAH, "pasargad" to PASARGAD, "eghtesad" to EN, "tourism" to GARDESHGARI,
+        "gardeshgari" to GARDESHGARI, "parsian" to PARSIAN, "day" to DAY, "blu" to BLU
+    )
+
+    private fun benefit(t: String, ts: Long, sender: String?): Parsed? {
+        if (!t.contains("واریز")) return null
+        val tag = when {
+            t.contains("یارانه") -> "subsidy"
+            t.contains("سود") -> "profit"
+            else -> return null
+        }
+        if (!bfAcc.containsMatchIn(t)) return null
+        val amount = bfAmt.find(t)?.let { num(it.groupValues[1]) } ?: return null
+        val bank = nameInText.firstOrNull { t.contains(it.first) }?.second
+            ?: sender?.let { s -> Learned.normSender(s).let { n -> nameInSender.firstOrNull { n.contains(it.first) }?.second } }
+            ?: return null
+        return build(false, amount, null, t, ts, bank)?.copy(tag = tag)
     }
 
     // ---------------------------------------------------------------- roles

@@ -100,6 +100,7 @@ object CatIcons {
         Item("cash", "پول نقد", Icons.Outlined.Payments),
         Item("work", "کار و حقوق", Icons.Outlined.Work),
         Item("trend", "سود", Icons.Outlined.TrendingUp),
+        Item("subsidy", "یارانه", Icons.Outlined.AccountBalanceWallet),
         Item("smoke", "دخانیات", Icons.Outlined.SmokingRooms),
         Item("other", "سایر", Icons.Outlined.MoreHoriz),
         Item("category", "عمومی", Icons.Outlined.Category),

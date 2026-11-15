@@ -46,7 +46,7 @@ object Ingest {
 
         var reason = if (Banks.counts(ctx, p.bank, p.isExpense)) 0 else 2
         // هر واریز اول «در انتظار تأیید» است (۵)؛ فقط سود مفید خودکار درآمد است
-        if (!p.isExpense) reason = if (p.tag == "profit") 0 else 5
+        if (!p.isExpense) reason = if (p.tag == "profit" || p.tag == "subsidy") 0 else 5
         // درخواست وجه از مفید = انتقال به حساب خودم
         if (p.tag == "request") reason = 1
         // پرداخت به صندوق / کارگزاری (از روی پیامک رمز پویای قبلش) = پس‌انداز
@@ -54,7 +54,15 @@ object Ingest {
             val merchant = Banks.merchantFor(ctx, p.amount, ts)
             if (merchant != null && Banks.savingsWords(ctx).any { merchant.contains(it) }) reason = 3
         }
-        val profitCat = if (p.tag == "profit") db.cat().list().firstOrNull { it.income && it.icon == "trend" }?.id else null
+        val profitCat = when (p.tag) {
+            "profit" -> db.cat().list().firstOrNull { it.income && it.icon == "trend" }?.id
+            // یارانه: دسته‌ی «یارانه» (اگر نبود ساخته می‌شود)
+            "subsidy" -> db.cat().list().let { l ->
+                l.firstOrNull { it.income && (it.icon == "subsidy" || it.name == "یارانه") }?.id
+                    ?: db.cat().insert(Category(name = "یارانه", sort = 103, color = 0xFF3949AB.toInt(), icon = "subsidy", income = true))
+            }
+            else -> null
+        }
         val id = db.tx().insert(
             Tx(
                 categoryId = profitCat,
