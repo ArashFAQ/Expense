@@ -211,14 +211,16 @@ private fun BankStatusRow(id: String, name: String, status: String, ok: Boolean)
 private data class InboxSms(val body: String, val sender: String, val ts: Long, val known: String?)
 
 @Composable
-fun SampleDialog(onClose: () -> Unit) {
+fun SampleDialog(initialBody: String? = null, initialSender: String? = null, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var inbox by remember { mutableStateOf<List<InboxSms>?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     var q by remember { mutableStateOf("") }
     var senderSel by remember { mutableStateOf<String?>(null) }
-    var picked by remember { mutableStateOf<InboxSms?>(null) }
+    var picked by remember {
+        mutableStateOf(initialBody?.let { InboxSms(it, initialSender ?: "", System.currentTimeMillis(), null) })
+    }
     var manual by remember { mutableStateOf(false) }
     var manualText by remember { mutableStateOf("") }
     var manualSender by remember { mutableStateOf("") }

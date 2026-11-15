@@ -470,6 +470,7 @@ object Backup {
         }
         Learned.reset()
         RemoteBanks.reset()
+        BankRules.reset()
     }
 
     /** پشتیبان در Download/Makharej و یک نسخه برای ارسال */

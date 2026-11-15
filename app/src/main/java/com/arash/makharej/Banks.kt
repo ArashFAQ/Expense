@@ -64,7 +64,10 @@ object Banks {
 
     /** پیامک با هر روشی: قالب‌های داخلی، بعد نمونه‌های آموخته‌شده (با فرستنده) */
     fun parseFull(ctx: Context, body: String, sender: String?, ts: Long): Parsed? =
-        parse(body, ts, sender) ?: Learned.parse(ctx, body, sender, ts)
+        (parse(body, ts, sender) ?: Learned.parse(ctx, body, sender, ts))?.let { p ->
+            // بانکی که کاربر در «تأیید بانک» برای این فرستنده یا شماره حساب انتخاب کرده
+            BankRules.bankFor(ctx, body, sender)?.let { if (it != p.bank) p.copy(bank = it) else p } ?: p
+        }
 
     fun buildFor(isExpense: Boolean, amount: Long, balance: Long?, t: String, ts: Long, bank: String): Parsed? =
         build(isExpense, amount, balance, t, ts, bank)

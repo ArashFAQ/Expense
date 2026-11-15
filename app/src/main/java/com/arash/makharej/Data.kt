@@ -159,6 +159,9 @@ interface TxDao {
     @Query("SELECT MAX(id) FROM tx")
     suspend fun maxId(): Long?
 
+    @Query("UPDATE tx SET bank = :bank WHERE dedupKey = :key AND bank != :bank")
+    suspend fun setBankByKey(key: String, bank: String)
+
     @Query("SELECT COUNT(*) FROM tx")
     suspend fun count(): Int
 

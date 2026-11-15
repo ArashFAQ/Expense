@@ -40,7 +40,7 @@ object Ingest {
             val oBank = o?.bank ?: old.bank
             val oAmount = o?.amount ?: old.amount
             val oBalance = o?.balance ?: old.balance
-            oBank == p.bank && oAmount == p.amount && (oBalance == null || p.balance == null || oBalance == p.balance)
+            (oBank == p.bank || old.bank == p.bank) && oAmount == p.amount && (oBalance == null || p.balance == null || oBalance == p.balance)
         }
         if (same) return false
 

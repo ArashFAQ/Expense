@@ -1907,6 +1907,7 @@ val SettingsPages = listOf(
     SettingsPage("backup", "پشتیبان‌گیری", "Google Drive، فایل پشتیبان، بازگردانی"),
     SettingsPage("theme", "ظاهر", "حالت روشن و تیره، رنگ اصلی"),
     SettingsPage("lock", "قفل و حریم خصوصی", "اثر انگشت، پنهان کردن روی صفحه‌ی قفل و ویجت"),
+    SettingsPage("verify", "تأیید بانک و پیامک بانکی", "بانک هر پیامک را ببین و درست کن، پیامک‌هایی که خوانده نشدند"),
     SettingsPage("samples", "نمونه پیامک بانک‌ها", "آموزش بانک جدید، وضعیت همه‌ی بانک‌ها"),
     SettingsPage("misc", "پیامک‌ها و کار در پس‌زمینه", "خواندن دوباره‌ی پیامک‌ها، Autostart و باتری"),
     SettingsPage("update", "به‌روزرسانی اپ", "نسخه‌ی " + Fa.toFa(BuildConfig.VERSION_NAME)),
@@ -1960,6 +1961,7 @@ fun SettingsScreen(cats: List<Category>, db: AppDb) {
             "backup" -> item { BackupSection() }
             "banks" -> item { AccountsSection() }
             "samples" -> item { SamplesSection() }
+            "verify" -> item { VerifySmsScreen() }
             "cats" -> {
         for (inc in listOf(false, true)) {
             val list = cats.filter { it.income == inc }
