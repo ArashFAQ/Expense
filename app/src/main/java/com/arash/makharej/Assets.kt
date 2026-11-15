@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.AttachMoney
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.Savings
@@ -339,7 +340,11 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
     val loanTotal = loanTotalRaw
     // بخش‌های خالی پنهان‌اند؛ با دکمه‌های «افزودن» باز می‌شوند
     var forceShow by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
-    val total = bankTotal + investTotal + stockTotal + loanTotal - debtTotal
+    val giftCards by remember { db.giftCard().all() }.collectAsState(initial = emptyList())
+    val activeGifts = GiftCards.active(giftCards, txs)
+    val giftTotal = activeGifts.sumOf { GiftCards.balance(it, txs) }
+    var giftOpen by remember { mutableStateOf<GiftCard?>(null) }
+    val total = bankTotal + giftTotal + investTotal + stockTotal + loanTotal - debtTotal
     LaunchedEffect(total) { Wealth.saveSnapshot(ctx, total) }
 
     LazyColumn(
@@ -356,7 +361,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                     Spacer(Modifier.height(10.dp))
                     Text(
                         listOfNotNull(
-                            "بانک‌ها " + millionsText(bankTotal),
+                            "بانک‌ها " + millionsText(bankTotal + giftTotal),
                             if (stockTotal > 0) "سهام " + millionsText(stockTotal) else null,
                             if (investTotal > 0) "سرمایه‌گذاری " + millionsText(investTotal) else null,
                             if (loanTotal > 0) "طلب " + millionsText(loanTotal) else null,
@@ -407,13 +412,21 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                         "آخرین مانده‌ای که در پیامک هر بانک آمده. اگر درست نیست، رویش بزن و موجودی فعلی را وارد کن یا پنهانش کن.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    if (balances.isEmpty()) Text("هنوز پیامکی با مانده ثبت نشده.", Modifier.padding(top = 8.dp))
+                    if (balances.isEmpty() && activeGifts.isEmpty()) Text("هنوز پیامکی با مانده ثبت نشده.", Modifier.padding(top = 8.dp))
                     visible.forEach { t ->
                         AssetRow(
                             Icons.Outlined.AccountBalance, BankColor, Banks.name(t.bank),
                             "به‌روز شده " + ago(t.ts), Fa.toman(t.balance ?: 0), bank = t.bank
                         ) { balEdit = t }
                     }
+                    // کارت‌های هدیه (حساب بدون پیامک)
+                    activeGifts.forEach { g ->
+                        AssetRow(
+                            Icons.Outlined.CardGiftcard, BankColor, "کارت هدیه " + g.name,
+                            Banks.name(g.bank) + " · از " + Fa.toman(g.amount), Fa.toman(GiftCards.balance(g, txs)), bank = g.bank
+                        ) { giftOpen = g }
+                    }
+                    giftOpen?.let { g -> GiftCardDetails(giftCards.firstOrNull { it.id == g.id } ?: g, txs, cats) { giftOpen = null } }
                     if (hidden.isNotEmpty()) {
                         TextButton(onClick = { showHidden = !showHidden }) {
                             Text((if (showHidden) "بستن" else "نمایش") + " " + Fa.toFa(hidden.size.toString()) + " بانک پنهان")

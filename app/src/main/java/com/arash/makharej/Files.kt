@@ -268,6 +268,12 @@ object Backup {
                     put(JSONObject().put("id", d.id).put("kind", d.kind).put("buy", d.isBuy).put("q", d.qty).put("target", d.target).put("closed", d.closed).put("ts", d.ts))
                 }
             })
+            .put("giftCards", JSONArray().apply {
+                // رمزها در پشتیبان نمی‌آیند (فقط روی همین گوشی باز می‌شوند)
+                db.giftCard().list().forEach { g ->
+                    put(JSONObject().put("id", g.id).put("name", g.name).put("bank", g.bank).put("amount", g.amount).put("ts", g.ts).put("closed", g.closed))
+                }
+            })
             .put("splits", JSONArray().apply {
                 db.split().list().forEach { p -> put(JSONObject().put("id", p.id).put("txId", p.txId).put("categoryId", p.categoryId).put("amount", p.amount)) }
             })
@@ -324,7 +330,8 @@ object Backup {
         val groups: JSONObject? = null,
         val receipts: JSONObject? = null,
         val assetTrades: List<AssetTrade> = emptyList(),
-        val assetDeals: List<AssetDeal> = emptyList()
+        val assetDeals: List<AssetDeal> = emptyList(),
+        val giftCards: List<GiftCard>? = null
     )
 
     fun parse(bytes: ByteArray): Content {
@@ -416,6 +423,11 @@ object Backup {
                 (0 until a.length()).map { a.getJSONObject(it) }.map {
                     AssetDeal(it.getLong("id"), it.getString("kind"), it.optBoolean("buy"), it.optDouble("q"), it.optLong("target"), it.optBoolean("closed"), it.optLong("ts"))
                 }
+            },
+            o.optJSONArray("giftCards")?.let { a ->
+                (0 until a.length()).map { a.getJSONObject(it) }.map {
+                    GiftCard(it.getLong("id"), it.optString("name"), it.optString("bank"), it.optLong("amount"), it.optLong("ts"), closed = it.optBoolean("closed"))
+                }
             })
     }
 
@@ -441,6 +453,12 @@ object Backup {
             db.assetTrade().insertAll(c.assetTrades)
             db.assetDeal().deleteAll()
             db.assetDeal().insertAll(c.assetDeals)
+            c.giftCards?.let { l ->
+                // رمزهای کارت‌هایی که روی همین گوشی بودند حفظ می‌شوند
+                val old = db.giftCard().list().associateBy { it.id }
+                db.giftCard().deleteAll()
+                db.giftCard().insertAll(l.map { g -> old[g.id]?.takeIf { it.name == g.name }?.let { g.copy(pin1 = it.pin1, pin2 = it.pin2) } ?: g })
+            }
             val gd = db.group()
             gd.deleteAllSettles(); gd.deleteAllExpenses(); gd.deleteAllMembers(); gd.deleteAllGroups()
             c.groups?.let { j ->

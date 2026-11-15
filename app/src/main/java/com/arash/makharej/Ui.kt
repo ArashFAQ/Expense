@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -1148,6 +1149,19 @@ fun ExpensesTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: 
     ) {
         item { MonthRow(txs, true, ym, onYm) }
         item { ExpenseSummaryCard(txs, cats, ym, counted.size, uncat) }
+        // خرج از کارت هدیه: فقط وقتی کارت فعالی هست
+        item {
+            val gcards by remember { db.giftCard().all() }.collectAsState(initial = emptyList())
+            val active = GiftCards.active(gcards, txs)
+            var spendGift by remember { mutableStateOf(false) }
+            if (active.isNotEmpty()) {
+                OutlinedButton(onClick = { spendGift = true }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.CardGiftcard, null, Modifier.padding(end = 6.dp))
+                    Text("+ خرج از کارت هدیه")
+                }
+            }
+            if (spendGift) GiftSpendDialog(active, txs, cats) { spendGift = false }
+        }
         item { OldTxNote(txs, ym, db) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1227,12 +1241,18 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
         }
         item { OldTxNote(txs, ym, db) }
         item {
+            var addGift by remember { mutableStateOf(false) }
             Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { addGift = true }) {
+                    Icon(Icons.Outlined.CardGiftcard, null, Modifier.padding(end = 4.dp))
+                    Text("+ کارت هدیه")
+                }
                 Spacer(Modifier.weight(1f))
                 SearchButton(onSearch)
                 Spacer(Modifier.width(8.dp))
                 AddButton("درآمد جدید", onAdd)
             }
+            if (addGift) GiftCardAddDialog(cats) { addGift = false }
         }
 
         // ---- واریزهای در انتظار تأیید
