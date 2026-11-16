@@ -305,7 +305,16 @@ object Notifier {
             .putExtra("tx", tx.id)
             .putExtra("exclude", true)
         b.addAction(0, "کجا خرج شد؟", openPicker(ctx, tx.id, 9))
-        b.addAction(0, "حساب خودم", PendingIntent.getBroadcast(ctx, nid * 10 + 5, ownAcc, FLAGS))
+        // «حساب خودم»: علامت می‌خورد و (اختیاری) می‌پرسد به کدام حساب رفت
+        b.addAction(
+            0, "حساب خودم",
+            PendingIntent.getActivity(
+                ctx, nid * 10 + 5,
+                Intent(ctx, CategorizeActivity::class.java).putExtra("tx", tx.id).putExtra("ownSource", true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                FLAGS
+            )
+        )
         // دکمه‌ی سوم: اگر گروه دنگ باز هست «دنگ …»، وگرنه «قرض / بدهی»
         val openGroups = try { AppDb.get(ctx).group().groupList().filter { !it.closed } } catch (_: Exception) { emptyList() }
         val third = Intent(ctx, CategorizeActivity::class.java).putExtra("tx", tx.id)
@@ -369,13 +378,13 @@ object Notifier {
             .addAction(0, "بازپرداخت / قرض", dang)
             .addAction(
                 0, "حساب خودم",
-                // کسی که مفید دارد: می‌پرسد «از کجا آمد؟» (بانک یا برداشت از مفید)
-                if (MofidOwn.has(ctx)) PendingIntent.getActivity(
+                // علامت می‌خورد و (اختیاری) می‌پرسد از کدام حساب آمد
+                PendingIntent.getActivity(
                     ctx, nid * 10 + 3,
                     Intent(ctx, CategorizeActivity::class.java).putExtra("tx", tx.id).putExtra("ownSource", true)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
                     FLAGS
-                ) else bc(3, "own")
+                )
             )
             .also { AppLock.applyPrivacy(ctx, it, CHANNEL, "واریز جدید") }
             .build()

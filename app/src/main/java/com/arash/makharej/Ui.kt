@@ -375,12 +375,16 @@ class CategorizeActivity : ComponentActivity() {
                 }
                 if (ownSource) {
                     val d = tx
-                    if (d != null) OwnSourceDialog(d.amount, onBank = {
-                        scope.launch {
-                            db.tx().setDepositKind(d.id, true); OwnAccounts.learn(ctx, d.id); Notifier.cancel(ctx, d.id)
-                            SummaryWidget.refresh(ctx); finish()
+                    // اول «حساب خودم» ثبت می‌شود؛ انتخاب حساب طرف دیگر اختیاری است
+                    LaunchedEffect(d?.id) {
+                        if (d != null) {
+                            if (d.isExpense) db.tx().setExcluded(d.id, true) else db.tx().setDepositKind(d.id, true)
+                            OwnAccounts.learn(ctx, d.id); Notifier.cancel(ctx, d.id); SummaryWidget.refresh(ctx)
                         }
-                    }, onMofid = { scope.launch { MofidOwn.fromMofid(ctx, d.id); finish() } }, onDismiss = { finish() })
+                    }
+                    if (d != null) CounterpartDialog(d, onPick = { b ->
+                        scope.launch { Counterpart.set(ctx, d.id, b); finish() }
+                    }, onDismiss = { finish() })
                     return@AppTheme
                 }
                 if (incomeMode) {
@@ -1446,9 +1450,7 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
     }
     var ownFor by remember { mutableStateOf<Tx?>(null) }
     ownFor?.let { t ->
-        OwnSourceDialog(t.amount, onBank = { ownFor = null; setKind(t, true) }, onMofid = {
-            ownFor = null; scope.launch { MofidOwn.fromMofid(ctx, t.id) }
-        }, onDismiss = { ownFor = null })
+        CounterpartDialog(t, onPick = { b -> ownFor = null; scope.launch { Counterpart.set(ctx, t.id, b) } }, onDismiss = { ownFor = null })
     }
 
     LazyColumn(
@@ -1509,7 +1511,7 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
                                 SmallChoice("درآمد", true) { incomeFor = t }
                                 SmallChoice("بازپرداخت / قرض", false) { dangFor = t }
-                                SmallChoice("حساب خودم", false) { if (MofidOwn.has(ctx)) ownFor = t else setKind(t, true) }
+                                SmallChoice("حساب خودم", false) { setKind(t, true); ownFor = t }
                             }
                         }
                         if (pending.size > 1) {
@@ -1892,17 +1894,14 @@ fun TxEditor(
                 Button(onClick = { pickInc = true }) { Text("درآمد") }
                 OutlinedButton(onClick = { pickDang = true }) { Text("بازپرداخت / قرض") }
                 OutlinedButton(onClick = {
-                    if (MofidOwn.has(ctxP)) pickOwn = true
-                    else scopeP.launch { db!!.tx().setDepositKind(tx.id, true); Notifier.cancel(ctxP, tx.id); OwnAccounts.learn(ctxP, tx.id); onCancel() }
+                    scopeP.launch { db!!.tx().setDepositKind(tx.id, true); Notifier.cancel(ctxP, tx.id); OwnAccounts.learn(ctxP, tx.id) }
+                    pickOwn = true
                 }) { Text("حساب خودم") }
             }
-            if (pickOwn) OwnSourceDialog(tx.amount, onBank = {
+            if (pickOwn) CounterpartDialog(tx, onPick = { b ->
                 pickOwn = false
-                scopeP.launch { db!!.tx().setDepositKind(tx.id, true); Notifier.cancel(ctxP, tx.id); OwnAccounts.learn(ctxP, tx.id); onCancel() }
-            }, onMofid = {
-                pickOwn = false
-                scopeP.launch { MofidOwn.fromMofid(ctxP, tx.id); onCancel() }
-            }, onDismiss = { pickOwn = false })
+                scopeP.launch { Counterpart.set(ctxP, tx.id, b); onCancel() }
+            }, onDismiss = { pickOwn = false; onCancel() })
             if (pickDang) {
                 val all by remember { db!!.tx().all() }.collectAsState(initial = emptyList())
                 RepayPicker(tx, all, cats, onDone = { pickDang = false; onCancel() }, onDismiss = { pickDang = false })
@@ -1951,6 +1950,26 @@ fun TxEditor(
                 )
             }
             Switch(checked = excluded, onCheckedChange = { excluded = it })
+        }
+        // «حساب خودم» ثبت‌شده: حساب طرف دیگر (اختیاری)
+        if (db != null && tx.excluded && excluded && tx.reason in setOf(0, 1, 3) && tx.bank != Banks.MANUAL) {
+            val ctxC = LocalContext.current
+            val scopeC = rememberCoroutineScope()
+            var cp by remember(tx.id) { mutableStateOf(Transfers.other[tx.id] ?: Counterpart.of(tx)) }
+            var pickCp by remember(tx.id) { mutableStateOf(false) }
+            Row(
+                Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(14.dp)).clickable { pickCp = true }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(if (tx.isExpense) "به کدام حساب؟" else "از کدام حساب؟", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                cp?.let { BankBadge(it, 24.dp); Spacer(Modifier.width(6.dp)) }
+                Text(cp?.let { Banks.name(it) } ?: "نامشخص (بزن و انتخاب کن)", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+            }
+            if (pickCp) CounterpartDialog(tx.copy(person = cp?.let { "bank:$it" }), onPick = { b ->
+                pickCp = false; cp = b
+                scopeC.launch { Counterpart.set(ctxC, tx.id, b) }
+            }, onDismiss = { pickCp = false })
         }
         }
 

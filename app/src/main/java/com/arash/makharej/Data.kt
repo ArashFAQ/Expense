@@ -158,6 +158,9 @@ interface TxDao {
     @Query("UPDATE tx SET reason = 15, excluded = 1 WHERE ym < :ym AND id > :afterId AND bank != 'MANUAL' AND ((reason = 0 AND excluded = 0) OR reason = 5)")
     suspend fun markOldAfter(ym: Int, afterId: Long)
 
+    @Query("UPDATE tx SET person = :person WHERE id = :id")
+    suspend fun setPerson(id: Long, person: String?)
+
     @Query("SELECT COUNT(*) FROM tx WHERE bank = :bank")
     suspend fun countBank(bank: String): Int
 

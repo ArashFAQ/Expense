@@ -45,6 +45,8 @@ object Transfers {
         }
         // پرداخت با رمز پویا به مفید
         txs.filter { it.reason == 3 && it.id !in m }.forEach { m[it.id] = Banks.MOFID }
+        // بانکی که کاربر خودش برای «حساب خودم» انتخاب کرده
+        txs.forEach { t -> Counterpart.of(t)?.let { if (isTransfer(t)) m[t.id] = it } }
         other = m
     }
 }
