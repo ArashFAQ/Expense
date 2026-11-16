@@ -139,6 +139,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -160,6 +163,8 @@ private val IncomeGradient = listOf(Color(0xFF059669), Color(0xFF0D9488))
 object ThemeSettings {
     var mode by mutableIntStateOf(0)    // ۰ سیستم، ۱ روشن، ۲ تیره
     var accent by mutableIntStateOf(0)
+    /** تراکنش‌ها: false = جدا (خرج‌ها | درآمد)، true = یک‌جا (فهرست ترکیبی) */
+    var combined by mutableStateOf(false)
 
     class Accent(val name: String, val light: Color, val lightContainer: Color, val dark: Color, val darkContainer: Color)
 
@@ -180,12 +185,18 @@ object ThemeSettings {
         val p = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
         mode = p.getInt("themeMode", 0)
         accent = p.getInt("themeAccent", 0).coerceIn(0, accents.size - 1)
+        combined = p.getBoolean("txCombined", false)
         loaded = true
     }
 
     fun setMode(ctx: Context, m: Int) {
         mode = m
         ctx.getSharedPreferences("app", Context.MODE_PRIVATE).edit().putInt("themeMode", m).apply()
+    }
+
+    fun setCombined(ctx: Context, c: Boolean) {
+        combined = c
+        ctx.getSharedPreferences("app", Context.MODE_PRIVATE).edit().putBoolean("txCombined", c).apply()
     }
 
     fun setAccent(ctx: Context, a: Int) {
@@ -558,7 +569,9 @@ fun MainScreen(startTab: Int = 0, startIncome: Boolean = false) {
                     onOpenExpenses = { showIncome = false; goTab(1) }, onOpenAssets = { goTab(3) },
                     onOpenHelp = { Nav.settingsPage.value = "help" }
                 )
-                1 -> Column {
+                1 -> if (ThemeSettings.combined) {
+                    CombinedTab(txs, cats, db, ym, onAdd = { adding = it }, onSearch = { searching = true }) { ym = it }
+                } else Column {
                     // خرج‌ها | درآمد
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
@@ -996,7 +1009,7 @@ fun Badge(color: Color, text: String) {
 }
 
 @Composable
-fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
+fun TxRow(t: Tx, cat: Category?, combined: Boolean = false, onClick: () -> Unit) {
     val dark = LocalDark.current
     val neutral = if (dark) MaterialTheme.colorScheme.surfaceContainerHigh else Color.White
     val title: String
@@ -1018,11 +1031,14 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
         t.reason == 12 -> { title = "تسویه‌ی دنگ · " + (t.person ?: ""); bg = neutral }
         t.excluded && t.reason == 9 -> { title = if (t.note == "بخشیده شد") "بدهی بخشیده شد" else "پرداخت بدهی"; bg = neutral }
         t.excluded -> { title = "حساب خودم"; bg = neutral }
+        // فهرست یک‌جا: درآمد کارت روشن با نوار سبز (تا از خرج‌های رنگی جدا شود)
+        combined && !t.isExpense -> { title = cat?.name ?: "واریز"; bg = neutral }
         cat != null -> { title = cat.name; bg = cat.uiColor() }
         !t.isExpense -> { title = "واریز"; bg = neutral }
         else -> { title = "بدون دسته"; bg = neutral }
     }
-    val colored = cat != null && !t.excluded
+    val colored = cat != null && !t.excluded && !(combined && !t.isExpense)
+    val incomeStripe = combined && !t.isExpense && !t.excluded
     val fg = if (colored) (if (bg.luminance() > 0.55f) Color(0xFF111111) else Color.White) else MaterialTheme.colorScheme.onSurface
     val fgSub = if (colored) fg.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
     val titleColor = if (!colored && t.isExpense && !t.excluded) MaterialTheme.colorScheme.error else fg
@@ -1033,7 +1049,14 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
     }
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().alpha(if (t.excluded) 0.6f else 1f),
+        modifier = Modifier.fillMaxWidth().alpha(if (t.excluded) 0.6f else 1f).then(
+            if (incomeStripe) Modifier.clip(RoundedCornerShape(18.dp)).drawWithContent {
+                drawContent()
+                // نوار سبز سمت راست (شروع سطر در فارسی)
+                drawRect(IncomeColor, topLeft = androidx.compose.ui.geometry.Offset(size.width - 5.dp.toPx(), 0f),
+                    size = androidx.compose.ui.geometry.Size(5.dp.toPx(), size.height))
+            } else Modifier
+        ),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = bg)
     ) {
@@ -1052,7 +1075,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
             // انتقال بین حساب‌ها: لوگوی مبدأ ← لوگوی مقصد
             if (Transfers.isTransfer(t)) {
                 TransferBadges(t)
-            } else if (!t.isExpense && cat == null && !t.excluded) {
+            } else if (!t.isExpense && cat == null && !t.excluded && !combined) {
                 // درآمد بدون دسته: علامت سؤال لازم نیست، فقط لوگوی بانک
                 BankBadge(t.bank, 40.dp)
             } else {
@@ -1061,7 +1084,7 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
                         .background(if (colored) Color.White.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(icon, null, tint = if (colored) fg else titleColor, modifier = Modifier.size(22.dp))
+                    Icon(icon, null, tint = if (colored) fg else if (incomeStripe) IncomeColor else titleColor, modifier = Modifier.size(22.dp))
                 }
                 Spacer(Modifier.width(6.dp))
                 BankBadge(t.bank, 32.dp)
@@ -1085,7 +1108,8 @@ fun TxRow(t: Tx, cat: Category?, onClick: () -> Unit) {
             }
             // مبلغ روی یک برچسب روشن تا قرمز/سبز روی هر رنگی خوانا بماند
             Text(
-                Fa.toman(t.amount),
+                // فهرست یک‌جا: علامت سمت چپ عدد (۳۰۰,۰۰۰−)، جهت‌دار تا روی همه‌ی گوشی‌ها یکی باشد
+                if (combined) "\u2066" + Fa.num(t.amount) + (if (t.isExpense) "−" else "+") + "\u2069" else Fa.toman(t.amount),
                 Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (colored) Color.White.copy(alpha = 0.92f) else Color.Transparent)
@@ -1102,25 +1126,31 @@ internal fun LazyListScope.dayGroups(
     list: List<Tx>,
     catById: Map<Long, Category>,
     showYear: Boolean = false,
+    combined: Boolean = false,
     onClick: (Tx) -> Unit
 ) {
     list.groupBy { it.jDate }.forEach { (date, dayTx) ->
         item(key = "h$date") {
             val sum = dayTx.counted().filter { it.isExpense }.sumOf { it.eff }
+            val inSum = if (combined) dayTx.counted().filter { !it.isExpense }.sumOf { it.amount } else 0L
             Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp, start = 4.dp, end = 4.dp)) {
                 Text(
                     Fa.dayTitle(date) + if (showYear) " " + Fa.toFa(date.take(4)) else "", Modifier.weight(1f),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (sum > 0) Text(
+                if (combined) {
+                    if (inSum > 0) Text("\u2066" + Fa.num(inSum) + "+\u2069", style = MaterialTheme.typography.labelLarge, color = IncomeColor)
+                    if (inSum > 0 && sum > 0) Text("  ·  ", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (sum > 0) Text("\u2066" + Fa.num(sum) + "−\u2069", style = MaterialTheme.typography.labelLarge, color = ExpenseColor)
+                } else if (sum > 0) Text(
                     Fa.toman(sum), style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
         items(dayTx, key = { it.id }) { t ->
-            TxRow(t, t.categoryId?.let { catById[it] }) { onClick(t) }
+            TxRow(t, t.categoryId?.let { catById[it] }, combined) { onClick(t) }
         }
     }
 }
@@ -1428,6 +1458,153 @@ fun OldTxNote(txs: List<Tx>, ym: Int, db: AppDb) {
     )
 }
 
+// ================================================================ Combined (یک‌جا)
+
+/** تنظیمات ← ظاهر ← «یک‌جا»: خرج و درآمد در یک فهرست؛ تفکیک با فیلتر */
+@Composable
+fun CombinedTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: (Int) -> Unit, onSearch: () -> Unit, onYm: (Int) -> Unit) {
+    var filter by rememberSaveable { mutableIntStateOf(0) } // ۰ همه، ۱ خرج‌ها، ۲ درآمد، ۳ بدون دسته، ۴ در انتظار
+    var editing by remember { mutableStateOf<Tx?>(null) }
+    var askAdd by remember { mutableStateOf(false) }
+    var addGift by remember { mutableStateOf(false) }
+    var spendGift by remember { mutableStateOf(false) }
+    val catById = cats.associateBy { it.id }
+    val month = txs.filter { it.ym == ym && !(it.isExpense && it.reason == 2) }
+    val pending = month.filter { !it.isExpense && it.reason == 5 }.sortedByDescending { it.ts }
+    val counted = month.counted()
+    val outSum = counted.filter { it.isExpense }.sumOf { it.eff }
+    val inSum = counted.filter { !it.isExpense }.sumOf { it.amount }
+    val uncat = counted.count { it.isExpense && it.categoryId == null }
+    val gcards by remember { db.giftCard().all() }.collectAsState(initial = emptyList())
+    val activeGifts = GiftCards.active(gcards, txs)
+    val shown = when (filter) {
+        1 -> month.filter { it.isExpense }
+        2 -> month.filter { !it.isExpense && it.reason != 5 }
+        3 -> month.filter { it.isExpense && it.categoryId == null && !it.excluded }
+        4 -> emptyList()
+        else -> month.filter { it.reason != 5 }
+    }.sortedByDescending { it.ts }
+
+    LazyColumn(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item { MonthRow(txs, true, ym, onYm) }
+        // خرج | درآمد | مانده
+        item {
+            Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 16.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    @Composable
+                    fun cell(label: String, value: Long, color: Color, sub: String, onClick: (() -> Unit)?) {
+                        Column(
+                            Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
+                                .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier).padding(vertical = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                if (value == 0L) "—" else millionsText(kotlin.math.abs(value)).removeSuffix(" میلیون").removeSuffix(" تومان").let {
+                                    if (value < 0) "\u2066" + it + "−\u2069" else it
+                                },
+                                fontSize = 24.sp, fontWeight = FontWeight.Black, color = color, maxLines = 1, softWrap = false
+                            )
+                            Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    fun unit(v: Long) = if (kotlin.math.abs(v) / 10 >= 1_000_000) "میلیون تومان" else "تومان"
+                    cell("خرج " + Fa.monthName(ym), outSum, ExpenseColor, unit(outSum)) { filter = if (filter == 1) 0 else 1 }
+                    Box(Modifier.width(1.dp).height(44.dp).background(MaterialTheme.colorScheme.outlineVariant))
+                    cell("درآمد " + Fa.monthName(ym), inSum, IncomeColor, unit(inSum)) { filter = if (filter == 2) 0 else 2 }
+                    Box(Modifier.width(1.dp).height(44.dp).background(MaterialTheme.colorScheme.outlineVariant))
+                    cell("مانده", inSum - outSum, MaterialTheme.colorScheme.onSurface, unit(inSum - outSum), null)
+                }
+            }
+        }
+        item { OldTxNote(txs, ym, db) }
+        // فیلترها
+        item {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    0 to "همه", 1 to "خرج‌ها", 2 to "درآمد",
+                    3 to "بدون دسته (" + Fa.toFa(uncat.toString()) + ")",
+                    4 to "در انتظار تأیید (" + Fa.toFa(pending.size.toString()) + ")"
+                ).forEach { (i, label) ->
+                    if (i == 4 && pending.isEmpty()) return@forEach
+                    FilterChip(selected = filter == i, onClick = { filter = i }, label = { Text(label) })
+                }
+            }
+        }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { addGift = true }) {
+                    Icon(Icons.Outlined.CardGiftcard, null, Modifier.padding(end = 4.dp))
+                    Text(if (activeGifts.isNotEmpty()) "کارت هدیه" else "+ کارت هدیه")
+                }
+                Spacer(Modifier.weight(1f))
+                SearchButton(onSearch)
+                Spacer(Modifier.width(8.dp))
+                AddButton("جدید") { askAdd = true }
+            }
+        }
+        if (pending.isNotEmpty() && (filter == 0 || filter == 2 || filter == 4)) {
+            item { PendingDeposits(pending, txs, cats, db) { editing = it } }
+        }
+        if (shown.isEmpty() && (filter != 4 || pending.isEmpty())) item {
+            EmptyNote(
+                when (filter) {
+                    3 -> "همه‌ی خرج‌ها دسته‌بندی شده‌اند."
+                    4 -> "واریزی در انتظار تأیید نیست."
+                    else -> "این ماه تراکنشی ثبت نشده."
+                }
+            )
+        }
+        dayGroups(shown, catById, combined = true) { editing = it }
+    }
+
+    editing?.let { t -> EditDialog(t, cats, db) { editing = null } }
+    if (askAdd) AlertDialog(
+        onDismissRequest = { askAdd = false },
+        title = { Text("تراکنش جدید") },
+        text = {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = { askAdd = false; onAdd(1) }, modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = ExpenseColor)
+                ) { Text("خرج") }
+                Button(
+                    onClick = { askAdd = false; onAdd(2) }, modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = IncomeColor)
+                ) { Text("درآمد") }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = { askAdd = false }) { Text("انصراف") } }
+    )
+    // کارت هدیه: اگر کارت فعالی هست، خرج از آن یا ثبت کارت تازه
+    if (addGift) {
+        if (activeGifts.isEmpty()) GiftCardAddDialog(cats) { addGift = false }
+        else AlertDialog(
+            onDismissRequest = { addGift = false },
+            title = { Text("کارت هدیه") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { addGift = false; spendGift = true }, modifier = Modifier.fillMaxWidth()) { Text("+ خرج از کارت هدیه") }
+                    OutlinedButton(onClick = { addGift = false; askNewGift.value = true }, modifier = Modifier.fillMaxWidth()) { Text("+ کارت هدیه‌ی تازه") }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { addGift = false }) { Text("انصراف") } }
+        )
+    }
+    if (askNewGift.value) GiftCardAddDialog(cats) { askNewGift.value = false }
+    if (spendGift) GiftSpendDialog(activeGifts, txs, cats) { spendGift = false }
+}
+
+private val askNewGift = mutableStateOf(false)
+
 // ================================================================ Income
 
 @Composable
@@ -1435,23 +1612,12 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf<Tx?>(null) }
-    var dangFor by remember { mutableStateOf<Tx?>(null) }
-    var incomeFor by remember { mutableStateOf<Tx?>(null) }
     val catById = cats.associateBy { it.id }
     val all = txs.filter { it.ym == ym && !it.isExpense }
     val pending = all.filter { it.reason == 5 }.sortedByDescending { it.ts }
     val income = all.filter { !it.excluded }
     val moves = all.filter { it.excluded && it.reason != 5 }
     val shown = income + moves // جابه‌جایی‌ها و بازپرداخت‌ها کم‌رنگ
-
-    fun setKind(t: Tx, own: Boolean) = scope.launch {
-        db.tx().setDepositKind(t.id, own); Notifier.cancel(ctx, t.id)
-        if (own) OwnAccounts.learn(ctx, t.id)
-    }
-    var ownFor by remember { mutableStateOf<Tx?>(null) }
-    ownFor?.let { t ->
-        CounterpartDialog(t, onPick = { b -> ownFor = null; scope.launch { Counterpart.set(ctx, t.id, b) } }, onDismiss = { ownFor = null })
-    }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -1481,57 +1647,72 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
         }
 
         // ---- واریزهای در انتظار تأیید
-        if (pending.isNotEmpty()) {
-            item {
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                ) {
-                    Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                        Text(
-                            "در انتظار تأیید (" + Fa.toFa(pending.size.toString()) + ")",
-                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Text(
-                            "تا مشخص نکنی، جزو درآمد حساب نمی‌شوند.",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        pending.forEach { t ->
-                            Spacer(Modifier.height(10.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f).clickable { editing = t }) {
-                                    Text(Fa.toman(t.amount), fontWeight = FontWeight.Bold, color = IncomeColor)
-                                    Text(
-                                        Fa.dayTitle(t.jDate) + "  ·  " + Fa.toFa(t.time) + "  ·  " + Banks.name(t.bank),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                }
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
-                                SmallChoice("درآمد", true) { incomeFor = t }
-                                SmallChoice("بازپرداخت / قرض", false) { dangFor = t }
-                                SmallChoice("حساب خودم", false) { setKind(t, true); ownFor = t }
-                            }
-                        }
-                        if (pending.size > 1) {
-                            HorizontalDivider(Modifier.padding(vertical = 10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("همه:", Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.labelMedium)
-                                SmallChoice("همه درآمد", false) { pending.forEach { setKind(it, false) } }
-                                SmallChoice("همه حساب خودم", false) { pending.forEach { setKind(it, true) } }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        if (pending.isNotEmpty()) item { PendingDeposits(pending, txs, cats, db) { editing = it } }
 
         if (shown.isEmpty() && pending.isEmpty()) item { EmptyNote("این ماه درآمدی ثبت نشده.") }
         dayGroups(shown.sortedByDescending { it.ts }, catById) { editing = it }
     }
 
     editing?.let { t -> EditDialog(t, cats, db) { editing = null } }
+}
+
+/** کارت «در انتظار تأیید»: درآمد / بازپرداخت / حساب خودم */
+@Composable
+fun PendingDeposits(pending: List<Tx>, txs: List<Tx>, cats: List<Category>, db: AppDb, onEdit: (Tx) -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var dangFor by remember { mutableStateOf<Tx?>(null) }
+    var incomeFor by remember { mutableStateOf<Tx?>(null) }
+    var ownFor by remember { mutableStateOf<Tx?>(null) }
+    fun setKind(t: Tx, own: Boolean) = scope.launch {
+        db.tx().setDepositKind(t.id, own); Notifier.cancel(ctx, t.id)
+        if (own) OwnAccounts.learn(ctx, t.id)
+    }
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                Text(
+                    "در انتظار تأیید (" + Fa.toFa(pending.size.toString()) + ")",
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    "تا مشخص نکنی، جزو درآمد حساب نمی‌شوند.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                pending.forEach { t ->
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).clickable { onEdit(t) }) {
+                            Text(Fa.toman(t.amount), fontWeight = FontWeight.Bold, color = IncomeColor)
+                            Text(
+                                Fa.dayTitle(t.jDate) + "  ·  " + Fa.toFa(t.time) + "  ·  " + Banks.name(t.bank),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+                        SmallChoice("درآمد", true) { incomeFor = t }
+                        SmallChoice("بازپرداخت / قرض", false) { dangFor = t }
+                        SmallChoice("حساب خودم", false) { setKind(t, true); ownFor = t }
+                    }
+                }
+                if (pending.size > 1) {
+                    HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("همه:", Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.labelMedium)
+                        SmallChoice("همه درآمد", false) { pending.forEach { setKind(it, false) } }
+                        SmallChoice("همه حساب خودم", false) { pending.forEach { setKind(it, true) } }
+                    }
+                }
+            }
+        }
+
+    ownFor?.let { t ->
+        CounterpartDialog(t, onPick = { b -> ownFor = null; scope.launch { Counterpart.set(ctx, t.id, b) } }, onDismiss = { ownFor = null })
+    }
     dangFor?.let { d ->
         RepayPicker(d, txs, cats, onDone = { dangFor = null }, onDismiss = { dangFor = null })
     }

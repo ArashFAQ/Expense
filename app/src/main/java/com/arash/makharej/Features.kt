@@ -585,6 +585,17 @@ fun ThemeSection() {
                 }
             }
             Spacer(Modifier.height(10.dp))
+            Text("نمایش تراکنش‌ها", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !ThemeSettings.combined, onClick = { ThemeSettings.setCombined(ctx, false) }, label = { Text("جدا (خرج‌ها | درآمد)") })
+                FilterChip(selected = ThemeSettings.combined, onClick = { ThemeSettings.setCombined(ctx, true) }, label = { Text("یک‌جا") })
+            }
+            Text(
+                "«یک‌جا»: خرج و درآمد در یک فهرست؛ درآمدها با نوار سبز و علامت + جدا می‌شوند.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(10.dp))
             Text("رنگ اصلی", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(6.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
