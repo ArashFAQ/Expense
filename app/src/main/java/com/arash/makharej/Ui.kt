@@ -510,8 +510,6 @@ fun MainScreen(startTab: Int = 0, startIncome: Boolean = false) {
             try { OwnAccounts.purgeOwnNumbers(ctx) } catch (_: Exception) {}
             pr.edit().putBoolean("ownPurged", true).apply()
         }
-        // روزی دو بار: نسخه‌ی جدید؟
-        try { UpdateCheck.check(ctx) } catch (_: Exception) {}
         // یک بار: حساب‌های خودی از روی «حساب خودم»ها و انتقال‌های قبلی یاد گرفته می‌شوند
         if (!pr.getBoolean("ownLearned", false)) {
             try { OwnAccounts.learnExisting(ctx) } catch (_: Exception) {}
@@ -644,6 +642,8 @@ fun PermissionBanner(visible: Boolean = true) {
         importIfNeeded()
         // هر بار که اپ باز می‌شود: پیامک‌های جاافتاده
         scope.launch { try { InboxImporter.catchUp(ctx) } catch (_: Exception) {} }
+        // نسخه‌ی تازه؟ (هر بار که اپ باز می‌شود یا به آن برمی‌گردی)
+        scope.launch { try { UpdateCheck.check(ctx) } catch (_: Exception) {} }
     }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -776,11 +776,10 @@ fun ImportProgressBar() {
     }
 }
 
-/** خبر «نسخه‌ی جدید آمد»: روزی دو بار از گیت‌هاب پرسیده می‌شود */
+/** خبر «نسخه‌ی جدید آمد»: هر بار که اپ باز می‌شود از گیت‌هاب پرسیده می‌شود */
 object UpdateCheck {
     /** شماره‌ی ساخت نسخه‌ی جدید (۰ = چیزی نیست) */
     val available = mutableIntStateOf(0)
-    private const val EVERY = 12 * 60 * 60_000L
 
     fun name(version: Int) = "1." + String.format(java.util.Locale.US, "%02d", version - 100)
 
@@ -795,17 +794,13 @@ object UpdateCheck {
         available.intValue = 0
     }
 
-    suspend fun check(ctx: Context, notify: Boolean = false) {
+    /** هر بار که اپ باز می‌شود (بدون نوتیفیکیشن؛ فقط کارت بالای صفحه‌ی خانه) */
+    suspend fun check(ctx: Context) {
         val p = prefs(ctx)
         load(ctx)
-        if (System.currentTimeMillis() - p.getLong("updCheckAt", 0L) < EVERY) return
         val r = try { Updater.latest() } catch (_: Exception) { null } ?: return
         p.edit().putLong("updCheckAt", System.currentTimeMillis()).putInt("updAvail", r.version).apply()
         load(ctx)
-        if (notify && r.version > BuildConfig.VERSION_CODE && r.version != p.getInt("updNotified", 0)) {
-            p.edit().putInt("updNotified", r.version).apply()
-            showNotification(ctx, r.version)
-        }
     }
 
     private fun showNotification(ctx: Context, version: Int) {

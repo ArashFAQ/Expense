@@ -507,8 +507,6 @@ class ActionReceiver : BroadcastReceiver() {
 class SmsCatchUpWorker(ctx: Context, params: androidx.work.WorkerParameters) : androidx.work.CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         try { InboxImporter.catchUp(applicationContext) } catch (_: Exception) {}
-        // روزی دو بار: اگر نسخه‌ی تازه‌ای آمده، یک نوتیفیکیشن
-        try { UpdateCheck.check(applicationContext, notify = true) } catch (_: Exception) {}
         return Result.success()
     }
 }
