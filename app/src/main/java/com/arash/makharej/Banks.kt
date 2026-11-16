@@ -486,14 +486,12 @@ object Banks {
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
 
-    private fun defaultCounts(bank: String, isExpense: Boolean) = when (bank) {
-        BLU -> isExpense
-        EN -> isExpense
-        MELLAT -> true
-        PASARGAD -> false
-        MOFID -> isExpense   // سود و پول برگشتی مفید درآمد حساب نمی‌شود
-        else -> true
-    }
+    /**
+     * پیش‌فرض: همه‌ی بانک‌ها حساب می‌شوند. انتقال بین حساب‌ها خودکار جفت می‌شود و هر واریز ناشناخته
+     * «در انتظار تأیید» می‌رود؛ کاربر اگر بخواهد از «بانک‌ها و حساب‌ها» نقش یک بانک را عوض می‌کند.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun defaultCounts(bank: String, isExpense: Boolean) = true
 
     /**
      * یک بار روی همه‌ی واریزهای قبلی: جفت کردن دوباره با برداشت‌ها و درخواست‌های وجه
