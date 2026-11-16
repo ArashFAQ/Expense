@@ -76,13 +76,14 @@ object Ingest {
         )
         if (id <= 0) return false // تکراری
 
+        if (p.bank == Banks.MOFID) MofidOwn.mark(ctx)
         // انتقال بین حساب‌های خودم؟
         val tx = db.tx().get(id) ?: return true
         // هر کاری که اپ خودش انجام می‌دهد (فقط برای پیامک تازه) در «کارهای خودکار» ثبت و بی‌صدا خبر داده می‌شود
         fun auto(kind: String, other: Long = 0, due: Long = 0, extra: String = "") {
             if (!notify) return
+            // فقط در «تنظیمات ← کارهای خودکار» ثبت می‌شود؛ نوتیفیکیشن نمی‌آید
             AutoLog.add(ctx, kind, tx.id, other, due)
-            AutoLog.notify(ctx, kind, tx, extra)
         }
         (Banks.matchMofidDeposit(ctx, tx) ?: Banks.matchMofidRequest(ctx, tx))?.let { o ->
             auto("transfer", o)
@@ -366,7 +367,16 @@ object Notifier {
                 )
             )
             .addAction(0, "بازپرداخت / قرض", dang)
-            .addAction(0, "حساب خودم", bc(3, "own"))
+            .addAction(
+                0, "حساب خودم",
+                // کسی که مفید دارد: می‌پرسد «از کجا آمد؟» (بانک یا برداشت از مفید)
+                if (MofidOwn.has(ctx)) PendingIntent.getActivity(
+                    ctx, nid * 10 + 3,
+                    Intent(ctx, CategorizeActivity::class.java).putExtra("tx", tx.id).putExtra("ownSource", true)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                    FLAGS
+                ) else bc(3, "own")
+            )
             .also { AppLock.applyPrivacy(ctx, it, CHANNEL, "واریز جدید") }
             .build()
         try {

@@ -348,6 +348,7 @@ class CategorizeActivity : ComponentActivity() {
         val refundMode = intent.getBooleanExtra("refund", false)
         val loanMode = intent.getBooleanExtra("loan", false)
         val incomeMode = intent.getBooleanExtra("incomeCat", false)
+        val ownSource = intent.getBooleanExtra("ownSource", false)
         val groupId = intent.getLongExtra("group", 0L)
         ThemeSettings.load(this)
         setContent {
@@ -370,6 +371,16 @@ class CategorizeActivity : ComponentActivity() {
                     val d = tx
                     if (d != null && g != null && gdata.membersOf(g.id).isNotEmpty() && cats.isNotEmpty())
                         GroupExpenseDialog(gdata, g, cats, d, onDone = { finish() }, onDismiss = { finish() })
+                    return@AppTheme
+                }
+                if (ownSource) {
+                    val d = tx
+                    if (d != null) OwnSourceDialog(d.amount, onBank = {
+                        scope.launch {
+                            db.tx().setDepositKind(d.id, true); OwnAccounts.learn(ctx, d.id); Notifier.cancel(ctx, d.id)
+                            SummaryWidget.refresh(ctx); finish()
+                        }
+                    }, onMofid = { scope.launch { MofidOwn.fromMofid(ctx, d.id); finish() } }, onDismiss = { finish() })
                     return@AppTheme
                 }
                 if (incomeMode) {
@@ -413,7 +424,7 @@ class CategorizeActivity : ComponentActivity() {
                             tx = t, cats = cats, notes = notes, db = db,
                             onSave = { cat, note, ex, amount ->
                                 scope.launch {
-                                    if (t.reason == 1 && !ex) NoAuto.add(ctx, t.id)
+                                    if (t.reason == 1 && !ex) { NoAuto.add(ctx, t.id); MofidOwn.undo(ctx, t.id) }
                                     db.tx().update(t.id, cat, note, ex, amount)
                         if (ex && !t.excluded) OwnAccounts.learn(ctx, t.id)
                                     Notifier.cancel(ctx, t.id)
@@ -478,6 +489,7 @@ fun MainScreen(startTab: Int = 0, startIncome: Boolean = false) {
         } catch (_: Exception) {}
         try { DueReminder.check(ctx) } catch (_: Exception) {}
         try { InboxImporter.schedule(ctx) } catch (_: Exception) {}
+        try { MofidOwn.refresh(ctx) } catch (_: Exception) {}
         // یک بار: شماره‌ی خود حساب‌ها که اشتباهی «حساب خودی» یاد گرفته شده پاک می‌شود
         if (!pr.getBoolean("ownPurged", false)) {
             try { OwnAccounts.purgeOwnNumbers(ctx) } catch (_: Exception) {}
@@ -1150,7 +1162,7 @@ fun EditDialog(t: Tx, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
                 onSave = { cat, note, ex, amount ->
                     scope.launch {
                         // «انتقال» را دستی برگردانده: دیگر خودکار جفت نشود
-                        if (t.reason == 1 && !ex) NoAuto.add(ctx, t.id)
+                        if (t.reason == 1 && !ex) { NoAuto.add(ctx, t.id); MofidOwn.undo(ctx, t.id) }
                         db.tx().update(t.id, cat, note, ex, amount)
                         if (ex && !t.excluded) OwnAccounts.learn(ctx, t.id)
                         Notifier.cancel(ctx, t.id)
@@ -1432,6 +1444,12 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
         db.tx().setDepositKind(t.id, own); Notifier.cancel(ctx, t.id)
         if (own) OwnAccounts.learn(ctx, t.id)
     }
+    var ownFor by remember { mutableStateOf<Tx?>(null) }
+    ownFor?.let { t ->
+        OwnSourceDialog(t.amount, onBank = { ownFor = null; setKind(t, true) }, onMofid = {
+            ownFor = null; scope.launch { MofidOwn.fromMofid(ctx, t.id) }
+        }, onDismiss = { ownFor = null })
+    }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -1491,7 +1509,7 @@ fun IncomeTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: ()
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
                                 SmallChoice("درآمد", true) { incomeFor = t }
                                 SmallChoice("بازپرداخت / قرض", false) { dangFor = t }
-                                SmallChoice("حساب خودم", false) { setKind(t, true) }
+                                SmallChoice("حساب خودم", false) { if (MofidOwn.has(ctx)) ownFor = t else setKind(t, true) }
                             }
                         }
                         if (pending.size > 1) {
@@ -1862,6 +1880,7 @@ fun TxEditor(
             val scopeP = rememberCoroutineScope()
             var pickDang by remember(tx.id) { mutableStateOf(false) }
             var pickInc by remember(tx.id) { mutableStateOf(false) }
+            var pickOwn by remember(tx.id) { mutableStateOf(false) }
             if (pickInc) IncomeCatDialog(tx.amount, cats, onPick = { c ->
                 pickInc = false
                 scopeP.launch { markIncome(ctxP, tx.id, c); onCancel() }
@@ -1873,9 +1892,17 @@ fun TxEditor(
                 Button(onClick = { pickInc = true }) { Text("درآمد") }
                 OutlinedButton(onClick = { pickDang = true }) { Text("بازپرداخت / قرض") }
                 OutlinedButton(onClick = {
-                    scopeP.launch { db!!.tx().setDepositKind(tx.id, true); Notifier.cancel(ctxP, tx.id); OwnAccounts.learn(ctxP, tx.id); onCancel() }
+                    if (MofidOwn.has(ctxP)) pickOwn = true
+                    else scopeP.launch { db!!.tx().setDepositKind(tx.id, true); Notifier.cancel(ctxP, tx.id); OwnAccounts.learn(ctxP, tx.id); onCancel() }
                 }) { Text("حساب خودم") }
             }
+            if (pickOwn) OwnSourceDialog(tx.amount, onBank = {
+                pickOwn = false
+                scopeP.launch { db!!.tx().setDepositKind(tx.id, true); Notifier.cancel(ctxP, tx.id); OwnAccounts.learn(ctxP, tx.id); onCancel() }
+            }, onMofid = {
+                pickOwn = false
+                scopeP.launch { MofidOwn.fromMofid(ctxP, tx.id); onCancel() }
+            }, onDismiss = { pickOwn = false })
             if (pickDang) {
                 val all by remember { db!!.tx().all() }.collectAsState(initial = emptyList())
                 RepayPicker(tx, all, cats, onDone = { pickDang = false; onCancel() }, onDismiss = { pickDang = false })

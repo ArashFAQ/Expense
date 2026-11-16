@@ -94,6 +94,7 @@ object TxOps {
         // بازپرداخت‌های دنگ / قرض / بدهی که به این تراکنش وصل‌اند آزاد می‌شوند
         try { Refunds.releaseAll(ctx, t.id) } catch (_: Exception) {}
         dao.deleteByKeyPrefix("excess-${t.id}-")
+        MofidOwn.undo(ctx, t.id)
         db.split().deleteFor(t.id)
         try {
             when (t.reason) {
