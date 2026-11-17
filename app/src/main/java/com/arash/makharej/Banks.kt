@@ -27,9 +27,10 @@ object Banks {
     const val MOFID = "MOFID"
     const val DAY = "DAY"
     const val PARSIAN = "PARSIAN"
+    const val RESALAT = "RESALAT"
     const val MANUAL = "MANUAL"
 
-    val builtIn = listOf(BLU, MELLAT, EN, PASARGAD, TEJARAT, MELLI, SADERAT, SEPAH, GARDESHGARI, DAY, PARSIAN, MOFID)
+    val builtIn = listOf(BLU, MELLAT, EN, PASARGAD, TEJARAT, MELLI, SADERAT, SEPAH, GARDESHGARI, DAY, PARSIAN, RESALAT, MOFID)
 
     /** بانک‌های داخلی + بانک‌هایی که با نمونه آموخته شده‌اند */
     fun all(ctx: Context): List<String> =
@@ -48,6 +49,7 @@ object Banks {
         GARDESHGARI -> "گردشگری"
         DAY -> "دی"
         PARSIAN -> "پارسیان"
+        RESALAT -> "رسالت"
         MOFID -> "کارگزاری مفید"
         MANUAL -> "دستی"
         else -> Learned.nameOf(b) ?: "بانک"
@@ -81,7 +83,7 @@ object Banks {
         val t = BluParser.normalize(body).trim()
         if (BluParser.hasPassword(t)) return null
         return mofid(t, ts) ?: tejarat(t, ts) ?: melliSaderat(t, ts, sender) ?: sepah(t, ts) ?: gardeshgari(t, ts) ?:
-            mellat(t, ts) ?: en(t, ts) ?: pasargad(t, ts) ?: parsian(t, ts, sender) ?: day(t, ts, sender) ?: benefit(t, ts, sender)
+            mellat(t, ts) ?: en(t, ts) ?: pasargad(t, ts) ?: resalat(t, ts, sender) ?: parsian(t, ts, sender) ?: day(t, ts, sender) ?: benefit(t, ts, sender)
     }
 
     // ---- علامت مثبت/منفی قبل یا بعد از عدد (ترتیب نمایش راست‌به‌چپ ممکن است جابه‌جا شود)
@@ -377,6 +379,33 @@ object Banks {
     private val psAcc = Regex("""^\d{2,4}\.\d{2,4}\.\d{4,}\.\d+$""")
     private val psAmt = Regex("""^([+-])?\s*(\d[\d,]*)\s*([+-])?$""")
     private val psBal = Regex("""مانده\s*:?\s*(\d[\d,]*)""")
+
+    /**
+     * قرض‌الحسنه رسالت (نام بانک در متن نیست؛ فرستنده ResalatBank). مثل پاسارگاد ولی شماره‌ی سپرده سه‌بخشی:
+     *   10.12958598.1
+     *   +1,000,000,000        (برداشت: -110,700)
+     *   10/14_10:46
+     *   مانده: 1,000,562,770
+     * پیامک «درخواست پایا … رمز» تراکنش نیست.
+     */
+    private val rsAcc = Regex("""^\d{1,4}\.\d{5,}\.\d+$""")
+
+    private fun resalat(t: String, ts: Long, sender: String?): Parsed? {
+        val lines = t.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val bySender = sender != null && Learned.normSender(sender).contains("resalat")
+        if (!bySender && lines.none { rsAcc.matches(it) }) return null
+        if (lines.none { rsAcc.matches(it) || dyAcc.matches(it) }) return null
+        val bal = psBal.find(t)?.let { num(it.groupValues[1]) } ?: return null
+        for (l in lines) {
+            if (rsAcc.matches(l)) continue
+            val m = psAmt.matchEntire(l) ?: continue
+            val sign = m.groupValues[1].ifEmpty { m.groupValues[3] }
+            if (sign.isEmpty()) continue
+            val amount = num(m.groupValues[2]) ?: continue
+            return build(sign == "-", amount, bal, t, ts, RESALAT)
+        }
+        return null
+    }
 
     private fun pasargad(t: String, ts: Long): Parsed? {
         val lines = t.lines().map { it.trim() }

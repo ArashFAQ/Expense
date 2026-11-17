@@ -180,7 +180,8 @@
    "id": "RESALAT",
    "name": "قرض‌الحسنه رسالت",
    "senders": [],
-   "templates": []
+   "templates": [],
+   "builtin": true
   },
   {
    "id": "MELAL",

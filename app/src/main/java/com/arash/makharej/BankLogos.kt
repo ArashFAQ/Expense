@@ -101,6 +101,7 @@ object BankLogos {
         Banks.GARDESHGARI -> Color(0xFFC62828)
         Banks.DAY -> Color(0xFF00695C)
         Banks.PARSIAN -> Color(0xFFB71C1C)
+        Banks.RESALAT -> Color(0xFF2E7D32)
         Banks.MOFID -> Color(0xFF00897B)
         else -> Color(0xFF607D8B)
     }
