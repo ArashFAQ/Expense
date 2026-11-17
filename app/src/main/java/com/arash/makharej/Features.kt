@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -98,7 +99,11 @@ fun NoteSuggestions(
     onPick: (note: String, category: Long?) -> Unit
 ) {
     val q = typed.trim()
-    val pool = if (category != null) stats.filter { it.categoryId == category } else stats
+    // توضیح‌هایی که خود اپ نوشته پیشنهاد نمی‌شوند
+    fun auto(n: String) = n.startsWith("درخواست وجه") || n.startsWith("کارت هدیه") || n.startsWith("سود") ||
+        n in setOf("واریز به حامی", "تصحیح مانده", "بخشیده شد", "قدیمی")
+    val clean = stats.filter { !auto(it.note.trim()) }
+    val pool = if (category != null) clean.filter { it.categoryId == category }.ifEmpty { clean } else clean
     val items = pool
         .groupBy { it.note.trim() }
         .map { (note, l) -> Triple(note, l.sumOf { it.cnt }, l.maxByOrNull { it.cnt }?.categoryId) }
@@ -106,15 +111,18 @@ fun NoteSuggestions(
         .sortedByDescending { it.second }
         .take(15)
     if (items.isEmpty()) return
-    Spacer(Modifier.height(6.dp))
-    Text(
-        if (category != null) "توضیح‌های قبلی این دسته" else "توضیح‌های قبلی",
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    // یک ردیف که با انگشت جابه‌جا می‌شود
+    Row(
+        Modifier.fillMaxWidth().padding(top = 8.dp).horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
         items.forEach { (note, _, cat) ->
-            SuggestionChip(onClick = { onPick(note, cat) }, label = { Text(note) })
+            Text(
+                note,
+                Modifier.clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable { onPick(note, cat) }.padding(horizontal = 12.dp, vertical = 7.dp),
+                style = MaterialTheme.typography.labelLarge, maxLines = 1
+            )
         }
     }
 }
