@@ -208,17 +208,64 @@ object Dues {
         }.filter { d ->
             val due = nextMillis(d) ?: return@filter false
             t.ts in (due - 7 * 86_400_000L)..(due + 15 * 86_400_000L)
-        }.minByOrNull { kotlin.math.abs((nextMillis(it) ?: 0) - t.ts) } ?: return null
+        }.minByOrNull { kotlin.math.abs((nextMillis(it) ?: 0) - t.ts) } ?: return matchManual(ctx, t)
         markPaid(ctx, d.id)
-        // قسط → دسته‌ی «قسط و وام» (اگر هست)
-        if (d.kind == 0 || d.kind == 3) {
-            val cat = db.cat().list().firstOrNull { !it.income && it.icon == "installment" }?.id
-            if (cat != null && t.isExpense) {
-                db.tx().setCategory(t.id, cat)
-                if (t.note.isBlank()) db.tx().setNote(t.id, d.title)
-            }
-        }
+        link(ctx, d, t)
         return d
+    }
+
+    /** برداشت را به قسط/چک وصل کن: دسته‌ی «قسط و وام» (اگر هست) و یادداشت */
+    private suspend fun link(ctx: Context, d: Due, t: Tx) {
+        val db = AppDb.get(ctx)
+        if ((d.kind == 0 || d.kind == 3) && t.isExpense) {
+            val cat = db.cat().list().firstOrNull { !it.income && it.icon == "installment" }?.id
+            if (cat != null) db.tx().setCategory(t.id, cat)
+        }
+        if (t.note.isBlank()) db.tx().setNote(t.id, d.title)
+    }
+
+    private fun fits(d: Due, t: Tx) =
+        d.amount == t.amount && (if (t.isExpense) d.kind != 2 else d.kind == 2) && (d.bank == null || d.bank == t.bank)
+
+    // «پرداخت شد» دستی که هنوز برداشتش نیامده: id → زمان زدن دکمه (۱۰ روز منتظر می‌ماند)
+    private const val PREF = "dueManualPaid"
+    private const val WAIT = 10 * 86_400_000L
+    private fun waiting(ctx: Context): MutableMap<Long, Long> =
+        (ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).getStringSet("w", emptySet()) ?: emptySet())
+            .mapNotNull { e -> e.split(":").takeIf { it.size == 2 }?.let { (a, b) -> a.toLongOrNull()?.let { it to (b.toLongOrNull() ?: 0L) } } }
+            .filter { System.currentTimeMillis() - it.second < WAIT }.toMap().toMutableMap()
+    private fun saveWaiting(ctx: Context, m: Map<Long, Long>) =
+        ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
+            .putStringSet("w", m.map { "${it.key}:${it.value}" }.toSet()).apply()
+
+    /** برداشتی که بعد از «پرداخت شد» دستی آمد: فقط وصل می‌شود، دوباره پرداخت‌شده نمی‌خورد */
+    private suspend fun matchManual(ctx: Context, t: Tx): Due? {
+        val w = waiting(ctx)
+        if (w.isEmpty()) return null
+        val db = AppDb.get(ctx)
+        val hit = w.entries.filter { t.ts in (it.value - 86_400_000L)..(it.value + WAIT) }
+            .mapNotNull { e -> db.due().get(e.key)?.takeIf { fits(it, t) }?.let { it to e.value } }
+            .minByOrNull { kotlin.math.abs(it.second - t.ts) } ?: return null
+        w.remove(hit.first.id); saveWaiting(ctx, w)
+        link(ctx, hit.first, t)
+        return hit.first
+    }
+
+    /**
+     * «پرداخت شد» با دست (نوتیفیکیشن یا صفحه‌ی برنامه): اگر برداشتش در ۱۰ روز اخیر آمده و
+     * به چیزی وصل نیست، همان را وصل می‌کند؛ وگرنه منتظر برداشت می‌ماند تا وقتی آمد وصلش کند.
+     */
+    suspend fun markPaidManual(ctx: Context, id: Long) {
+        val db = AppDb.get(ctx)
+        val d = db.due().get(id) ?: return
+        val now = System.currentTimeMillis()
+        val tx = db.tx().list().filter {
+            it.ts in (now - WAIT)..now && fits(d, it) && it.reason == 0 && !it.excluded &&
+                (it.categoryId == null || !it.isExpense) && it.note.isBlank()
+        }.maxByOrNull { it.ts }
+        if (tx != null) link(ctx, d, tx)
+        else { val w = waiting(ctx); w[id] = now; saveWaiting(ctx, w) }
+        markPaid(ctx, id)
     }
 }
 
@@ -326,7 +373,7 @@ class DueReceiver : BroadcastReceiver() {
             try {
                 if (intent.action == DueReminder.ACTION_PAID) {
                     val id = intent.getLongExtra("id", 0)
-                    if (id > 0) Dues.markPaid(app, id)
+                    if (id > 0) Dues.markPaidManual(app, id)
                 }
                 DueReminder.check(app)
             } catch (_: Exception) {
@@ -392,7 +439,7 @@ fun DuesCard(
     if (adding) DueEditDialog(null, defaultKind = kinds.min(), onSave = { d -> adding = false; scope.launch { db.due().upsert(d); DueReminder.check(ctx) } }, onDismiss = { adding = false })
     editing?.let { d ->
         DueActionsDialog(d, onPaid = {
-            editing = null; scope.launch { Dues.markPaid(ctx, d.id) }
+            editing = null; scope.launch { Dues.markPaidManual(ctx, d.id) }
         }, onSave = { nd ->
             editing = null; scope.launch { db.due().upsert(nd); DueReminder.check(ctx) }
         }, onDelete = {
