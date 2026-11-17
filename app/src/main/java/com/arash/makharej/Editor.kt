@@ -244,39 +244,39 @@ fun TxEditor(
             // ---- کارهای فرعی
             if (db != null && !pendingDeposit) {
                 Spacer(Modifier.height(14.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (!special && tx.reason != 15 && !ownLike) {
-                        MiniChip(Icons.Outlined.SwapHoriz, "حساب خودم", false) { excluded = true }
+                // یک ردیف خانه‌های هم‌اندازه (مثل شبکه‌ی دسته‌ها)
+                val acts = mutableListOf<Act>()
+                if (!special && tx.reason != 15 && !ownLike) acts += Act(Icons.Outlined.SwapHoriz, "حساب خودم", false) { excluded = true }
+                if (tx.isExpense && !special && !excluded) {
+                    acts += Act(Icons.Outlined.PieChart, "چند دسته", splitOn) {
+                        splitOn = !splitOn
+                        if (splitOn && splitRows.isEmpty()) { splitRows.add(sel to ""); splitRows.add(null to "") }
                     }
-                    if (tx.isExpense && !special && !excluded) {
-                        MiniChip(Icons.Outlined.PieChart, "چند دسته", splitOn) {
-                            splitOn = !splitOn
-                            if (splitOn && splitRows.isEmpty()) { splitRows.add(sel to ""); splitRows.add(null to "") }
+                    val sharedOn = me.shared || refunds.isNotEmpty()
+                    // «دنگ»: ساده یا گروهی (اگر گروه باز هست می‌پرسد)
+                    acts += Act(Icons.Outlined.People, "دنگ", sharedOn || openPanel == "dang" || openPanel == "group") {
+                        openPanel = when {
+                            openPanel == "dang" || openPanel == "group" -> ""
+                            sharedOn -> "dang"
+                            gdata.open().isNotEmpty() -> "group"
+                            else -> { scope.launch { db.tx().setShared(tx.id, true) }; "dang" }
                         }
-                        val sharedOn = me.shared || refunds.isNotEmpty()
-                        MiniChip(Icons.Outlined.People, "دنگی", sharedOn || openPanel == "dang") {
-                            if (!sharedOn) scope.launch { db.tx().setShared(tx.id, true) }
-                            openPanel = if (openPanel == "dang") "" else "dang"
-                        }
-                        if (gdata.open().isNotEmpty() && !sharedOn) MiniChip(Icons.Outlined.Groups, "دنگ گروهی", openPanel == "group") {
-                            openPanel = if (openPanel == "group") "" else "group"
-                        }
-                        if (!sharedOn) MiniChip(Icons.Outlined.CurrencyExchange, "قرض / دارایی", false) { pickOut = true }
                     }
-                    if (!tx.isExpense && !special && !excluded) {
-                        MiniChip(Icons.Outlined.CurrencyExchange, "بازپرداخت / قرض", false) { pickRepay = true }
-                    }
-                    if (tx.id > 0) MiniChip(
-                        Icons.Outlined.AttachFile, if (receipts > 0) "رسید " + Fa.toFa(receipts.toString()) else "رسید",
-                        receipts > 0 || openPanel == "receipt"
-                    ) { openPanel = if (openPanel == "receipt") "" else "receipt" }
+                    if (!sharedOn) acts += Act(Icons.Outlined.CurrencyExchange, "قرض / دارایی", false) { pickOut = true }
                 }
+                if (!tx.isExpense && !special && !excluded) acts += Act(Icons.Outlined.CurrencyExchange, "بازپرداخت / قرض", false) { pickRepay = true }
+                if (tx.id > 0) acts += Act(
+                    Icons.Outlined.AttachFile, if (receipts > 0) "رسید " + Fa.toFa(receipts.toString()) else "رسید",
+                    receipts > 0 || openPanel == "receipt"
+                ) { openPanel = if (openPanel == "receipt") "" else "receipt" }
+                ActionRow(acts)
                 // بخش بازشده
                 when {
                     openPanel == "group" -> Panel(Color(0xFF00897B)) {
-                        Text("کدام گروه؟", fontWeight = FontWeight.Bold, color = Color(0xFF00695C))
+                        Text("دنگ ساده یا با کدام گروه؟", fontWeight = FontWeight.Bold, color = Color(0xFF00695C))
                         Spacer(Modifier.height(8.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { scope.launch { db.tx().setShared(tx.id, true) }; openPanel = "dang" }) { Text("دنگ ساده") }
                             gdata.open().forEach { g ->
                                 OutlinedButton(onClick = { groupFor = g }) {
                                     Text(g.name + " · " + Fa.toFa(gdata.membersOf(g.id).size.toString()) + " نفر")
@@ -372,6 +372,39 @@ private fun BigChoice(icon: ImageVector, label: String, on: Boolean, color: Colo
             label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1,
             color = if (on) Color.White else MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center
         )
+    }
+}
+
+private class Act(val icon: ImageVector, val label: String, val on: Boolean, val onClick: () -> Unit)
+
+/** دکمه‌های کارهای فرعی: خانه‌های هم‌اندازه، آیکون بالا و اسم زیر */
+@Composable
+private fun ActionRow(acts: List<Act>) {
+    if (acts.isEmpty()) return
+    val c = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        acts.chunked(5).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { a ->
+                    Column(
+                        Modifier.weight(1f).height(62.dp).clip(RoundedCornerShape(14.dp))
+                            .background(if (a.on) c.secondaryContainer else c.surface)
+                            .border(1.dp, if (a.on) c.secondaryContainer else c.outlineVariant, RoundedCornerShape(14.dp))
+                            .clickable(onClick = a.onClick).padding(horizontal = 2.dp, vertical = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(a.icon, null, Modifier.size(20.dp), tint = if (a.on) c.onSecondaryContainer else c.onSurfaceVariant)
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            a.label, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = if (a.on) c.onSecondaryContainer else c.onSurface,
+                            fontWeight = if (a.on) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center
+                        )
+                    }
+                }
+                if (acts.size > 5) repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
     }
 }
 
