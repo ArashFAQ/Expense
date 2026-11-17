@@ -1,0 +1,76 @@
+package com.arash.makharej
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+
+/** تغییرات هر نسخه (شماره‌ی بیلد → فهرست). با هر نسخه‌ی جدید یک ردیف بالای فهرست اضافه می‌شود. */
+object Changelog {
+    val entries: List<Pair<Int, List<String>>> = listOf(
+        121 to listOf("فهرست «آخرین تغییرات» در تنظیمات ← به‌روزرسانی اپ"),
+        120 to listOf("زدن «پرداخت شد» برای قسط، برداشت بانکی‌اش را (قبل یا بعد از زدن) خودکار وصل می‌کند و دسته‌ی «قسط و وام» می‌گیرد"),
+        119 to listOf(
+            "دکمه‌های صفحه‌ی ویرایش مرتب شدند: با گروه دنگ باز دو ردیف سه‌تایی، بدون آن یک ردیف پنج‌تایی",
+            "دنگی ساده و گروهی یکی شدند"
+        ),
+        118 to listOf("خانه‌ی «دسته‌ی جدید» در صفحه‌ی ویرایش (نام، رنگ، آیکون)؛ بعد از ساختن خودش انتخاب می‌شود"),
+        117 to listOf(
+            "طراحی تازه‌ی صفحه‌ی ویرایش تراکنش: شبکه‌ی دسته‌ها و پیشنهاد یادداشت در یک ردیف",
+            "انتخاب سه‌گزینه‌ای برای واریز",
+            "دکمه‌ی ذخیره‌ی ثابت پایین صفحه"
+        ),
+        116 to listOf("اضافه شدن بانک رسالت"),
+        115 to listOf("بررسی نسخه‌ی جدید با هر بار باز شدن اپ، بدون نوتیفیکیشن")
+    )
+
+    fun name(code: Int) = Fa.toFa("1." + String.format(java.util.Locale.US, "%02d", code - 100))
+}
+
+@Composable
+fun ChangelogCard() {
+    var all by remember { mutableStateOf(false) }
+    val list = Changelog.entries.filter { it.first <= BuildConfig.VERSION_CODE }
+    if (list.isEmpty()) return
+    val shown = if (all) list else list.take(3)
+    Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        Column(Modifier.padding(16.dp)) {
+            Text("آخرین تغییرات", style = MaterialTheme.typography.titleMedium)
+            shown.forEachIndexed { i, (code, items) ->
+                if (i > 0) HorizontalDivider(Modifier.padding(vertical = 8.dp)) else Spacer(Modifier.height(8.dp))
+                Text(
+                    "نسخه‌ی " + Changelog.name(code) + if (code == BuildConfig.VERSION_CODE) " · نسخه‌ی فعلی" else "",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (code == BuildConfig.VERSION_CODE) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                )
+                items.forEach { s ->
+                    Row(Modifier.padding(top = 4.dp)) {
+                        Text("•", style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.width(6.dp))
+                        Text(s, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            if (list.size > 3) TextButton(onClick = { all = !all }) {
+                Text(if (all) "بستن" else "نمایش همه (" + Fa.toFa(list.size.toString()) + " نسخه)")
+            }
+        }
+    }
+}

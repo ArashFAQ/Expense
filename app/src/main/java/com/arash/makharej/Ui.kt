@@ -2180,7 +2180,7 @@ fun SettingsScreen(cats: List<Category>, db: AppDb, active: Boolean = true) {
                     }
                 }
             }
-            "update" -> item { UpdateSection() }
+            "update" -> item { UpdateSection(); ChangelogCard() }
             "theme" -> item { ThemeSection() }
             "backup" -> item { BackupSection() }
             "banks" -> item { AccountsSection() }
