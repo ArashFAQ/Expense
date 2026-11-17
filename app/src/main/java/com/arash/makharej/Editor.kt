@@ -108,6 +108,7 @@ fun TxEditor(
     var pickOwn by remember(tx.id) { mutableStateOf(false) }
     var pickOut by remember(tx.id) { mutableStateOf(false) }
     var openPanel by remember(tx.id) { mutableStateOf("") } // dang / group / receipt
+    var newCat by remember(tx.id) { mutableStateOf(false) }
     val gdata = rememberGroups()
     var groupFor by remember(tx.id) { mutableStateOf<DGroup?>(null) }
     val all by remember { db?.tx()?.all() ?: kotlinx.coroutines.flow.flowOf(emptyList()) }.collectAsState(initial = emptyList())
@@ -223,7 +224,7 @@ fun TxEditor(
             if (showCats) {
                 SectionTitle(if (tx.isExpense) "کجا خرج شد؟" else "بابت چه بود؟")
                 if (splitOn && tx.isExpense) SplitEditor(total, cats.filter { !it.income }, splitRows)
-                else CategoryGrid(cats.filter { it.income == !tx.isExpense }, sel) { sel = if (sel == it) null else it }
+                else CategoryGrid(cats.filter { it.income == !tx.isExpense }, sel, onAdd = { newCat = true }) { sel = if (sel == it) null else it }
             }
 
             // ---- حالت‌های خاص: قرض، دنگ گروهی، خرید دارایی، بازپرداخت
@@ -336,6 +337,7 @@ fun TxEditor(
     }, onDismiss = { pickOwn = false; onCancel() })
     if (pickRepay) RepayPicker(tx, all, cats, onDone = { pickRepay = false; onCancel() }, onDismiss = { pickRepay = false })
     if (pickOut) OutPicker(tx, all, onDone = { pickOut = false; onCancel() }, onDismiss = { pickOut = false })
+    if (newCat && db != null) NewCategoryDialog(cats, income = !tx.isExpense, db = db, onCreated = { id -> newCat = false; sel = id }) { newCat = false }
     groupFor?.let { g ->
         GroupExpenseDialog(gdata, g, cats, linked = tx, onDone = { groupFor = null; onCancel() }, onDismiss = { groupFor = null })
     }
@@ -375,12 +377,31 @@ private fun BigChoice(icon: ImageVector, label: String, on: Boolean, color: Colo
 
 /** شبکه‌ی ۵ ستونه‌ی دسته‌ها؛ دسته‌ی انتخاب‌شده با رنگ خودش پر می‌شود */
 @Composable
-fun CategoryGrid(list: List<Category>, sel: Long?, onPick: (Long) -> Unit) {
+fun CategoryGrid(list: List<Category>, sel: Long?, onAdd: (() -> Unit)? = null, onPick: (Long) -> Unit) {
     val cols = 5
+    // آخرین خانه: «+ دسته‌ی جدید» (شناسه‌ی منفی)
+    val cells: List<Category?> = list + if (onAdd != null) listOf(null) else emptyList()
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        list.chunked(cols).forEach { row ->
+        cells.chunked(cols).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { c ->
+                row.forEach { cOrNull ->
+                    if (cOrNull == null) {
+                        Column(
+                            Modifier.weight(1f).height(76.dp).clip(RoundedCornerShape(16.dp))
+                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                                .clickable { onAdd?.invoke() }.padding(4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Outlined.Add, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "دسته‌ی جدید", style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2
+                            )
+                        }
+                        return@forEach
+                    }
+                    val c: Category = cOrNull
                     val on = sel == c.id
                     val cc = c.uiColor()
                     val fg = if (on) (if (cc.luminance() > 0.55f) Color(0xFF111111) else Color.White) else MaterialTheme.colorScheme.onSurface
@@ -484,4 +505,66 @@ private fun DangRefundPanel(me: Tx, all: List<Tx>, cats: List<Category>, db: App
         cash = false
         scope.launch { Refunds.addCash(ctx, me, rial); db.tx().setShared(me.id, true) }
     }, onDismiss = { cash = false })
+}
+
+/** ساخت دسته‌ی تازه از همین صفحه: اسم، آیکون و رنگ؛ بعد از ساخت همان لحظه انتخاب می‌شود */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun NewCategoryDialog(cats: List<Category>, income: Boolean, db: AppDb, onCreated: (Long) -> Unit, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    var icon by remember { mutableStateOf("") }        // خالی = از روی اسم حدس زده می‌شود
+    val used = remember { cats.map { it.color }.toSet() }
+    var color by remember { mutableStateOf(Palette.colors.firstOrNull { it !in used } ?: Palette.at(cats.size)) }
+    var customColor by remember { mutableStateOf(false) }
+    val shownIcon = icon.ifEmpty { CatIcons.guess(name) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (income) "دسته‌ی درآمد جدید" else "دسته‌ی خرج جدید") },
+        text = {
+            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(48.dp).clip(CircleShape).background(Color(color)),
+                        contentAlignment = Alignment.Center
+                    ) { Icon(CatIcons.of(shownIcon) ?: CatIcons.unknown, null, tint = Color.White, modifier = Modifier.size(26.dp)) }
+                    Spacer(Modifier.width(10.dp))
+                    OutlinedTextField(
+                        value = name, onValueChange = { name = it }, label = { Text("اسم دسته") },
+                        singleLine = true, modifier = Modifier.weight(1f)
+                    )
+                }
+                Text("رنگ", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Palette.colors.forEach { c ->
+                        Box(
+                            Modifier.size(30.dp).clip(CircleShape).background(Color(c))
+                                .border(if (c == color) 3.dp else 0.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                .clickable { color = c }
+                        )
+                    }
+                    Box(
+                        Modifier.height(30.dp).clip(RoundedCornerShape(15.dp))
+                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(15.dp))
+                            .clickable { customColor = true }.padding(horizontal = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) { Text("رنگ دلخواه", style = MaterialTheme.typography.labelMedium) }
+                }
+                Text("آیکون", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
+                IconPickerGrid(shownIcon, Color(color)) { icon = it }
+            }
+        },
+        confirmButton = {
+            Button(enabled = name.isNotBlank(), onClick = {
+                val n = name.trim()
+                val sort = (cats.maxOfOrNull { it.sort } ?: 0) + 1
+                scope.launch {
+                    val id = db.cat().insert(Category(name = n, sort = sort, color = color, icon = shownIcon, income = income))
+                    onCreated(id)
+                }
+            }) { Text("ساختن") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
+    )
+    if (customColor) ColorPickerDialog(color, onPick = { color = it; customColor = false }) { customColor = false }
 }
