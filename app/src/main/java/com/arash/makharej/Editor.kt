@@ -253,14 +253,13 @@ fun TxEditor(
                         if (splitOn && splitRows.isEmpty()) { splitRows.add(sel to ""); splitRows.add(null to "") }
                     }
                     val sharedOn = me.shared || refunds.isNotEmpty()
-                    // «دنگ»: ساده یا گروهی (اگر گروه باز هست می‌پرسد)
-                    acts += Act(Icons.Outlined.People, "دنگ", sharedOn || openPanel == "dang" || openPanel == "group") {
-                        openPanel = when {
-                            openPanel == "dang" || openPanel == "group" -> ""
-                            sharedOn -> "dang"
-                            gdata.open().isNotEmpty() -> "group"
-                            else -> { scope.launch { db.tx().setShared(tx.id, true) }; "dang" }
-                        }
+                    acts += Act(Icons.Outlined.People, "دنگی", sharedOn || openPanel == "dang") {
+                        if (!sharedOn) scope.launch { db.tx().setShared(tx.id, true) }
+                        openPanel = if (openPanel == "dang") "" else "dang"
+                    }
+                    // دنگ گروهی فقط وقتی گروه باز هست (آن‌وقت دو ردیف ۳تایی)
+                    if (gdata.open().isNotEmpty() && !sharedOn) acts += Act(Icons.Outlined.Groups, "دنگ گروهی", openPanel == "group") {
+                        openPanel = if (openPanel == "group") "" else "group"
                     }
                     if (!sharedOn) acts += Act(Icons.Outlined.CurrencyExchange, "قرض / دارایی", false) { pickOut = true }
                 }
@@ -273,10 +272,9 @@ fun TxEditor(
                 // بخش بازشده
                 when {
                     openPanel == "group" -> Panel(Color(0xFF00897B)) {
-                        Text("دنگ ساده یا با کدام گروه؟", fontWeight = FontWeight.Bold, color = Color(0xFF00695C))
+                        Text("کدام گروه؟", fontWeight = FontWeight.Bold, color = Color(0xFF00695C))
                         Spacer(Modifier.height(8.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { scope.launch { db.tx().setShared(tx.id, true) }; openPanel = "dang" }) { Text("دنگ ساده") }
                             gdata.open().forEach { g ->
                                 OutlinedButton(onClick = { groupFor = g }) {
                                     Text(g.name + " · " + Fa.toFa(gdata.membersOf(g.id).size.toString()) + " نفر")
@@ -377,32 +375,44 @@ private fun BigChoice(icon: ImageVector, label: String, on: Boolean, color: Colo
 
 private class Act(val icon: ImageVector, val label: String, val on: Boolean, val onClick: () -> Unit)
 
-/** دکمه‌های کارهای فرعی: خانه‌های هم‌اندازه، آیکون بالا و اسم زیر */
+/**
+ * دکمه‌های کارهای فرعی، خانه‌های هم‌اندازه:
+ * تا ۵ تا یک ردیف (آیکون بالا، اسم زیر)؛ بیشتر (وقتی دنگ گروهی هست) دو ردیف ۳تایی (آیکون کنار اسم).
+ */
 @Composable
 private fun ActionRow(acts: List<Act>) {
     if (acts.isEmpty()) return
     val c = MaterialTheme.colorScheme
+    val wide = acts.size > 5
+    val cols = if (wide) 3 else acts.size
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        acts.chunked(5).forEach { row ->
+        acts.chunked(cols).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { a ->
-                    Column(
-                        Modifier.weight(1f).height(62.dp).clip(RoundedCornerShape(14.dp))
-                            .background(if (a.on) c.secondaryContainer else c.surface)
-                            .border(1.dp, if (a.on) c.secondaryContainer else c.outlineVariant, RoundedCornerShape(14.dp))
-                            .clickable(onClick = a.onClick).padding(horizontal = 2.dp, vertical = 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(a.icon, null, Modifier.size(20.dp), tint = if (a.on) c.onSecondaryContainer else c.onSurfaceVariant)
-                        Spacer(Modifier.height(3.dp))
+                    val mod = Modifier.weight(1f).height(if (wide) 48.dp else 62.dp).clip(RoundedCornerShape(14.dp))
+                        .background(if (a.on) c.secondaryContainer else c.surface)
+                        .border(1.dp, if (a.on) c.secondaryContainer else c.outlineVariant, RoundedCornerShape(14.dp))
+                        .clickable(onClick = a.onClick).padding(horizontal = 4.dp, vertical = 4.dp)
+                    val tint = if (a.on) c.onSecondaryContainer else c.onSurfaceVariant
+                    val label: @Composable () -> Unit = {
                         Text(
-                            a.label, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            a.label, style = if (wide) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelSmall,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
                             color = if (a.on) c.onSecondaryContainer else c.onSurface,
                             fontWeight = if (a.on) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center
                         )
                     }
+                    if (wide) Row(mod, horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        Icon(a.icon, null, Modifier.size(20.dp), tint = tint)
+                        Spacer(Modifier.width(6.dp))
+                        label()
+                    } else Column(mod, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Icon(a.icon, null, Modifier.size(20.dp), tint = tint)
+                        Spacer(Modifier.height(3.dp))
+                        label()
+                    }
                 }
-                if (acts.size > 5) repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
+                repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
