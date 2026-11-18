@@ -1775,34 +1775,8 @@ fun ReportTab(txs: List<Tx>, cats: List<Category>, ym: Int, onYm: (Int) -> Unit)
 
         item { MonthRow(txs, true, ym, onYm) }
 
-        // ---- year chart (فروردین تا اسفند)
-        item {
-            val nowYm = Jalali.currentYm()
-            val yearMonths = (1..12).map { year * 100 + it }
-            val yearOut = yearMonths.map { m -> counted.filter { it.ym == m && it.isExpense }.sumOf { it.eff } }
-            val lastIdx = if (year == nowYm / 100) nowYm % 100 - 1 else 11
-            val minYear = (counted.minOfOrNull { it.ym } ?: nowYm) / 100
-            val shown = yearOut.take(lastIdx + 1)
-            val active = shown.count { it > 0 }.coerceAtLeast(1)
-            Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
-                Column(Modifier.fillMaxWidth().padding(18.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("خرج سال " + Fa.toFa(year.toString()), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    YearChart(yearOut, lastIdx)
-                    Spacer(Modifier.height(12.dp))
-                    StatLine("جمع سال", Fa.toman(shown.sum()), ExpenseColor)
-                    Spacer(Modifier.height(6.dp))
-                    StatLine("میانگین ماهانه", Fa.toman(shown.sum() / active), null)
-                    val peak = shown.withIndex().maxByOrNull { it.value }
-                    if (peak != null && peak.value > 0) {
-                        Spacer(Modifier.height(6.dp))
-                        StatLine("پرخرج‌ترین ماه", Fa.monthName(yearMonths[peak.index]) + " · " + Fa.toman(peak.value), null)
-                    }
-                }
-            }
-        }
+        // ---- نمودار سال (سه حالت، فروردین سمت چپ)
+        item { YearChartCard(counted, cats, year) }
 
         // ---- excel
         item { PdfSection(txs, cats, ym) }
