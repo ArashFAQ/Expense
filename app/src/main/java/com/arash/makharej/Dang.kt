@@ -63,6 +63,7 @@ object Refunds {
     /** واریز را به خرج وصل می‌کند */
     suspend fun link(ctx: Context, depositId: Long, expenseId: Long) {
         AppDb.get(ctx).tx().setRefund(depositId, expenseId)
+        AppDb.get(ctx).tx().setShared(expenseId, true) // بازپرداخت آمد → خرج دنگی است
         Notifier.cancel(ctx, depositId)
     }
 
@@ -70,6 +71,9 @@ object Refunds {
     suspend fun unlink(ctx: Context, deposit: Tx) {
         val dao = AppDb.get(ctx).tx()
         dao.deleteByKeyPrefix("excess-${deposit.id}-")
+        // آخرین بازپرداخت دنگ برداشته شد → خرج دیگر دنگی نیست
+        val exp = deposit.refundOf
+        if (deposit.reason == 4 && exp != null && dao.refundsOf(exp).none { it.id != deposit.id }) dao.setShared(exp, false)
         if (deposit.bank == Banks.MANUAL) dao.delete(deposit.id)
         else if (deposit.isExpense) dao.clearRepayOut(deposit.id)
         else {
@@ -93,6 +97,7 @@ object Refunds {
                 excluded = true, reason = 4, refundOf = expense.id
             )
         )
+        AppDb.get(ctx).tx().setShared(expense.id, true)
     }
 
     /** قبل از حذف یک خرج: بازپرداخت‌هایش آزاد می‌شوند */

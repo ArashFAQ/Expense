@@ -1094,7 +1094,7 @@ fun TxRow(t: Tx, cat: Category?, combined: Boolean = false, onClick: () -> Unit)
                             val left = t.amount - (Refunds.byExpense[t.id] ?: 0L)
                             if (left > 0) "  ·  مانده " + Fa.toman(left) else "  ·  تسویه شد"
                         }
-                        else if (t.refunded > 0) "  ·  سهم من " + Fa.toman(t.eff) else if (t.shared) "  ·  دنگی" else "") +
+                        else if (t.refunded > 0) "  ·  دنگی · سهم من " + Fa.toman(t.eff) else if (t.shared) "  ·  دنگی" else "") +
                         if (t.note.isNotEmpty()) "  ·  ${t.note}" else "",
                     style = MaterialTheme.typography.bodySmall,
                     color = fgSub,

@@ -30,7 +30,7 @@ import androidx.compose.material.icons.outlined.CurrencyExchange
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Groups
-import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.Sms
 import androidx.compose.material.icons.outlined.SwapHoriz
@@ -107,6 +107,7 @@ fun TxEditor(
     var pickRepay by remember(tx.id) { mutableStateOf(false) }
     var pickOwn by remember(tx.id) { mutableStateOf(false) }
     var pickOut by remember(tx.id) { mutableStateOf(false) }
+    var cashDang by remember(tx.id) { mutableStateOf(false) }
     var openPanel by remember(tx.id) { mutableStateOf("") } // dang / group / receipt
     var newCat by remember(tx.id) { mutableStateOf(false) }
     val gdata = rememberGroups()
@@ -253,10 +254,9 @@ fun TxEditor(
                         if (splitOn && splitRows.isEmpty()) { splitRows.add(sel to ""); splitRows.add(null to "") }
                     }
                     val sharedOn = me.shared || refunds.isNotEmpty()
-                    acts += Act(Icons.Outlined.People, "دنگی", sharedOn || openPanel == "dang") {
-                        if (!sharedOn) scope.launch { db.tx().setShared(tx.id, true) }
-                        openPanel = if (openPanel == "dang") "" else "dang"
-                    }
+                    // دنگی دستی زده نمی‌شود: وقتی بازپرداختی به این خرج وصل شد خودش دنگی می‌شود.
+                    // فقط دریافت نقدی (که پیامکی ندارد) از همین‌جا ثبت می‌شود.
+                    if (!sharedOn) acts += Act(Icons.Outlined.Payments, "دنگ نقدی", false) { cashDang = true }
                     // دنگ گروهی فقط وقتی گروه باز هست (آن‌وقت دو ردیف ۳تایی)
                     if (gdata.open().isNotEmpty() && !sharedOn) acts += Act(Icons.Outlined.Groups, "دنگ گروهی", openPanel == "group") {
                         openPanel = if (openPanel == "group") "" else "group"
@@ -287,11 +287,10 @@ fun TxEditor(
                             modifier = Modifier.padding(top = 6.dp)
                         )
                     }
-                    openPanel == "dang" || (tx.isExpense && (me.shared || refunds.isNotEmpty()) && !special) ->
-                        if (tx.isExpense && !special) DangRefundPanel(me, all, cats, db)
-                    openPanel == "receipt" || receipts > 0 -> ReceiptSection(tx.id)
                 }
-                if (receipts > 0 && openPanel != "receipt" && (openPanel == "dang" || openPanel == "group")) ReceiptSection(tx.id)
+                // دنگ و رسید مستقل از هم
+                if (tx.isExpense && !special && (me.shared || refunds.isNotEmpty())) DangRefundPanel(me, all, cats, db)
+                if (openPanel == "receipt" || receipts > 0) ReceiptSection(tx.id)
             }
             Spacer(Modifier.height(8.dp))
         }
@@ -335,6 +334,10 @@ fun TxEditor(
     }, onDismiss = { pickOwn = false; onCancel() })
     if (pickRepay) RepayPicker(tx, all, cats, onDone = { pickRepay = false; onCancel() }, onDismiss = { pickRepay = false })
     if (pickOut) OutPicker(tx, all, onDone = { pickOut = false; onCancel() }, onDismiss = { pickOut = false })
+    if (cashDang && db != null) AmountDialog("دریافت نقدی دنگ", null, onOk = { rial ->
+        cashDang = false
+        scope.launch { Refunds.addCash(ctx, me, rial) }
+    }, onDismiss = { cashDang = false })
     if (newCat && db != null) NewCategoryDialog(cats, income = !tx.isExpense, db = db, onCreated = { id -> newCat = false; sel = id }) { newCat = false }
     groupFor?.let { g ->
         GroupExpenseDialog(gdata, g, cats, linked = tx, onDone = { groupFor = null; onCancel() }, onDismiss = { groupFor = null })
@@ -521,7 +524,8 @@ private fun DangRefundPanel(me: Tx, all: List<Tx>, cats: List<Category>, db: App
     val refunds = all.filter { it.refundOf == me.id }.sortedBy { it.ts }
     val back = refunds.sumOf { it.amount }
     Panel(MaterialTheme.colorScheme.primary) {
-        Text("دنگی: پولی که بقیه برمی‌گردانند از این خرج کم می‌شود", style = MaterialTheme.typography.bodySmall)
+        Text("دنگی", fontWeight = FontWeight.Bold)
+        Text("پولی که بقیه برمی‌گردانند از این خرج کم می‌شود", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         refunds.forEach { r ->
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -539,14 +543,13 @@ private fun DangRefundPanel(me: Tx, all: List<Tx>, cats: List<Category>, db: App
         Row(Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { pickDeposit = true }) { Text("+ واریز دنگ") }
             OutlinedButton(onClick = { cash = true }) { Text("+ دریافت نقدی") }
-            if (refunds.isEmpty() && me.shared) TextButton(onClick = { scope.launch { db.tx().setShared(me.id, false) } }) { Text("دنگی نیست") }
         }
     }
     if (pickDeposit) DepositPickerDialog(me, all, onPick = { d -> pickDeposit = false; linking = d }, onDismiss = { pickDeposit = false })
     linking?.let { d -> LinkFlow(d, me, all, cats) { linking = null } }
     if (cash) AmountDialog("دریافت نقدی دنگ", null, onOk = { rial ->
         cash = false
-        scope.launch { Refunds.addCash(ctx, me, rial); db.tx().setShared(me.id, true) }
+        scope.launch { Refunds.addCash(ctx, me, rial) }
     }, onDismiss = { cash = false })
 }
 
