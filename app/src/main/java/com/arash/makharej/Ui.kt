@@ -1104,7 +1104,7 @@ fun TxRow(t: Tx, cat: Category?, combined: Boolean = false, onClick: () -> Unit)
             // مبلغ روی یک برچسب روشن تا قرمز/سبز روی هر رنگی خوانا بماند
             Text(
                 // فهرست یک‌جا: علامت سمت چپ عدد (۳۰۰,۰۰۰−)، جهت‌دار تا روی همه‌ی گوشی‌ها یکی باشد
-                if (combined) "\u2066" + Fa.num(t.amount) + (if (t.isExpense) "−" else "+") + "\u2069" else Fa.toman(t.amount),
+                if (combined) "\u2066" + (if (t.isExpense) "−" else "+") + Fa.num(t.amount) + "\u2069" else Fa.toman(t.amount),
                 Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (colored) Color.White.copy(alpha = 0.92f) else Color.Transparent)
@@ -1135,9 +1135,9 @@ internal fun LazyListScope.dayGroups(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (combined) {
-                    if (inSum > 0) Text("\u2066" + Fa.num(inSum) + "+\u2069", style = MaterialTheme.typography.labelLarge, color = IncomeColor)
+                    if (inSum > 0) Text("\u2066+" + Fa.num(inSum) + "\u2069", style = MaterialTheme.typography.labelLarge, color = IncomeColor)
                     if (inSum > 0 && sum > 0) Text("  ·  ", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (sum > 0) Text("\u2066" + Fa.num(sum) + "−\u2069", style = MaterialTheme.typography.labelLarge, color = ExpenseColor)
+                    if (sum > 0) Text("\u2066−" + Fa.num(sum) + "\u2069", style = MaterialTheme.typography.labelLarge, color = ExpenseColor)
                 } else if (sum > 0) Text(
                     Fa.toman(sum), style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1499,7 +1499,7 @@ fun CombinedTab(txs: List<Tx>, cats: List<Category>, db: AppDb, ym: Int, onAdd: 
                             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 if (value == 0L) "—" else millionsText(kotlin.math.abs(value)).removeSuffix(" میلیون").removeSuffix(" تومان").let {
-                                    if (value < 0) "\u2066" + it + "−\u2069" else it
+                                    if (value < 0) "\u2066−" + it + "\u2069" else it
                                 },
                                 fontSize = 24.sp, fontWeight = FontWeight.Black, color = color, maxLines = 1, softWrap = false
                             )
@@ -2065,8 +2065,26 @@ fun ColorPickerDialog(current: Int, onPick: (Int) -> Unit, onDismiss: () -> Unit
 /** شبکه‌ی آیکون‌ها برای انتخاب شکل دسته */
 @Composable
 fun IconPickerGrid(selected: String, color: Color, onPick: (String) -> Unit) {
+    var q by remember { mutableStateOf("") }
+    OutlinedTextField(
+        q, { q = it }, Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        placeholder = { Text("جست‌وجوی آیکون (مثلا اتوبوس، قهوه)") }, singleLine = true
+    )
+    val qq = q.trim()
+    val shown = if (qq.isEmpty()) CatIcons.all else CatIcons.all.filter { it.label.contains(qq) || it.group.contains(qq) || it.key.contains(qq, true) }
+    if (shown.isEmpty()) Text("آیکونی پیدا نشد", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    CatIcons.groups.forEach { g ->
+        val list = shown.filter { it.group == g }
+        if (list.isEmpty()) return@forEach
+        Text(g, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp, bottom = 6.dp))
+        IconFlow(list, selected, color, onPick)
+    }
+}
+
+@Composable
+private fun IconFlow(items: List<CatIcons.Item>, selected: String, color: Color, onPick: (String) -> Unit) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        CatIcons.all.forEach { item ->
+        items.forEach { item ->
             val sel = item.key == selected
             Column(
                 Modifier
