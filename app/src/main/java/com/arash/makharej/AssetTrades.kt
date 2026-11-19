@@ -196,11 +196,11 @@ fun AssetTradeDialog(tx: Tx, onDone: () -> Unit, onDismiss: () -> Unit) {
     val avail = if (buy) AssetTrades.kinds else AssetTrades.kinds.filter { k -> assets.any { it.kind == k && it.qty > 0 } }
     var kind by remember { mutableStateOf(avail.firstOrNull() ?: "usd") }
     var qtyText by remember { mutableStateOf("") }
-    var targetText by remember { mutableStateOf("") }
+    val targetM = rememberMoney(null)
     var lastNew by remember { mutableStateOf(false) }
     val lastFor = remember { androidx.compose.runtime.mutableStateMapOf<Long, Boolean>() }
     val qty = Fa.toEn(qtyText).toDoubleOrNull()?.takeIf { it > 0 }
-    val target = (Fa.toEn(targetText).filter { it.isDigit() }.toLongOrNull() ?: 0L) * 10
+    val target = targetM.rial ?: 0L
     val held = assets.firstOrNull { it.kind == kind }
     val tooMany = !buy && qty != null && held != null && qty > held.qty + 1e-9
     val ok = qty != null && !tooMany && (buy || held != null)
@@ -245,17 +245,12 @@ fun AssetTradeDialog(tx: Tx, onDone: () -> Unit, onDismiss: () -> Unit) {
                         supportingText = { if (tooMany) Text("بیشتر از مقداری است که داری") },
                         modifier = Modifier.fillMaxWidth()
                     )
-                    OutlinedTextField(
-                        value = targetText, onValueChange = { targetText = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
-                        label = { Text("مبلغ کل (اختیاری)") }, suffix = { Text("تومان") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        supportingText = {
-                            Text(
-                                if (target > 0) "وقتی پرداخت‌ها به این مبلغ برسد، خودش بسته می‌شود"
-                                else "اگر در چند انتقال پرداخت می‌کنی، بزن تا خودش بسته شود؛ اگر نه، آخرین پرداخت را تیک بزن"
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                    MoneyField(
+                        targetM, "مبلغ کل (اختیاری)", Modifier.fillMaxWidth(),
+                        hint = { r ->
+                            if (r != null && r > 0) (if (targetM.rialUnit) "= " + Fa.toman(r) + " · " else "") + "وقتی پرداخت‌ها به این مبلغ برسد، خودش بسته می‌شود"
+                            else "اگر در چند انتقال پرداخت می‌کنی، بزن تا خودش بسته شود؛ اگر نه، آخرین پرداخت را تیک بزن"
+                        }
                     )
                     if (target <= 0) androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         androidx.compose.material3.Checkbox(checked = lastNew, onCheckedChange = { lastNew = it })

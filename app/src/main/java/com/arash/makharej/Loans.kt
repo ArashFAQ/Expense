@@ -241,7 +241,7 @@ fun LoanPersonDialog(
 /** دیالوگ وارد کردن مبلغ (تومان) */
 @Composable
 fun AmountDialog(title: String, initialRial: Long? = null, onOk: (Long) -> Unit, onDismiss: () -> Unit) {
-    var text by remember { mutableStateOf(initialRial?.let { (it / 10).toString() } ?: "") }
+    var text by remember { mutableStateOf(Money.editText(initialRial)) }
     val v = Fa.toEn(text).filter { it.isDigit() }.toLongOrNull()?.takeIf { it > 0 }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -254,7 +254,7 @@ fun AmountDialog(title: String, initialRial: Long? = null, onOk: (Long) -> Unit,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
             )
         },
-        confirmButton = { Button(enabled = v != null, onClick = { onOk((v ?: 0) * 10) }) { Text("ثبت") } },
+        confirmButton = { Button(enabled = v != null, onClick = { onOk(Money.keepRial(initialRial, v ?: 0)) }) { Text("ثبت") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
     )
 }

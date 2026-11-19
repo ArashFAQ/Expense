@@ -97,8 +97,8 @@ fun TxEditor(
     var confirmDel by remember(tx.id) { mutableStateOf(false) }
     var editAmount by remember(tx.id) { mutableStateOf(false) }
     var showRaw by remember(tx.id) { mutableStateOf(false) }
-    var amountText by remember(tx.id) { mutableStateOf((tx.amount / 10).toString()) }
-    val newAmount: Long? = Fa.toEn(amountText).filter { it.isDigit() }.toLongOrNull()?.takeIf { it > 0 }?.times(10)
+    var amountText by remember(tx.id) { mutableStateOf(Money.tomanOf(tx.amount).toString()) }
+    val newAmount: Long? = Fa.toEn(amountText).filter { it.isDigit() }.toLongOrNull()?.takeIf { it > 0 }?.let { Money.keepRial(tx.amount, it) }
     val total = newAmount ?: tx.amount
 
     // واریز «در انتظار تأیید»: ۰ هنوز انتخاب نشده، ۱ درآمد

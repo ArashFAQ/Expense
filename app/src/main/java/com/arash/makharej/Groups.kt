@@ -663,8 +663,8 @@ fun GroupExpenseDialog(data: GData, g: DGroup, cats: List<Category>, linked: Tx?
 fun SettleDialog(data: GData, g: DGroup, from0: Long, to0: Long, amount0: Long, linked: Tx?, onDone: () -> Unit, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var text by remember { mutableStateOf((amount0 / 10).toString()) }
-    val amount = (Fa.toEn(text).filter { it.isDigit() }.toLongOrNull() ?: 0L) * 10
+    var text by remember { mutableStateOf(Money.tomanOf(amount0).toString()) }
+    val amount = Money.keepRial(amount0, Fa.toEn(text).filter { it.isDigit() }.toLongOrNull() ?: 0L)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(data.name(from0) + " ← " + data.name(to0)) },

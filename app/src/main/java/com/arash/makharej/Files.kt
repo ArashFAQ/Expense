@@ -617,7 +617,7 @@ object Excel {
                 listOf(
                     Cell(t.jDate), Cell(t.time), Cell(Banks.name(t.bank)),
                     Cell(if (t.isExpense) "خرج" else "واریز"),
-                    Cell(t.amount / 10, 1),
+                    Cell(Money.tomanOf(t.amount), 1),
                     Cell(t.categoryId?.let { catName[it] } ?: if (t.isExpense) "بدون دسته" else ""),
                     Cell(t.note),
                     Cell(
@@ -649,16 +649,16 @@ object Excel {
         val inc = counted.filter { !it.isExpense }
         val rows2 = mutableListOf(
             listOf(Cell(title, 2)), emptyList(),
-            listOf(Cell("جمع خرج", 2), Cell(out.sumOf { it.eff } / 10, 1)),
-            listOf(Cell("جمع واریزی", 2), Cell(inc.sumOf { it.eff } / 10, 1)),
-            listOf(Cell("پس‌انداز", 2), Cell(sorted.filter { it.reason == 3 }.sumOf { it.eff } / 10, 1)),
+            listOf(Cell("جمع خرج", 2), Cell(Money.tomanOf(out.sumOf { it.eff }), 1)),
+            listOf(Cell("جمع واریزی", 2), Cell(Money.tomanOf(inc.sumOf { it.eff }), 1)),
+            listOf(Cell("پس‌انداز", 2), Cell(Money.tomanOf(sorted.filter { it.reason == 3 }.sumOf { it.eff }), 1)),
             emptyList(),
             listOf(Cell("دسته", 2), Cell("مبلغ (تومان)", 2), Cell("تعداد", 2))
         )
         out.expandSplits().groupBy { it.categoryId }
             .map { (id, l) -> (id?.let { catName[it] } ?: "بدون دسته") to l }
             .sortedByDescending { p -> p.second.sumOf { it.eff } }
-            .forEach { (name, l) -> rows2.add(listOf(Cell(name), Cell(l.sumOf { it.eff } / 10, 1), Cell(l.size.toLong()))) }
+            .forEach { (name, l) -> rows2.add(listOf(Cell(name), Cell(Money.tomanOf(l.sumOf { it.eff }), 1), Cell(l.size.toLong()))) }
 
         val bos = ByteArrayOutputStream()
         ZipOutputStream(bos).use { z ->

@@ -526,7 +526,7 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
     val ctx = LocalContext.current
     var kind by remember { mutableStateOf(initial?.kind ?: defaultKind) }
     var title by remember { mutableStateOf(initial?.title ?: "") }
-    var amountText by remember { mutableStateOf(initial?.amount?.let { (it / 10).toString() } ?: "") }
+    var amountText by remember { mutableStateOf(Money.editText(initial?.amount)) }
     var countText by remember { mutableStateOf(initial?.count?.takeIf { it > 0 }?.toString() ?: "") }
     var paidText by remember { mutableStateOf(initial?.paid?.toString() ?: "0") }
     var period by remember { mutableStateOf(initial?.period ?: 1) }
@@ -649,7 +649,7 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
             Button(enabled = ok, onClick = {
                 onSave(
                     Due(
-                        id = initial?.id ?: 0, kind = kind, title = title.trim(), amount = amount!! * 10, bank = bank,
+                        id = initial?.id ?: 0, kind = kind, title = title.trim(), amount = Money.keepRial(initial?.amount, amount!!), bank = bank,
                         startJDate = Dues.fmt(date[0], date[1], date[2]),
                         count = when (kind) { 0 -> count ?: 1; 3 -> 0; else -> 1 },
                         period = if (kind == 3) period else 1,

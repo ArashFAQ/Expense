@@ -693,16 +693,16 @@ private fun HoldingDialog(db: AppDb, h: Holding, startBuy: Boolean, onClose: () 
 @Composable
 private fun TradeDialog(h: Holding, kind: Int, onDone: (Int, Long, Long, Long, Boolean) -> Unit, onDismiss: () -> Unit) {
     var qtyText by remember { mutableStateOf("") }
-    var totalText by remember { mutableStateOf("") }
+    val total = rememberMoney(null)
     var mofid by remember { mutableStateOf(true) }
     var date by remember { mutableStateOf(Jalali.fromMillis(System.currentTimeMillis())) }
     var pickDate by remember { mutableStateOf(false) }
     val qty = Fa.toEn(qtyText).filter { it.isDigit() }.toLongOrNull()?.takeIf { it > 0 }
-    val toman = Fa.toEn(totalText).filter { it.isDigit() }.toLongOrNull()?.takeIf { it > 0 }
+    val totalRial = total.rial?.takeIf { it > 0 }
     val needQty = kind != 3
     val needTotal = kind != 2
     val tooMany = kind == 1 && qty != null && qty > h.qty
-    val ok = (!needQty || qty != null) && (!needTotal || toman != null) && !tooMany
+    val ok = (!needQty || qty != null) && (!needTotal || totalRial != null) && !tooMany
     val title = when (kind) { 0 -> "خرید"; 1 -> "فروش"; 2 -> "افزایش سرمایه / سهم جایزه"; else -> "سود نقدی" } + " " + h.stock.symbol
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -721,25 +721,19 @@ private fun TradeDialog(h: Holding, kind: Int, onDone: (Int, Long, Long, Long, B
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 ) }
-                if (needTotal) FormBlock(fb++, "مبلغ کل") { OutlinedTextField(
-                    value = totalText, onValueChange = { totalText = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
-                    label = {
-                        Text(
-                            when (kind) {
-                                0 -> "مبلغ کل پرداختی (با کارمزد)"
-                                1 -> "مبلغ کل دریافتی (بعد از کارمزد)"
-                                else -> "مبلغ سود نقدی"
-                            }
-                        )
+                if (needTotal) FormBlock(fb++, "مبلغ کل") { MoneyField(
+                    total,
+                    when (kind) {
+                        0 -> "مبلغ کل پرداختی (با کارمزد)"
+                        1 -> "مبلغ کل دریافتی (بعد از کارمزد)"
+                        else -> "مبلغ سود نقدی"
                     },
-                    suffix = { Text("تومان") }, singleLine = true,
-                    supportingText = {
-                        val t = toman
-                        if (t != null && qty != null && kind != 3) Text("هر سهم " + Fa.toman(t * 10 / qty))
-                        else if (t != null) Text(Fa.toman(t * 10))
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
+                    Modifier.fillMaxWidth(),
+                    hint = { t ->
+                        if (t != null && qty != null && kind != 3) (if (total.rialUnit) "= " + Fa.toman(t) + " · " else "") + "هر سهم " + Fa.num(t / qty) + (if (total.rialUnit) " ت (" + Fa.toFa(String.format(java.util.Locale.US, "%,d", t / qty)) + " ریال)" else " تومان")
+                        else if (t != null) (if (total.rialUnit) "= " else "") + Fa.toman(t)
+                        else null
+                    }
                 ) }
                 FormBlock(fb++, "تاریخ") {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
@@ -764,7 +758,7 @@ private fun TradeDialog(h: Holding, kind: Int, onDone: (Int, Long, Long, Long, B
                 val today = Jalali.fromMillis(System.currentTimeMillis())
                 val now = System.currentTimeMillis()
                 val ts = if (date.contentEquals(today)) now else JalaliCal.toMillis(date[0], date[1], date[2], 12, 0)
-                onDone(kind, if (needQty) qty!! else 0L, if (needTotal) toman!! * 10 else 0L, ts, kind != 2 && mofid)
+                onDone(kind, if (needQty) qty!! else 0L, if (needTotal) totalRial!! else 0L, ts, kind != 2 && mofid)
             }) { Text("ثبت") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }

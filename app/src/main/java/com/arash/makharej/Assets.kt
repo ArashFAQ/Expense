@@ -593,8 +593,8 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
     }
 
     balEdit?.let { t ->
-        var text by remember(t.bank) { mutableStateOf(((t.balance ?: 0L) / 10).toString()) }
-        val v = text.toLongOrNull()
+        val money = remember(t.bank) { MoneyState(t.balance ?: 0L, Money.rialUnit(ctx)) }
+        val v = money.rial
         val man = Wealth.manual(ctx, t.bank)
         AlertDialog(
             onDismissRequest = { balEdit = null },
@@ -607,12 +607,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = text, onValueChange = { text = Fa.toEn(it).filter { c -> c.isDigit() }.take(14) },
-                        label = { Text("موجودی فعلی") }, suffix = { Text("تومان") }, singleLine = true,
-                        supportingText = { if (v != null) Text(Fa.toman(v * 10)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
+                    MoneyField(money, "موجودی فعلی")
                     Row {
                         TextButton(onClick = { Wealth.setHidden(ctx, t.bank, true); balEdit = null; tick++ }) {
                             Text("پنهان کردن از جمع")
@@ -625,7 +620,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
             },
             confirmButton = {
                 Button(enabled = v != null, onClick = {
-                    Wealth.setManual(ctx, t.bank, (v ?: 0) * 10); balEdit = null; tick++
+                    Wealth.setManual(ctx, t.bank, v ?: 0); balEdit = null; tick++
                 }) { Text("ذخیره") }
             },
             dismissButton = { TextButton(onClick = { balEdit = null }) { Text("انصراف") } }
@@ -715,11 +710,11 @@ private fun AssetEditDialog(
     var kind by remember { mutableStateOf(initial?.kind ?: "usd") }
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var qty by remember { mutableStateOf(initial?.qty?.let { fmtQty(it) } ?: "") }
-    var buy by remember { mutableStateOf(initial?.buyTotal?.takeIf { it > 0 }?.let { (it / 10).toString() } ?: "") }
-    var value by remember { mutableStateOf(initial?.value?.takeIf { it > 0 }?.let { (it / 10).toString() } ?: "") }
+    val buy = rememberMoney(initial?.buyTotal)
+    val value = rememberMoney(initial?.value)
     val priced = kind in Prices.keys.keys
     val q = Fa.toEn(qty).toDoubleOrNull()
-    val ok = if (priced) (q != null && q >= 0) else value.toLongOrNull() != null
+    val ok = if (priced) (q != null && q >= 0) else value.rial != null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -750,26 +745,16 @@ private fun AssetEditDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
                 } else {
-                    OutlinedTextField(
-                        value = value, onValueChange = { value = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
-                        label = { Text(if (kind == "fund") "ارزش فعلی" else "مبلغ") }, suffix = { Text("تومان") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    MoneyField(value, if (kind == "fund") "ارزش فعلی" else "مبلغ", Modifier.fillMaxWidth())
                 }
                 }
-                if (kind != "cash") FormBlock(fb++, "خرید") { OutlinedTextField(
-                    value = buy, onValueChange = { buy = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
-                    label = { Text(if (kind == "fund") "مبلغ سرمایه‌گذاری‌شده (اختیاری)" else "بهای کل خرید (اختیاری)") },
-                    suffix = { Text("تومان") }, singleLine = true,
-                    supportingText = {
-                        Text(
-                            if (kind == "fund" && savedFromSms > 0) "خالی بگذاری، از پیامک‌ها حساب می‌شود: " + Fa.toman(savedFromSms)
-                            else "برای حساب سود و زیان"
-                        )
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
+                if (kind != "cash") FormBlock(fb++, "خرید") { MoneyField(
+                    buy, if (kind == "fund") "مبلغ سرمایه‌گذاری‌شده (اختیاری)" else "بهای کل خرید (اختیاری)", Modifier.fillMaxWidth(),
+                    hint = { r ->
+                        if (r != null) (if (buy.rialUnit) "= " else "") + Fa.toman(r)
+                        else if (kind == "fund" && savedFromSms > 0) "خالی بگذاری، از پیامک‌ها حساب می‌شود: " + Fa.toman(savedFromSms)
+                        else "برای حساب سود و زیان"
+                    }
                 ) }
             }
         },
@@ -780,8 +765,8 @@ private fun AssetEditDialog(
                         id = initial?.id ?: 0, kind = kind,
                         name = name.trim().ifEmpty { Prices.names[kind] ?: kind },
                         qty = if (priced) q ?: 0.0 else 0.0,
-                        buyTotal = (buy.toLongOrNull() ?: 0L) * 10,
-                        value = if (priced) 0 else (value.toLongOrNull() ?: 0L) * 10,
+                        buyTotal = buy.rial ?: 0L,
+                        value = if (priced) 0 else value.rial ?: 0L,
                         sort = initial?.sort ?: 0
                     )
                 )

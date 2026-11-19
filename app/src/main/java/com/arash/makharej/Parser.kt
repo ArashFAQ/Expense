@@ -26,10 +26,10 @@ object Fa {
     }
 
     /** عدد کامل تومان با جداکننده، بدون کلمه‌ی «تومان» */
-    fun num(rial: Long): String = toFa(String.format(Locale.US, "%,d", rial / 10))
+    fun num(rial: Long): String = toFa(String.format(Locale.US, "%,d", Money.tomanOf(rial)))
 
     fun toman(rial: Long): String =
-        toFa(String.format(Locale.US, "%,d", rial / 10)) + " تومان"
+        toFa(String.format(Locale.US, "%,d", Money.tomanOf(rial))) + " تومان"
 
     private val months = listOf(
         "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
