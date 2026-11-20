@@ -38,7 +38,6 @@ import java.util.concurrent.TimeUnit
 object Drive {
     const val SCOPE = "https://www.googleapis.com/auth/drive.file"
     private const val FOLDER_NAME = "Makharej"
-    private const val KEEP = 12
 
     class NeedsConsent(val sender: IntentSender?) : Exception("نیاز به تأیید دوباره‌ی دسترسی Google Drive")
     class HttpError(val code: Int, body: String) : Exception(
@@ -157,7 +156,7 @@ object Drive {
     suspend fun upload(ctx: Context, auto: Boolean) = withContext(Dispatchers.IO) {
         val token = token(ctx)
         val folder = folderId(ctx, token)
-        val bytes = Backup.export(ctx)
+        val bytes = Backup.export(ctx, receipts = !auto && Backup.manualReceipts(ctx))
         val name = "makharej-backup-" + (if (auto) "auto-" else "") + FileOut.stamp() + ".json"
 
         val boundary = "mkhrj" + System.currentTimeMillis()
@@ -177,7 +176,9 @@ object Drive {
 
         if (auto) {
             try {
-                list(ctx).filter { it.name.startsWith("makharej-backup-auto-") }.drop(KEEP).forEach {
+                val autos = list(ctx).filter { it.name.startsWith("makharej-backup-auto-") }
+                val keep = Backup.retain(autos.map { it to (runCatching { java.time.Instant.parse(it.created).toEpochMilli() }.getOrNull() ?: System.currentTimeMillis()) })
+                autos.filter { it !in keep }.forEach {
                     call("DELETE", "https://www.googleapis.com/drive/v3/files/${it.id}", token)
                 }
             } catch (_: Exception) {
@@ -198,7 +199,7 @@ object Drive {
     fun notifyReconnect(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel("backup") == null) {
-            nm.createNotificationChannel(NotificationChannel("backup", "پشتیبان هفتگی", NotificationManager.IMPORTANCE_DEFAULT))
+            nm.createNotificationChannel(NotificationChannel("backup", "پشتیبان", NotificationManager.IMPORTANCE_DEFAULT))
         }
         val pi = PendingIntent.getActivity(
             ctx, 7002,

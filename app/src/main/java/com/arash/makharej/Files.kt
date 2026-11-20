@@ -115,22 +115,23 @@ object FileOut {
     }
 
     /** فقط چند پشتیبان آخر را نگه می‌دارد (فقط فایل‌هایی که خود اپ ساخته) */
-    fun pruneBackups(ctx: Context, keep: Int) {
+    fun pruneBackups(ctx: Context) {
         if (Build.VERSION.SDK_INT < 29) return
         try {
-            val uris = mutableListOf<Uri>()
+            val uris = mutableListOf<Pair<Uri, Long>>()
             ctx.contentResolver.query(
                 MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                arrayOf(MediaStore.Downloads._ID),
+                arrayOf(MediaStore.Downloads._ID, MediaStore.Downloads.DATE_ADDED),
                 "${MediaStore.Downloads.RELATIVE_PATH} LIKE ? AND ${MediaStore.Downloads.DISPLAY_NAME} LIKE ?",
                 arrayOf("%Makharej%", "makharej-backup-auto-%"),
                 "${MediaStore.Downloads.DATE_ADDED} DESC"
             )?.use { c ->
                 while (c.moveToNext()) {
-                    uris.add(Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, c.getLong(0).toString()))
+                    uris.add(Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, c.getLong(0).toString()) to c.getLong(1) * 1000)
                 }
             }
-            uris.drop(keep).forEach { ctx.contentResolver.delete(it, null, null) }
+            val keep = Backup.retain(uris)
+            uris.filter { it.first !in keep }.forEach { ctx.contentResolver.delete(it.first, null, null) }
         } catch (_: Exception) {
         }
     }
@@ -217,7 +218,8 @@ object Prefs {
 object Backup {
     const val MIME = "application/json"
 
-    suspend fun export(ctx: Context): ByteArray = withContext(Dispatchers.IO) {
+    /** receipts: عکس رسیدها هم بیاید (فقط پشتیبان دستی، و فقط اگر در تنظیمات روشن باشد) */
+    suspend fun export(ctx: Context, receipts: Boolean = false): ByteArray = withContext(Dispatchers.IO) {
         val db = AppDb.get(ctx)
         val cats = JSONArray()
         db.cat().list().forEach {
@@ -251,8 +253,8 @@ object Backup {
             })
             .put("prefs", Prefs.export(ctx))
             .put("receipts", JSONObject().apply {
-                // عکس رسیدها فقط اگر در تنظیمات پشتیبان روشن باشد (حجم فایل زیاد می‌شود)
-                if (ctx.getSharedPreferences("app", Context.MODE_PRIVATE).getBoolean("backupReceipts", false)) {
+                // عکس رسیدها فقط در پشتیبان دستی و اگر در تنظیمات روشن باشد (حجم فایل زیاد می‌شود)
+                if (receipts) {
                     Receipts.dir(ctx).listFiles()?.forEach { f ->
                         put(f.name, android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP))
                     }
@@ -493,31 +495,72 @@ object Backup {
         NoAuto.reset()
     }
 
+    /** عکس رسیدها در پشتیبان دستی؟ (پشتیبان خودکار روزانه همیشه بدون عکس است) */
+    fun manualReceipts(ctx: Context) = ctx.getSharedPreferences("app", Context.MODE_PRIVATE).getBoolean("backupReceipts", false)
+
     /** پشتیبان در Download/Makharej و یک نسخه برای ارسال */
     suspend fun makeAndSave(ctx: Context, auto: Boolean): Uri {
-        val bytes = export(ctx)
+        val bytes = export(ctx, receipts = !auto && manualReceipts(ctx))
+        return save(ctx, auto, bytes)
+    }
+
+    private fun save(ctx: Context, auto: Boolean, bytes: ByteArray): Uri {
         val name = "makharej-backup-" + (if (auto) "auto-" else "") + FileOut.stamp() + ".json"
         FileOut.saveToDownloads(ctx, name, MIME, bytes)
-        if (auto) FileOut.pruneBackups(ctx, keep = 6)
+        if (auto) FileOut.pruneBackups(ctx)
         return FileOut.cacheForShare(ctx, name, bytes)
     }
 
-    // ---- هفتگی
+    /** اثر انگشت محتوا (بدون زمان ساخت) برای اینکه پشتیبان تکراری ساخته نشود */
+    fun fingerprint(bytes: ByteArray): String {
+        val s = String(bytes, Charsets.UTF_8).replace(Regex("\"created\":\\d+"), "")
+        return java.security.MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * پشتیبان خودکار روزانه: اگر از دفعه‌ی قبل چیزی عوض نشده، چیزی ساخته نمی‌شود (null).
+     */
+    suspend fun autoBackup(ctx: Context): Uri? {
+        val bytes = export(ctx, receipts = false)
+        val sp = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+        val fp = fingerprint(bytes)
+        if (fp == sp.getString("lastBackupHash", null)) return null
+        val uri = save(ctx, true, bytes)
+        sp.edit().putString("lastBackupHash", fp).putLong("lastBackup", System.currentTimeMillis()).apply()
+        return uri
+    }
+
+    /**
+     * کدام پشتیبان‌های خودکار بمانند: ۷ تای آخر + جدیدترینِ هر هفته برای ۴ هفته‌ی قبل‌تر.
+     * ورودی: (شناسه، زمان ساخت)؛ خروجی: شناسه‌هایی که باید بمانند.
+     */
+    fun <T> retain(items: List<Pair<T, Long>>, now: Long = System.currentTimeMillis()): Set<T> {
+        val sorted = items.sortedByDescending { it.second }
+        val keep = sorted.take(7).map { it.first }.toMutableSet()
+        val week = 7 * 86_400_000L
+        sorted.drop(7).groupBy { (now - it.second) / week }.entries
+            .sortedBy { it.key }.take(4)
+            .forEach { (_, l) -> keep += l.maxBy { it.second }.first }
+        return keep
+    }
+
+    // ---- روزانه
 
     private const val CHANNEL = "backup"
 
     fun schedule(ctx: Context) {
-        val req = PeriodicWorkRequestBuilder<BackupWorker>(7, TimeUnit.DAYS)
-            .setInitialDelay(1, TimeUnit.DAYS)
+        val wm = WorkManager.getInstance(ctx)
+        wm.cancelUniqueWork("weekly-backup") // زمان‌بندی قدیمی هفتگی
+        val req = PeriodicWorkRequestBuilder<BackupWorker>(1, TimeUnit.DAYS)
+            .setInitialDelay(6, TimeUnit.HOURS)
             .build()
-        WorkManager.getInstance(ctx)
-            .enqueueUniquePeriodicWork("weekly-backup", ExistingPeriodicWorkPolicy.KEEP, req)
+        wm.enqueueUniquePeriodicWork("daily-backup", ExistingPeriodicWorkPolicy.KEEP, req)
     }
 
     fun notifyReady(ctx: Context, uri: Uri) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL) == null) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "پشتیبان هفتگی", NotificationManager.IMPORTANCE_DEFAULT))
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, "پشتیبان", NotificationManager.IMPORTANCE_DEFAULT))
         }
         val pi = PendingIntent.getActivity(
             ctx, 7001,
@@ -541,12 +584,20 @@ object Backup {
 
 class BackupWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result = try {
-        val uri = Backup.makeAndSave(applicationContext, auto = true)
-        applicationContext.getSharedPreferences("app", Context.MODE_PRIVATE).edit()
-            .putLong("lastBackup", System.currentTimeMillis()).apply()
-        // اگر Google Drive وصل است، بی‌صدا آنجا هم ذخیره می‌شود؛ وگرنه نوتیفیکیشن ارسال
-        if (Drive.isConnected(applicationContext)) Drive.enqueueUpload(applicationContext)
-        else Backup.notifyReady(applicationContext, uri)
+        val ctx = applicationContext
+        val uri = Backup.autoBackup(ctx)
+        // اگر Google Drive وصل است، بی‌صدا آنجا هم ذخیره می‌شود؛
+        // وگرنه نوتیفیکیشن «ارسال کن» فقط هفته‌ای یک بار (پشتیبان روزانه بی‌صدا در گوشی می‌ماند)
+        if (uri != null) {
+            if (Drive.isConnected(ctx)) Drive.enqueueUpload(ctx)
+            else {
+                val sp = ctx.getSharedPreferences("app", Context.MODE_PRIVATE)
+                if (System.currentTimeMillis() - sp.getLong("lastBackupNotify", 0L) >= 7 * 86_400_000L - 3_600_000L) {
+                    Backup.notifyReady(ctx, uri)
+                    sp.edit().putLong("lastBackupNotify", System.currentTimeMillis()).apply()
+                }
+            }
+        }
         Result.success()
     } catch (_: Exception) {
         Result.retry()

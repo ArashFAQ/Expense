@@ -361,9 +361,9 @@ fun BackupSection() {
                 var withReceipts by remember { mutableStateOf(bp.getBoolean("backupReceipts", false)) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("عکس رسیدها هم در پشتیبان باشد")
+                        Text("عکس رسیدها در پشتیبان دستی")
                         Text(
-                            "فایل پشتیبان سنگین‌تر می‌شود (هر عکس حدود ۲۰۰ کیلوبایت)",
+                            "پشتیبان خودکار روزانه بدون عکس است. با این گزینه، «گرفتن و ارسال فایل» و «پشتیبان در Drive» عکس‌ها را هم دارند (هر عکس حدود ۲۰۰ کیلوبایت)",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -484,7 +484,7 @@ fun DrivePart(busy: Boolean, setBusy: (Boolean) -> Unit, onRestoreContent: (Back
     Text("Google Drive", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     if (!connected) {
         Text(
-            "با اتصال به حساب گوگل، پشتیبان هفتگی بی‌صدا در پوشه‌ی Makharej در Google Drive هم ذخیره می‌شود.",
+            "با اتصال به حساب گوگل، پشتیبان روزانه بی‌صدا در پوشه‌ی Makharej در Google Drive هم ذخیره می‌شود.",
             style = MaterialTheme.typography.bodySmall
         )
         Spacer(Modifier.height(8.dp))
@@ -512,7 +512,7 @@ fun DrivePart(busy: Boolean, setBusy: (Boolean) -> Unit, onRestoreContent: (Back
         }) { Text("اتصال به Google Drive") }
     } else {
         Text(
-            "وصل" + (if (email.isNotBlank()) " به $email" else "") + ". پشتیبان هفتگی خودکار در Drive ذخیره می‌شود.",
+            "وصل" + (if (email.isNotBlank()) " به $email" else "") + ". پشتیبان روزانه خودکار در Drive ذخیره می‌شود.",
             style = MaterialTheme.typography.bodySmall
         )
         if (last > 0) {
