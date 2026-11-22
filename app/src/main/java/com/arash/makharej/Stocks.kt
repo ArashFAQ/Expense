@@ -378,8 +378,20 @@ object Stocks {
             }
         }
 
-    suspend fun deleteTrade(ctx: Context, t: StockTrade) {
+    /** موجودی مفید فعلی (یا بدون یک معامله، برای دیدن اثر حذفش) */
+    suspend fun mofidNow(ctx: Context, withoutTradeId: Long? = null): Long? {
         val db = AppDb.get(ctx)
+        val trades = db.stock().tradeList().filter { it.id != withoutTradeId }
+        return Wealth.latestBalances(ctx, db.tx().list(), trades).firstOrNull { it.bank == Banks.MOFID }?.balance
+    }
+
+    /**
+     * حذف معامله. keepMofid: معامله واقعاً انجام شده و فقط از فهرست پاک می‌شود → موجودی مفیدِ همین لحظه
+     * مبنای دستی می‌شود تا پولِ خرید/فروش/سود از موجودی مفید برنگردد.
+     */
+    suspend fun deleteTrade(ctx: Context, t: StockTrade, keepMofid: Boolean = false) {
+        val db = AppDb.get(ctx)
+        if (keepMofid && t.fromMofid && t.kind != 2) mofidNow(ctx)?.let { Wealth.setManual(ctx, Banks.MOFID, it) }
         t.txId?.let { db.tx().delete(it) }
         db.stock().deleteTrade(t.id)
         SummaryWidget.refresh(ctx)
@@ -675,12 +687,51 @@ private fun HoldingDialog(db: AppDb, h: Holding, startBuy: Boolean, onClose: () 
     }, onDismiss = { form = -1 })
 
     delTrade?.let { t ->
+        val touchesMofid = t.fromMofid && t.kind != 2
+        // اثر حذف روی موجودی مفید (مثبت = زیاد می‌شود)
+        var effect by remember(t.id) { mutableStateOf<Long?>(null) }
+        LaunchedEffect(t.id) {
+            if (touchesMofid) {
+                val now = Stocks.mofidNow(ctx)
+                val without = Stocks.mofidNow(ctx, t.id)
+                effect = if (now != null && without != null) without - now else null
+            }
+        }
         AlertDialog(
             onDismissRequest = { delTrade = null },
             title = { Text("این معامله حذف شود؟") },
-            text = { Text("اگر از پول مفید بوده، موجودی مفید هم برمی‌گردد.") },
+            text = {
+                Column {
+                    if (!touchesMofid) Text("فقط از فهرست معامله‌های این سهم پاک می‌شود.")
+                    else {
+                        Text("پولش از یا به مفید رفته بود. موجودی مفید چه شود؟")
+                        Spacer(Modifier.height(12.dp))
+                        Button(onClick = { delTrade = null; scope.launch { Stocks.deleteTrade(ctx, t, keepMofid = true) } }, modifier = Modifier.fillMaxWidth()) {
+                            Text("فقط از سهام حذف شود، موجودی مفید دست نخورد")
+                        }
+                        Text(
+                            "معامله واقعاً انجام شده؛ پول خرید/فروش و سودش در مفید می‌ماند",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
+                        )
+                        OutlinedButton(onClick = { delTrade = null; scope.launch { Stocks.deleteTrade(ctx, t, keepMofid = false) } }, modifier = Modifier.fillMaxWidth()) {
+                            Text("اشتباه ثبت کرده بودم، موجودی مفید هم برگردد", color = MaterialTheme.colorScheme.error)
+                        }
+                        val e = effect
+                        Text(
+                            when {
+                                e == null -> "موجودی مفید به حالت قبل از این معامله برمی‌گردد"
+                                e == 0L -> "روی موجودی مفید اثری ندارد"
+                                else -> "موجودی مفید " + Fa.toman(kotlin.math.abs(e)) + (if (e > 0) " زیاد" else " کم") + " می‌شود"
+                            },
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                }
+            },
             confirmButton = {
-                TextButton(onClick = { delTrade = null; scope.launch { Stocks.deleteTrade(ctx, t) } }) {
+                if (!touchesMofid) TextButton(onClick = { delTrade = null; scope.launch { Stocks.deleteTrade(ctx, t) } }) {
                     Text("حذف", color = MaterialTheme.colorScheme.error)
                 }
             },
