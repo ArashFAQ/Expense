@@ -221,25 +221,18 @@ fun LoanPersonDialog(
     }
 }
 
-/** دیالوگ وارد کردن مبلغ (تومان) */
+/** دیالوگ وارد کردن مبلغ */
 @Composable
 fun AmountDialog(title: String, initialRial: Long? = null, onOk: (Long) -> Unit, onDismiss: () -> Unit) {
-    var text by remember { mutableStateOf(Money.editText(initialRial)) }
-    val v = Fa.toEn(text).filter { it.isDigit() }.toLongOrNull()?.takeIf { it > 0 }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            OutlinedTextField(
-                value = text, onValueChange = { text = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
-                label = { Text("مبلغ") }, suffix = { Text("تومان") }, singleLine = true,
-                supportingText = { if (v != null) Text(Fa.toman(v * 10)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-            )
-        },
-        confirmButton = { Button(enabled = v != null, onClick = { onOk(Money.keepRial(initialRial, v ?: 0)) }) { Text("ثبت") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
-    )
+    val money = rememberMoney(initialRial)
+    val v = money.rial?.takeIf { it > 0 }
+    val accent = MaterialTheme.colorScheme.primary
+    ColorDialog(
+        title = title, subtitle = null, accent = accent,
+        okText = "ثبت", okEnabled = v != null, onOk = { onOk(v ?: 0) }, onDismiss = onDismiss
+    ) {
+        FormLine(Icons.Outlined.AttachMoney, Color(0xFF2E7D32), "مبلغ", null, last = true) { FormMoney(money, accent) }
+    }
 }
 
 /** انتخاب دسته (null = بدون دسته) */

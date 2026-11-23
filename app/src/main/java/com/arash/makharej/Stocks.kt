@@ -71,6 +71,7 @@ import java.util.TimeZone
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.AttachMoney
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Search
 
 // ================================================================ data
 
@@ -585,15 +586,14 @@ fun SymbolSearchDialog(onPick: (Tse.Sym) -> Unit, onDismiss: () -> Unit) {
     }
     val local = remember(q, listReady) { Tse.searchLocal(ctx, q) }
     val results = (local + online).distinctBy { it.insCode }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("خرید سهم یا صندوق") },
-        text = {
+    ColorDialog(
+        title = "خرید سهم یا صندوق", subtitle = "نماد یا اسم شرکت را بنویس و از فهرست انتخاب کن", accent = Color(0xFF1565C0),
+        okText = null, okEnabled = false, onOk = {}, onDismiss = onDismiss
+    ) {
             Column {
-                OutlinedTextField(
-                    value = q, onValueChange = { q = it }, singleLine = true,
-                    label = { Text("نماد یا اسم شرکت") }, modifier = Modifier.fillMaxWidth()
-                )
+                FormLine(Icons.Outlined.Search, Color(0xFF1565C0), "نماد", "یا اسم شرکت", last = true) {
+                    FormText(q, { q = it }, "مثلا فولاد", Color(0xFF1565C0))
+                }
                 if (loading) Text("در حال جست‌وجو در بورس…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (Tse.norm(q).length >= 2 && !loading && results.isEmpty()) Text(
                     "چیزی پیدا نشد. اگر اینترنت وصل است، املای نماد را بررسی کن.",
@@ -612,9 +612,7 @@ fun SymbolSearchDialog(onPick: (Tse.Sym) -> Unit, onDismiss: () -> Unit) {
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
-    )
+    }
 }
 
 /** جزئیات یک نماد: معامله‌ها و دکمه‌های خرید/فروش/افزایش سرمایه/سود نقدی */

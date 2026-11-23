@@ -600,58 +600,41 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
         val money = remember(t.bank) { MoneyState(t.balance ?: 0L, Money.rialUnit(ctx)) }
         val v = money.rial
         val man = Wealth.manual(ctx, t.bank)
-        AlertDialog(
-            onDismissRequest = { balEdit = null },
-            title = { Text("موجودی " + Banks.name(t.bank)) },
-            text = {
-                Column {
-                    Text(
-                        "اگر آخرین پیامک قدیمی است، موجودی فعلی را از اپ بانک ببین و اینجا وارد کن. " +
-                            "از این به بعد هر پیامک تازه‌ای که مانده داشته باشد، دوباره جایگزینش می‌شود.",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    MoneyField(money, "موجودی فعلی")
-                    Row {
-                        TextButton(onClick = { Wealth.setHidden(ctx, t.bank, true); balEdit = null; tick++ }) {
-                            Text("پنهان کردن از جمع")
-                        }
-                        if (man != null) TextButton(onClick = { Wealth.setManual(ctx, t.bank, null); balEdit = null; tick++ }) {
-                            Text("حذف موجودی دستی", color = MaterialTheme.colorScheme.error)
-                        }
-                    }
+        val accent = Color(0xFF1565C0)
+        ColorDialog(
+            title = "موجودی " + Banks.name(t.bank), subtitle = "موجودی فعلی را از اپ بانک ببین و اینجا وارد کن", accent = accent,
+            okText = "ذخیره", okEnabled = v != null,
+            onOk = { Wealth.setManual(ctx, t.bank, v ?: 0); balEdit = null; tick++ },
+            onDismiss = { balEdit = null }
+        ) {
+            FormLine(Icons.Outlined.AccountBalance, Color(0xFF1565C0), "موجودی فعلی", null, last = true) { FormMoney(money, accent) }
+            FormInfo("هر پیامک تازه‌ای که مانده داشته باشد، دوباره جایگزین این عدد می‌شود.", accent)
+            Row {
+                TextButton(onClick = { Wealth.setHidden(ctx, t.bank, true); balEdit = null; tick++ }) { Text("پنهان کردن از جمع") }
+                if (man != null) TextButton(onClick = { Wealth.setManual(ctx, t.bank, null); balEdit = null; tick++ }) {
+                    Text("حذف موجودی دستی", color = MaterialTheme.colorScheme.error)
                 }
-            },
-            confirmButton = {
-                Button(enabled = v != null, onClick = {
-                    Wealth.setManual(ctx, t.bank, v ?: 0); balEdit = null; tick++
-                }) { Text("ذخیره") }
-            },
-            dismissButton = { TextButton(onClick = { balEdit = null }) { Text("انصراف") } }
-        )
+            }
+        }
     }
 
     pricing?.let { k ->
-        var text by remember(k) { mutableStateOf(((Prices.price(ctx, k)?.first ?: 0L) / 10).takeIf { it > 0 }?.toString() ?: "") }
-        val v = text.toLongOrNull()?.takeIf { it > 0 }
-        AlertDialog(
-            onDismissRequest = { pricing = null },
-            title = { Text("قیمت " + (Prices.names[k] ?: "")) },
-            text = {
-                OutlinedTextField(
-                    value = text, onValueChange = { text = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
-                    label = { Text("قیمت هر واحد") }, suffix = { Text(if (k == "ons") "دلار" else "تومان") }, singleLine = true,
-                    supportingText = { if (v != null) Text(if (k == "ons") Fa.num(v * 10) + " دلار" else Fa.toman(v * 10)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-            },
-            confirmButton = {
-                Button(enabled = v != null, onClick = {
-                    Prices.setManual(ctx, k, (v ?: 0) * 10); pricing = null; tick++
-                }) { Text("ذخیره") }
-            },
-            dismissButton = { TextButton(onClick = { pricing = null }) { Text("انصراف") } }
-        )
+        val cur = Prices.price(ctx, k)?.first?.takeIf { it > 0 }
+        val money = remember(k) { MoneyState(cur, Money.rialUnit(ctx)) }
+        var text by remember(k) { mutableStateOf(cur?.let { (it / 10).toString() } ?: "") }
+        val v: Long? = if (k == "ons") text.toLongOrNull()?.takeIf { it > 0 }?.times(10) else money.rial?.takeIf { it > 0 }
+        val accent = Color(0xFF00897B)
+        ColorDialog(
+            title = "قیمت " + (Prices.names[k] ?: ""), subtitle = "قیمت هر واحد را دستی وارد کن", accent = accent,
+            okText = "ذخیره", okEnabled = v != null,
+            onOk = { Prices.setManual(ctx, k, v ?: 0); pricing = null; tick++ },
+            onDismiss = { pricing = null }
+        ) {
+            FormLine(Icons.Outlined.AttachMoney, Color(0xFF2E7D32), "قیمت هر واحد", if (k == "ons") "دلار" else null, last = true) {
+                if (k == "ons") FormText(text, { text = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) }, "دلار", accent, number = true)
+                else FormMoney(money, accent)
+            }
+        }
     }
 }
 

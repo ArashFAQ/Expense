@@ -340,23 +340,18 @@ fun GiftCardDetails(c: GiftCard, txs: List<Tx>, cats: List<Category>, onDismiss:
     if (editPins) {
         var a by remember { mutableStateOf(Pins.dec(c.pin1)) }
         var b by remember { mutableStateOf(Pins.dec(c.pin2)) }
-        AlertDialog(
-            onDismissRequest = { editPins = false },
-            title = { Text("رمزهای کارت") },
-            text = {
-                Column {
-                    OutlinedTextField(a, { a = it }, label = { Text("رمز اول") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    OutlinedTextField(b, { b = it }, label = { Text("رمز دوم") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                }
+        val accent = Color(0xFFD81B60)
+        ColorDialog(
+            title = "رمزهای کارت", subtitle = c.name, accent = accent, okText = "ذخیره", okEnabled = true,
+            onOk = {
+                editPins = false
+                scope.launch { AppDb.get(ctx).giftCard().upsert(c.copy(pin1 = Pins.enc(a), pin2 = Pins.enc(b))) }
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    editPins = false
-                    scope.launch { AppDb.get(ctx).giftCard().upsert(c.copy(pin1 = Pins.enc(a), pin2 = Pins.enc(b))) }
-                }) { Text("ذخیره") }
-            },
-            dismissButton = { TextButton(onClick = { editPins = false }) { Text("انصراف") } }
-        )
+            onDismiss = { editPins = false }
+        ) {
+            FormLine(Icons.Outlined.Lock, Color(0xFF757575), "رمز اول", null) { FormText(a, { a = it }, "رمز اول", accent, number = true) }
+            FormLine(Icons.Outlined.Lock, Color(0xFF757575), "رمز دوم", null, last = true) { FormText(b, { b = it }, "رمز دوم", accent, number = true) }
+        }
     }
 
     if (fixBal) AmountDialog("مانده‌ی واقعی کارت (تومان)", bal, onOk = { real ->

@@ -540,18 +540,16 @@ fun GroupDialog(data: GData, g: DGroup, cats: List<Category>, onClose: () -> Uni
     }
     if (addMember) {
         var n by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { addMember = false },
-            title = { Text("عضو جدید") },
-            text = { OutlinedTextField(value = n, onValueChange = { n = it.take(30) }, singleLine = true, label = { Text("اسم") }) },
-            confirmButton = {
-                Button(enabled = n.isNotBlank(), onClick = {
-                    addMember = false
-                    scope.launch { AppDb.get(ctx).group().upsertMember(DMember(groupId = g.id, name = n.trim())) }
-                }) { Text("افزودن") }
+        ColorDialog(
+            title = "عضو جدید", subtitle = "گروه «" + g.name + "»", accent = GroupColor, okText = "افزودن", okEnabled = n.isNotBlank(),
+            onOk = {
+                addMember = false
+                scope.launch { AppDb.get(ctx).group().upsertMember(DMember(groupId = g.id, name = n.trim())) }
             },
-            dismissButton = { TextButton(onClick = { addMember = false }) { Text("انصراف") } }
-        )
+            onDismiss = { addMember = false }
+        ) {
+            FormLine(Icons.Outlined.Person, Color(0xFF1565C0), "اسم", null, last = true) { FormText(n, { n = it.take(30) }, "بزن و بنویس", GroupColor) }
+        }
     }
 }
 
