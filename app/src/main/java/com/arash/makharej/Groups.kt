@@ -396,7 +396,7 @@ private fun NewGroupDialog(cats: List<Category>, onSave: (String, Long?, List<St
     var member by remember { mutableStateOf("") }
     val members = remember { mutableStateListOf<String>() }
     var cat by remember { mutableStateOf(cats.firstOrNull { !it.income && it.icon == "travel" }?.id) }
-    val accent = GroupColor
+    val accent = catAccent(cats, cat, GroupColor)
     ColorDialog(
         title = "گروه دنگ جدید", subtitle = "سفر، مهمانی یا هر خرج مشترک", accent = accent,
         okText = "ساخت گروه", okEnabled = name.isNotBlank() && (members.isNotEmpty() || member.isNotBlank()),
@@ -584,7 +584,7 @@ fun GroupExpenseDialog(data: GData, g: DGroup, cats: List<Category>, linked: Tx?
     val ok = amount > 0 && chosen.isNotEmpty() && sum == amount
     val titles = data.expenses.filter { it.groupId == g.id }.map { it.title }.distinct().take(6)
 
-    val accent = GroupColor
+    val accent = catAccent(cats, myCat, GroupColor)
     ColorDialog(
         title = "هزینه‌ی «" + g.name + "»", subtitle = "دنگ گروهی", accent = accent,
         okText = "ثبت هزینه", okEnabled = ok,

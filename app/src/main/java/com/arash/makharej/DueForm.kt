@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.graphics.luminance
 
 /**
  * فرم چک یا قسط. قسط (و پرداخت تکراری) و چک فرم‌های جدا دارند:
@@ -127,11 +128,11 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
                             kind == 3 -> if (initial == null) "پرداخت تکراری جدید" else "ویرایش پرداخت تکراری"
                             else -> if (initial == null) "قسط جدید" else "ویرایش قسط"
                         },
-                        color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold
+                        color = onAccent(accent), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold
                     )
                     Text(
                         if (isCheck) "نوع چک را انتخاب کن و خانه‌ها را پر کن" else "خانه‌های سفید را پر کن",
-                        color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall
+                        color = onAccent(accent).copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -228,7 +229,7 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
                 Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 10.dp, bottom = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
                         enabled = ok, modifier = Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White, disabledContainerColor = accent.copy(alpha = 0.35f), disabledContentColor = Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = onAccent(accent), disabledContainerColor = accent.copy(alpha = 0.35f), disabledContentColor = onAccent(accent)),
                         onClick = {
                             val d = date!!
                             val paid = if (kind == 0) (total ?: left!!) - left!! else 0
@@ -265,7 +266,7 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
 
 @Composable
 fun HeadChoice(title: String, sub: String, icon: ImageVector, selected: Boolean, accent: Color, modifier: Modifier, onClick: () -> Unit) {
-    val fg = if (selected) accent else Color.White
+    val fg = if (selected) accentInk(accent) else onAccent(accent)
     Column(
         modifier.clip(RoundedCornerShape(16.dp)).background(if (selected) Color.White else Color.White.copy(alpha = 0.15f))
             .clickable(onClick = onClick).padding(vertical = 10.dp),
@@ -344,7 +345,7 @@ fun FormMoney(state: MoneyState, accent: Color, placeholder: String = "مبلغ"
             ) {
                 Text(
                     if (state.rialUnit) "ریال ⇄" else "تومان ⇄", Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
-                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = accent
+                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = accentInk(accent)
                 )
             }
         },
@@ -422,7 +423,7 @@ private fun Summary(kind: Int, amount: Long?, date: IntArray?, period: Int?, lef
         items.forEach { (k, v) ->
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(k, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(v, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = accent, textAlign = TextAlign.Center)
+                Text(v, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = accentInk(accent), textAlign = TextAlign.Center)
             }
         }
     }
@@ -441,6 +442,7 @@ fun ColorDialog(
     onDelete: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val accent by androidx.compose.animation.animateColorAsState(accent, label = "accent")
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             Modifier.fillMaxWidth(0.94f).heightIn(max = 760.dp),
@@ -448,8 +450,8 @@ fun ColorDialog(
         ) {
             Column {
                 Column(Modifier.fillMaxWidth().background(accent).padding(start = 22.dp, end = 22.dp, top = 20.dp, bottom = 16.dp)) {
-                    Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    if (subtitle != null) Text(subtitle, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
+                    Text(title, color = onAccent(accent), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    if (subtitle != null) Text(subtitle, color = onAccent(accent).copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
                     if (header != null) {
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), content = header)
@@ -459,7 +461,7 @@ fun ColorDialog(
                 Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 10.dp, bottom = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (okText != null) Button(
                         enabled = okEnabled, modifier = Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White, disabledContainerColor = accent.copy(alpha = 0.35f), disabledContentColor = Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = onAccent(accent), disabledContainerColor = accent.copy(alpha = 0.35f), disabledContentColor = onAccent(accent)),
                         onClick = onOk
                     ) { Text(okText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium) }
                     OutlinedButton(onClick = onDismiss, modifier = Modifier.height(52.dp).let { if (okText == null) it.weight(1f) else it }, shape = RoundedCornerShape(16.dp)) { Text(cancelText) }
@@ -497,7 +499,7 @@ fun <T> FormChips(options: List<Pair<T, String>>, selected: T?, accent: Color, o
                 Modifier.clip(RoundedCornerShape(50)).background(if (on) accent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                     .border(1.dp, if (on) accent else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))
                     .clickable { onPick(v) }.padding(horizontal = 12.dp, vertical = 6.dp),
-                color = if (on) Color.White else MaterialTheme.colorScheme.onSurface,
+                color = if (on) onAccent(accent) else MaterialTheme.colorScheme.onSurface,
                 fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, style = MaterialTheme.typography.labelLarge
             )
         }
@@ -516,5 +518,15 @@ fun FormInfo(text: String, accent: Color) {
     )
 }
 
+/** رنگ دسته‌ی انتخاب‌شده (اگر نیست، fallback) — فرم‌هایی که دسته دارند هم‌رنگ دسته‌شان می‌شوند */
+fun catAccent(cats: List<Category>, id: Long?, fallback: Color): Color =
+    cats.firstOrNull { it.id == id }?.uiColor() ?: fallback
+
 /** «۲۶ آذر ۱۴۰۵» */
 fun jDateText(d: IntArray) = Fa.toFa(d[2].toString()) + " " + Fa.monthName(d[0] * 100 + d[1]) + " " + Fa.toFa(d[0].toString())
+
+/** رنگ متن روی پس‌زمینه‌ی رنگی (برای رنگ‌های روشن مثل زرد، متن تیره) */
+fun onAccent(c: Color): Color = if (c.luminance() > 0.5f) Color(0xFF1C1B1F) else Color.White
+
+/** رنگ accent برای متن روی سفید (رنگ‌های خیلی روشن تیره می‌شوند تا خوانا باشند) */
+fun accentInk(c: Color): Color = if (c.luminance() > 0.5f) Color(0xFF1C1B1F) else c

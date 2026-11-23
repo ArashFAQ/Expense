@@ -1229,7 +1229,7 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
 
-    val accent = if (isExpense) ExpenseColor else IncomeColor
+    val accent = catAccent(cats, sel, if (isExpense) ExpenseColor else IncomeColor)
     ColorDialog(
         title = if (isExpense) "خرج جدید" else "درآمد جدید", subtitle = "خانه‌های سفید را پر کن", accent = accent,
         okText = "ذخیره", okEnabled = amount != null,

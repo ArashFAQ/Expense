@@ -205,7 +205,7 @@ fun GiftCardAddDialog(cats: List<Category>, onDismiss: () -> Unit) {
     var spentAll by remember { mutableStateOf(false) }
     var outCat by remember { mutableStateOf<Long?>(null) }
     val rial = money.rial?.takeIf { it > 0 }
-    val accent = Color(0xFFD81B60)
+    val accent = catAccent(cats, inCat, Color(0xFFD81B60))
     ColorDialog(
         title = "کارت هدیه", subtitle = "کارتی که بابت حقوق یا هدیه گرفته‌ای", accent = accent,
         okText = "ثبت کارت", okEnabled = rial != null && name.isNotBlank(),
@@ -239,7 +239,7 @@ fun GiftSpendDialog(cards: List<GiftCard>, txs: List<Tx>, cats: List<Category>, 
     var note by remember { mutableStateOf("") }
     val rial = money.rial?.takeIf { it > 0 }
     val bal = sel?.let { GiftCards.balance(it, txs) } ?: 0L
-    val accent = Color(0xFFD81B60)
+    val accent = catAccent(cats, cat, Color(0xFFD81B60))
     ColorDialog(
         title = "خرج از کارت هدیه", subtitle = sel?.let { it.name + " · مانده " + Fa.toman(bal) }, accent = accent,
         okText = "ثبت خرج", okEnabled = rial != null && sel != null,
