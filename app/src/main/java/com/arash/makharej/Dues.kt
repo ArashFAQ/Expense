@@ -133,6 +133,19 @@ object Dues {
     private fun parse(j: String): IntArray? =
         j.split("/").mapNotNull { it.toIntOrNull() }.takeIf { it.size == 3 }?.toIntArray()
 
+    val periods = listOf(1, 2, 3, 6, 12)
+    fun periodName(p: Int) = when (p) {
+        1 -> "ماهانه"
+        12 -> "سالانه"
+        else -> "هر " + Fa.toFa(p.toString()) + " ماه"
+    }
+
+    /** n ماه جابه‌جا (روز همان می‌ماند؛ dateAt خودش برای ماه‌های کوتاه‌تر کوتاهش می‌کند) */
+    fun shiftMonths(d: IntArray, n: Int): IntArray {
+        val total = d[0] * 12 + (d[1] - 1) + n
+        return intArrayOf(Math.floorDiv(total, 12), Math.floorMod(total, 12) + 1, d[2])
+    }
+
     fun fmt(y: Int, m: Int, d: Int) = String.format(java.util.Locale.US, "%04d/%02d/%02d", y, m, d)
 
     /** سررسید شماره‌ی n (از صفر) */
@@ -184,8 +197,9 @@ object Dues {
     }
 
     fun progress(d: Due): String = when {
-        d.kind == 0 && d.count > 0 -> "قسط " + Fa.toFa((d.paid + 1).coerceAtMost(d.count).toString()) + " از " + Fa.toFa(d.count.toString())
-        d.kind == 3 -> if (d.period == 12) "سالانه" else "ماهانه"
+        d.kind == 0 && d.count > 0 -> "قسط " + Fa.toFa((d.paid + 1).coerceAtMost(d.count).toString()) + " از " + Fa.toFa(d.count.toString()) +
+            (if (d.period > 1) " · " + periodName(d.period) else "")
+        d.kind == 3 -> periodName(d.period)
         else -> ""
     }
 
@@ -527,23 +541,29 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
     var kind by remember { mutableStateOf(initial?.kind ?: defaultKind) }
     var title by remember { mutableStateOf(initial?.title ?: "") }
     var amountText by remember { mutableStateOf(Money.editText(initial?.amount)) }
-    var countText by remember { mutableStateOf(initial?.count?.takeIf { it > 0 }?.toString() ?: "") }
-    var paidText by remember { mutableStateOf(initial?.paid?.toString() ?: "0") }
+    // قسط: «چند قسط مانده» و «کل اقساط» (اختیاری) به‌جای «پرداخت‌شده»
+    var countText by remember { mutableStateOf(initial?.takeIf { it.kind == 0 && it.count > 0 }?.count?.toString() ?: "") }
+    var leftText by remember {
+        mutableStateOf(initial?.takeIf { it.kind == 0 && it.count > 0 }?.let { (it.count - it.paid).coerceAtLeast(1).toString() } ?: "")
+    }
     var period by remember { mutableStateOf(initial?.period ?: 1) }
     var bank by remember { mutableStateOf(initial?.bank) }
     var note by remember { mutableStateOf(initial?.note ?: "") }
+    // قسط و تکراری: سررسیدِ بعدی (نه اولین)؛ چک: تاریخ چک
     var date by remember {
         mutableStateOf(
-            initial?.startJDate?.split("/")?.mapNotNull { it.toIntOrNull() }?.takeIf { it.size == 3 }?.toIntArray()
-                ?: Jalali.fromMillis(System.currentTimeMillis())
+            initial?.let { d ->
+                if (d.kind == 0 || d.kind == 3) Dues.dateAt(d, if (Dues.open(d)) d.paid else (d.paid - 1).coerceAtLeast(0))
+                else d.startJDate.split("/").mapNotNull { it.toIntOrNull() }.takeIf { it.size == 3 }?.toIntArray()
+            } ?: Jalali.fromMillis(System.currentTimeMillis())
         )
     }
     var pickDate by remember { mutableStateOf(false) }
     var bankMenu by remember { mutableStateOf(false) }
     val amount = Fa.toEn(amountText).filter { it.isDigit() }.toLongOrNull()?.takeIf { it > 0 }
-    val count = Fa.toEn(countText).filter { it.isDigit() }.toIntOrNull()
-    val paid = Fa.toEn(paidText).filter { it.isDigit() }.toIntOrNull() ?: 0
-    val ok = title.isNotBlank() && amount != null && (kind != 0 || (count != null && count > 0 && paid < count))
+    val total = Fa.toEn(countText).filter { it.isDigit() }.toIntOrNull()?.takeIf { it > 0 }
+    val left = Fa.toEn(leftText).filter { it.isDigit() }.toIntOrNull()?.takeIf { it > 0 }
+    val ok = title.isNotBlank() && amount != null && (kind != 0 || (left != null && (total == null || total >= left)))
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "چک یا قسط جدید" else "ویرایش") },
@@ -585,31 +605,46 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
                 FormBlock(fb++, "تاریخ") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        (if (kind == 0 || kind == 3) "اولین سررسید: " else "تاریخ چک: ") + Fa.toFa("${date[0]}/${date[1]}/${date[2]}"),
+                        (if (kind == 0 || kind == 3) "سررسید بعدی: " else "تاریخ چک: ") + Fa.toFa("${date[0]}/${date[1]}/${date[2]}"),
                         Modifier.weight(1f)
                     )
                     TextButton(onClick = { pickDate = true }) { Text("تغییر") }
                 }
                 }
                 if (kind == 0 || kind == 3) FormBlock(fb++) {
-                if (kind == 0) Row {
-                    OutlinedTextField(
-                        value = countText, onValueChange = { countText = Fa.toEn(it).filter { c -> c.isDigit() }.take(3) },
-                        label = { Text("تعداد کل اقساط") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    OutlinedTextField(
-                        value = paidText, onValueChange = { paidText = Fa.toEn(it).filter { c -> c.isDigit() }.take(3) },
-                        label = { Text("پرداخت‌شده تا حالا") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
+                Text("هر چند وقت یک بار؟", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Dues.periods.forEach { p ->
+                        FilterChip(selected = period == p, onClick = { period = p }, label = { Text(Dues.periodName(p)) })
+                    }
                 }
-                if (kind == 3) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FilterChip(selected = period == 1, onClick = { period = 1 }, label = { Text("ماهانه") })
-                    FilterChip(selected = period == 12, onClick = { period = 12 }, label = { Text("سالانه") })
+                if (kind == 0) {
+                    Spacer(Modifier.height(8.dp))
+                    Row {
+                        OutlinedTextField(
+                            value = leftText, onValueChange = { leftText = Fa.toEn(it).filter { c -> c.isDigit() }.take(3) },
+                            label = { Text("چند قسط مانده؟") }, singleLine = true,
+                            supportingText = { Text("با همین قسط بعدی") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        OutlinedTextField(
+                            value = countText, onValueChange = { countText = Fa.toEn(it).filter { c -> c.isDigit() }.take(3) },
+                            label = { Text("کل اقساط") }, singleLine = true,
+                            supportingText = { Text(if (total != null && left != null && total < left) "کمتر از مانده است" else "اختیاری") },
+                            isError = total != null && left != null && total < left,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (left != null) Text(
+                        "آخرین قسط: " + Dues.shiftMonths(date, (left - 1) * period).let { e ->
+                            val ln = JalaliCal.monthLength(e[0], e[1])
+                            Fa.toFa("${e[0]}/${e[1]}/${minOf(e[2], ln)}")
+                        },
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 }
                 FormBlock(fb++, "حساب") {
@@ -647,13 +682,20 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
         },
         confirmButton = {
             Button(enabled = ok, onClick = {
+                // قسط: تاریخ اولین قسط از روی «سررسید بعدی» و تعداد پرداخت‌شده حساب می‌شود
+                val paid = when (kind) {
+                    0 -> (total ?: left!!) - left!!
+                    else -> 0
+                }
+                val periodic = kind == 0 || kind == 3
+                val start = if (periodic) Dues.shiftMonths(date, -paid * period) else date
                 onSave(
                     Due(
                         id = initial?.id ?: 0, kind = kind, title = title.trim(), amount = Money.keepRial(initial?.amount, amount!!), bank = bank,
-                        startJDate = Dues.fmt(date[0], date[1], date[2]),
-                        count = when (kind) { 0 -> count ?: 1; 3 -> 0; else -> 1 },
-                        period = if (kind == 3) period else 1,
-                        paid = if (kind == 0) paid else (initial?.paid ?: 0),
+                        startJDate = Dues.fmt(start[0], start[1], start[2]),
+                        count = when (kind) { 0 -> total ?: left!!; 3 -> 0; else -> 1 },
+                        period = if (periodic) period else 1,
+                        paid = if (periodic) paid else (initial?.paid ?: 0),
                         note = note.trim(), done = false
                     )
                 )
@@ -661,7 +703,7 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
     )
-    if (pickDate) JalaliDateDialog(date, onPick = { date = it; pickDate = false }, onDismiss = { pickDate = false })
+    if (pickDate) JalaliDateDialog(date, onPick = { date = it; pickDate = false }, onDismiss = { pickDate = false }, allowFuture = true)
 }
 
 /** کارت «پرداخت‌های پیش‌رو» در صفحه‌ی خانه (۷ روز آینده و گذشته‌ها) */

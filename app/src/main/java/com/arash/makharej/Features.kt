@@ -133,10 +133,12 @@ fun NoteSuggestions(
 fun JalaliDateDialog(
     initial: IntArray,
     onPick: (IntArray) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /** چک و قسط: تاریخ آینده هم مجاز است */
+    allowFuture: Boolean = false
 ) {
     val today = Jalali.fromMillis(System.currentTimeMillis())
-    val todayKey = today[0] * 10000 + today[1] * 100 + today[2]
+    val todayKey = if (allowFuture) Int.MAX_VALUE else today[0] * 10000 + today[1] * 100 + today[2]
     var y by remember { mutableIntStateOf(initial[0]) }
     var m by remember { mutableIntStateOf(initial[1]) }
     var d by remember { mutableIntStateOf(initial[2]) }
@@ -151,7 +153,11 @@ fun JalaliDateDialog(
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { y = today[0]; m = today[1]; d = today[2] }) { Text("امروز") }
-                    OutlinedButton(onClick = {
+                    if (allowFuture) OutlinedButton(onClick = {
+                        val n = Dues.shiftMonths(today, 1)
+                        y = n[0]; m = n[1]; d = minOf(n[2], JalaliCal.monthLength(n[0], n[1]))
+                    }) { Text("ماه بعد") }
+                    else OutlinedButton(onClick = {
                         val j = Jalali.fromMillis(System.currentTimeMillis() - 86_400_000L)
                         y = j[0]; m = j[1]; d = j[2]
                     }) { Text("دیروز") }
@@ -164,7 +170,7 @@ fun JalaliDateDialog(
                         textAlign = TextAlign.Center, fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium
                     )
-                    IconButton(onClick = { y++ }, enabled = y < today[0]) { Icon(Icons.Filled.KeyboardArrowLeft, "سال بعد") }
+                    IconButton(onClick = { y++ }, enabled = allowFuture || y < today[0]) { Icon(Icons.Filled.KeyboardArrowLeft, "سال بعد") }
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     (1..12).forEach { mm ->
