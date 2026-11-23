@@ -63,6 +63,13 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.foundation.layout.Box
 
 // ================================================================ data
 
@@ -389,37 +396,28 @@ private fun NewGroupDialog(cats: List<Category>, onSave: (String, Long?, List<St
     var member by remember { mutableStateOf("") }
     val members = remember { mutableStateListOf<String>() }
     var cat by remember { mutableStateOf(cats.firstOrNull { !it.income && it.icon == "travel" }?.id) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("گروه دنگ جدید") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                var fb = 0
-                FormBlock(fb++, "اسم گروه") {
-                OutlinedTextField(value = name, onValueChange = { name = it.take(40) }, singleLine = true, label = { Text("اسم (مثلا سفر شمال)") }, modifier = Modifier.fillMaxWidth())
-                }
-                FormBlock(fb++, "اعضا (خودت خودکار هستی)") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(value = member, onValueChange = { member = it.take(30) }, singleLine = true, label = { Text("اسم") }, modifier = Modifier.weight(1f))
-                    TextButton(enabled = member.isNotBlank(), onClick = { members += member.trim(); member = "" }) { Text("افزودن") }
-                }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    AssistChip(onClick = {}, label = { Text("من") })
-                    members.forEach { m -> AssistChip(onClick = { members.remove(m) }, label = { Text("$m ✕") }) }
-                }
-                }
-                FormBlock(fb++, "دسته‌ی سهم من در خرج‌ها") {
-                CatDropdown(cats.filter { !it.income }, cat) { cat = it }
-                }
+    val accent = GroupColor
+    ColorDialog(
+        title = "گروه دنگ جدید", subtitle = "سفر، مهمانی یا هر خرج مشترک", accent = accent,
+        okText = "ساخت گروه", okEnabled = name.isNotBlank() && (members.isNotEmpty() || member.isNotBlank()),
+        onOk = { onSave(name, cat, members + listOfNotNull(member.trim().takeIf { it.isNotEmpty() })) },
+        onDismiss = onDismiss
+    ) {
+        FormLine(Icons.Outlined.Edit, Color(0xFF5E35B1), "اسم گروه", "مثلا سفر شمال") { FormText(name, { name = it.take(40) }, "بزن و بنویس", accent) }
+        FormLine(Icons.Outlined.Groups, Color(0xFF1565C0), "اعضا", "خودت خودکار هستی") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FormText(member, { member = it.take(30) }, "اسم یک نفر", accent, modifier = Modifier.weight(1f))
+                TextButton(enabled = member.isNotBlank(), onClick = { members += member.trim(); member = "" }) { Text("افزودن") }
             }
-        },
-        confirmButton = {
-            Button(enabled = name.isNotBlank() && (members.isNotEmpty() || member.isNotBlank()), onClick = {
-                onSave(name, cat, members + listOfNotNull(member.trim().takeIf { it.isNotEmpty() }))
-            }) { Text("ساخت") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
-    )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                AssistChip(onClick = {}, label = { Text("من") })
+                members.forEach { m -> AssistChip(onClick = { members.remove(m) }, label = { Text("$m ✕") }) }
+            }
+        }
+        FormLine(Icons.Outlined.Category, Color(0xFFEF6C00), "دسته‌ی سهم من", "در خرج‌ها", last = true) {
+            CatDropdown(cats.filter { !it.income }, cat) { cat = it }
+        }
+    }
 }
 
 @Composable
@@ -568,14 +566,14 @@ fun GroupExpenseDialog(data: GData, g: DGroup, cats: List<Category>, linked: Tx?
     val members = data.membersOf(g.id)
     val me = members.firstOrNull { it.me }
     var title by remember { mutableStateOf(linked?.note ?: "") }
-    var amountText by remember { mutableStateOf(linked?.let { (it.amount / 10).toString() } ?: "") }
+    val money = rememberMoney(linked?.amount)
     var payer by remember { mutableStateOf(me?.id ?: members.firstOrNull()?.id ?: 0L) }
     val inSet = remember { mutableStateMapOf<Long, Boolean>().apply { members.forEach { put(it.id, true) } } }
     var custom by remember { mutableStateOf(false) }
     val customText = remember { mutableStateMapOf<Long, String>() }
     var myCat by remember { mutableStateOf(g.categoryId) }
     var payerMenu by remember { mutableStateOf(false) }
-    val amount = (Fa.toEn(amountText).filter { it.isDigit() }.toLongOrNull() ?: 0L) * 10
+    val amount = linked?.amount ?: (money.rial ?: 0L)
     val chosen = members.filter { inSet[it.id] == true }
     val shares: Map<Long, Long> = if (!custom) {
         if (chosen.isEmpty()) emptyMap() else {
@@ -588,74 +586,57 @@ fun GroupExpenseDialog(data: GData, g: DGroup, cats: List<Category>, linked: Tx?
     val ok = amount > 0 && chosen.isNotEmpty() && sum == amount
     val titles = data.expenses.filter { it.groupId == g.id }.map { it.title }.distinct().take(6)
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("هزینه‌ی «" + g.name + "»") },
-        text = {
-            Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState())) {
-                var fb = 0
-                FormBlock(fb++, "عنوان") {
-                OutlinedTextField(value = title, onValueChange = { title = it.take(40) }, singleLine = true, label = { Text("عنوان (مثلا شام)") }, modifier = Modifier.fillMaxWidth())
-                if (titles.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    titles.forEach { t -> AssistChip(onClick = { title = t }, label = { Text(t) }) }
-                }
-                }
-                FormBlock(fb++, "مبلغ و پرداخت‌کننده") {
-                if (linked == null) {
-                    OutlinedTextField(
-                        value = amountText, onValueChange = { amountText = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
-                        label = { Text("مبلغ") }, suffix = { Text("تومان") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("چه کسی پرداخت کرد؟ ", Modifier.weight(1f))
-                        Column {
-                            OutlinedButton(onClick = { payerMenu = true }) { Text(data.name(payer)) }
-                            DropdownMenu(expanded = payerMenu, onDismissRequest = { payerMenu = false }) {
-                                members.forEach { m -> DropdownMenuItem(text = { Text(if (m.me) "من" else m.name) }, onClick = { payer = m.id; payerMenu = false }) }
-                            }
-                        }
-                    }
-                } else Text(Fa.toman(linked.amount) + " · پرداخت: من (" + Banks.name(linked.bank) + ")", fontWeight = FontWeight.SemiBold)
-                }
-                FormBlock(fb++) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("بین چه کسانی؟", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                    Text("سهم دلخواه", style = MaterialTheme.typography.labelMedium)
-                    Switch(checked = custom, onCheckedChange = { custom = it })
-                }
-                members.forEach { m ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = inSet[m.id] == true, onCheckedChange = { inSet[m.id] = it })
-                        Text(if (m.me) "من" else m.name, Modifier.weight(1f))
-                        if (custom && inSet[m.id] == true) OutlinedTextField(
-                            value = customText[m.id] ?: "", onValueChange = { customText[m.id] = Fa.toEn(it).filter { c -> c.isDigit() }.take(12) },
-                            singleLine = true, suffix = { Text("تومان") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(150.dp)
-                        ) else if (inSet[m.id] == true) Text(Fa.toman(shares[m.id] ?: 0))
-                    }
-                }
-                if (custom && amount > 0 && sum != amount) Text(
-                    "جمع سهم‌ها " + Fa.toman(sum) + " است؛ باید " + Fa.toman(amount) + " شود",
-                    color = ExpenseColor, style = MaterialTheme.typography.bodySmall
-                )
-                }
-                if (me != null && (shares[me.id] ?: 0) > 0) FormBlock(fb++) {
-                    Text("سهم من (" + Fa.toman(shares[me.id] ?: 0) + ") در خرج‌ها با دسته‌ی:", style = MaterialTheme.typography.labelLarge)
-                    CatDropdown(cats.filter { !it.income }, myCat) { myCat = it }
-                }
+    val accent = GroupColor
+    ColorDialog(
+        title = "هزینه‌ی «" + g.name + "»", subtitle = "دنگ گروهی", accent = accent,
+        okText = "ثبت هزینه", okEnabled = ok,
+        onOk = {
+            scope.launch {
+                Groups.addExpense(ctx, g, title, amount, if (linked != null) (me?.id ?: payer) else payer, shares, linked?.ts ?: System.currentTimeMillis(), linked, myCat)
+                onDone()
             }
         },
-        confirmButton = {
-            Button(enabled = ok, onClick = {
-                scope.launch {
-                    Groups.addExpense(ctx, g, title, amount, if (linked != null) (me?.id ?: payer) else payer, shares, linked?.ts ?: System.currentTimeMillis(), linked, myCat)
-                    onDone()
+        onDismiss = onDismiss
+    ) {
+        FormLine(Icons.Outlined.Edit, Color(0xFF5E35B1), "عنوان", "مثلا شام") {
+            FormText(title, { title = it.take(40) }, "بزن و بنویس", accent)
+            if (titles.isNotEmpty()) FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                titles.forEach { t -> AssistChip(onClick = { title = t }, label = { Text(t) }) }
+            }
+        }
+        FormLine(Icons.Outlined.AttachMoney, Color(0xFF2E7D32), "مبلغ", null) {
+            if (linked == null) FormMoney(money, accent)
+            else Text(Fa.toman(linked.amount), fontWeight = FontWeight.Bold)
+        }
+        FormLine(Icons.Outlined.Person, Color(0xFF1565C0), "پرداخت‌کننده", null) {
+            if (linked == null) Box {
+                FormPick(data.name(payer), "انتخاب", accent, null) { payerMenu = true }
+                DropdownMenu(expanded = payerMenu, onDismissRequest = { payerMenu = false }) {
+                    members.forEach { m -> DropdownMenuItem(text = { Text(if (m.me) "من" else m.name) }, onClick = { payer = m.id; payerMenu = false }) }
                 }
-            }) { Text("ثبت") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
-    )
+            } else Text("من (" + Banks.name(linked.bank) + ")", fontWeight = FontWeight.Bold)
+        }
+        FormSwitch("سهم دلخواه", "خاموش: مساوی بین کسانی که تیک خورده‌اند", custom, accent) { custom = it }
+        FormLine(Icons.Outlined.Groups, Color(0xFFC62828), "بین چه کسانی؟", null, last = me == null || (shares[me.id] ?: 0) <= 0) {
+            members.forEach { m ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = inSet[m.id] == true, onCheckedChange = { inSet[m.id] = it })
+                    Text(if (m.me) "من" else m.name, Modifier.weight(1f))
+                    if (custom && inSet[m.id] == true) FormText(
+                        customText[m.id] ?: "", { customText[m.id] = Fa.toEn(it).filter { c -> c.isDigit() }.take(12) },
+                        "تومان", accent, number = true, modifier = Modifier.width(120.dp)
+                    ) else if (inSet[m.id] == true) Text(Fa.toman(shares[m.id] ?: 0), fontWeight = FontWeight.Bold)
+                }
+            }
+            if (custom && amount > 0 && sum != amount) Text(
+                "جمع سهم‌ها " + Fa.toman(sum) + " است؛ باید " + Fa.toman(amount) + " شود",
+                color = ExpenseColor, style = MaterialTheme.typography.bodySmall
+            )
+        }
+        if (me != null && (shares[me.id] ?: 0) > 0) FormLine(Icons.Outlined.Category, Color(0xFFEF6C00), "دسته‌ی سهم من", Fa.toman(shares[me.id] ?: 0), last = true) {
+            CatDropdown(cats.filter { !it.income }, myCat) { myCat = it }
+        }
+    }
 }
 
 /** ثبت پرداخت بین دو عضو (اگر linked باشد، از پیامک من است) */
@@ -663,28 +644,19 @@ fun GroupExpenseDialog(data: GData, g: DGroup, cats: List<Category>, linked: Tx?
 fun SettleDialog(data: GData, g: DGroup, from0: Long, to0: Long, amount0: Long, linked: Tx?, onDone: () -> Unit, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var text by remember { mutableStateOf(Money.tomanOf(amount0).toString()) }
-    val amount = Money.keepRial(amount0, Fa.toEn(text).filter { it.isDigit() }.toLongOrNull() ?: 0L)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(data.name(from0) + " ← " + data.name(to0)) },
-        text = {
-            Column {
-                if (linked == null) OutlinedTextField(
-                    value = text, onValueChange = { text = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
-                    label = { Text("مبلغ پرداخت‌شده") }, suffix = { Text("تومان") }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                ) else Text(Fa.toman(linked.amount))
-                Text("در حساب گروه ثبت می‌شود؛ نه خرج است نه درآمد.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        },
-        confirmButton = {
-            Button(enabled = amount > 0 || linked != null, onClick = {
-                scope.launch { Groups.addSettle(ctx, g, from0, to0, linked?.amount ?: amount, linked?.ts ?: System.currentTimeMillis(), linked); onDone() }
-            }) { Text("ثبت") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
-    )
+    val money = rememberMoney(amount0)
+    val amount = money.rial ?: 0L
+    ColorDialog(
+        title = data.name(from0) + " ← " + data.name(to0), subtitle = "تسویه در گروه «" + g.name + "»", accent = GroupColor,
+        okText = "ثبت پرداخت", okEnabled = amount > 0 || linked != null,
+        onOk = { scope.launch { Groups.addSettle(ctx, g, from0, to0, linked?.amount ?: amount, linked?.ts ?: System.currentTimeMillis(), linked); onDone() } },
+        onDismiss = onDismiss
+    ) {
+        FormLine(Icons.Outlined.AttachMoney, Color(0xFF2E7D32), "مبلغ پرداخت‌شده", null, last = true) {
+            if (linked == null) FormMoney(money, GroupColor) else Text(Fa.toman(linked.amount), fontWeight = FontWeight.Bold)
+        }
+        FormInfo("در حساب گروه ثبت می‌شود؛ نه خرج است نه درآمد.", GroupColor)
+    }
 }
 
 /** بخش گروه‌ها در فهرست «بازپرداخت» واریز: اعضایی که به من بدهکارند */

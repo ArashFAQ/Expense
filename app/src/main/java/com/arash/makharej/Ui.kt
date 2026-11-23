@@ -151,6 +151,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.Notes
 
 // ================================================================ Theme
 
@@ -1213,10 +1217,10 @@ fun EditDialog(t: Tx, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
 @Composable
 fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var amountText by remember { mutableStateOf("") }
+    val money = rememberMoney(null)
     var sel by remember { mutableStateOf<Long?>(null) }
     var note by remember { mutableStateOf("") }
-    val amount: Long? = amountText.toLongOrNull()?.takeIf { it > 0 }?.times(10)
+    val amount: Long? = money.rial?.takeIf { it > 0 }
     var date by remember { mutableStateOf(Jalali.fromMillis(System.currentTimeMillis())) }
     var pickDate by remember { mutableStateOf(false) }
     val stats by remember { db.tx().noteStats() }.collectAsState(initial = emptyList())
@@ -1225,121 +1229,59 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
 
-    Dialog(
-        onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    val accent = if (isExpense) ExpenseColor else IncomeColor
+    ColorDialog(
+        title = if (isExpense) "خرج جدید" else "درآمد جدید", subtitle = "خانه‌های سفید را پر کن", accent = accent,
+        okText = "ذخیره", okEnabled = amount != null,
+        onOk = {
+            val now = System.currentTimeMillis()
+            val c = java.util.Calendar.getInstance().apply { timeInMillis = now }
+            val hh = c.get(java.util.Calendar.HOUR_OF_DAY)
+            val mi = c.get(java.util.Calendar.MINUTE)
+            val j = date
+            val ts = if (isToday) now else JalaliCal.toMillis(j[0], j[1], j[2], hh, mi)
+            val tx = Tx(
+                isExpense = isExpense,
+                amount = amount ?: 0,
+                balance = null,
+                jDate = String.format(java.util.Locale.US, "%04d/%02d/%02d", j[0], j[1], j[2]),
+                time = String.format(java.util.Locale.US, "%02d:%02d", hh, mi),
+                ym = j[0] * 100 + j[1],
+                ts = ts,
+                categoryId = sel,
+                note = note.trim(),
+                dedupKey = "manual-$now",
+                bank = Banks.MANUAL
+            )
+            scope.launch { db.tx().insert(tx) }
+            onClose()
+        },
+        onDismiss = onClose
     ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onClose
-                )
-                .systemBarsPadding()
-                .imePadding()
-                .padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 16.dp),
-            contentAlignment = Alignment.TopCenter
-        ) {
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.background,
-                modifier = Modifier.widthIn(max = 560.dp)
-            ) {
-                Column(Modifier.padding(20.dp)) {
-                    Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                        Text(
-                            if (isExpense) "خرج جدید" else "درآمد جدید",
-                            style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
-                            color = if (isExpense) ExpenseColor else IncomeColor
-                        )
-                        var fb = 0
-                        FormBlock(fb++) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "تاریخ: " + (if (isToday) "امروز، " else "") +
-                                    Fa.dayTitle(String.format(java.util.Locale.US, "%04d/%02d/%02d", date[0], date[1], date[2])) +
-                                    " " + Fa.toFa(date[0].toString()),
-                                Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            TextButton(onClick = { pickDate = true }) { Text("تغییر تاریخ") }
-                        }
-                        }
-                        Spacer(Modifier.height(14.dp))
-                        FormBlock(fb++, "مبلغ") {
-                        OutlinedTextField(
-                            value = amountText,
-                            onValueChange = { v -> amountText = Fa.toEn(v).filter { it.isDigit() }.take(13) },
-                            label = { Text("مبلغ") },
-                            suffix = { Text("تومان") },
-                            supportingText = { if (amount != null) Text(Fa.toman(amount)) },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth().focusRequester(focus)
-                        )
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        FormBlock(fb++) {
-                        Text(if (isExpense) "دسته" else "دسته (اختیاری)", style = MaterialTheme.typography.titleSmall)
-                        Spacer(Modifier.height(8.dp))
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            cats.filter { it.income == !isExpense }.forEach { c ->
-                                val col = c.uiColor()
-                                FilterChip(
-                                    selected = sel == c.id,
-                                    onClick = { sel = if (sel == c.id) null else c.id },
-                                    label = { Text(c.name) },
-                                    leadingIcon = { Icon(c.uiIcon(), null, tint = col, modifier = Modifier.size(18.dp)) }
-                                )
-                            }
-                        }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        FormBlock(fb++) {
-                        OutlinedTextField(
-                            value = note, onValueChange = { note = it },
-                            label = { Text("توضیح (اختیاری)") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        NoteSuggestions(stats, sel, note) { n, c ->
-                            note = n
-                            if (sel == null && c != null && cats.any { it.id == c && it.income == !isExpense }) sel = c
-                        }
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = onClose) { Text("انصراف") }
-                        Spacer(Modifier.width(8.dp))
-                        Button(enabled = amount != null, onClick = {
-                            val now = System.currentTimeMillis()
-                            val c = java.util.Calendar.getInstance().apply { timeInMillis = now }
-                            val hh = c.get(java.util.Calendar.HOUR_OF_DAY)
-                            val mi = c.get(java.util.Calendar.MINUTE)
-                            val j = date
-                            val ts = if (isToday) now else JalaliCal.toMillis(j[0], j[1], j[2], hh, mi)
-                            val tx = Tx(
-                                isExpense = isExpense,
-                                amount = amount ?: 0,
-                                balance = null,
-                                jDate = String.format(java.util.Locale.US, "%04d/%02d/%02d", j[0], j[1], j[2]),
-                                time = String.format(java.util.Locale.US, "%02d:%02d", hh, mi),
-                                ym = j[0] * 100 + j[1],
-                                ts = ts,
-                                categoryId = sel,
-                                note = note.trim(),
-                                dedupKey = "manual-$now",
-                                bank = Banks.MANUAL
-                            )
-                            scope.launch { db.tx().insert(tx) }
-                            onClose()
-                        }) { Text("ذخیره") }
-                    }
+        FormLine(Icons.Outlined.AttachMoney, Color(0xFF2E7D32), "مبلغ", null) {
+            Box(Modifier.focusRequester(focus)) { FormMoney(money, accent) }
+        }
+        FormLine(Icons.Outlined.CalendarMonth, Color(0xFFEF6C00), "تاریخ", null) {
+            FormPick((if (isToday) "امروز، " else "") + jDateText(date), "انتخاب تاریخ", accent, Icons.Outlined.CalendarMonth) { pickDate = true }
+        }
+        FormLine(Icons.Outlined.Category, Color(0xFF5E35B1), "دسته", if (isExpense) null else "اختیاری") {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                cats.filter { it.income == !isExpense }.forEach { c ->
+                    val col = c.uiColor()
+                    FilterChip(
+                        selected = sel == c.id,
+                        onClick = { sel = if (sel == c.id) null else c.id },
+                        label = { Text(c.name) },
+                        leadingIcon = { Icon(c.uiIcon(), null, tint = col, modifier = Modifier.size(18.dp)) }
+                    )
                 }
+            }
+        }
+        FormLine(Icons.Outlined.Notes, Color(0xFF757575), "توضیح", "اختیاری", last = true) {
+            FormText(note, { note = it }, "یادداشت", accent)
+            NoteSuggestions(stats, sel, note) { n, c ->
+                note = n
+                if (sel == null && c != null && cats.any { it.id == c && it.income == !isExpense }) sel = c
             }
         }
     }

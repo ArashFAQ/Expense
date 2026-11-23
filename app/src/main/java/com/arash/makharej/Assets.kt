@@ -74,6 +74,10 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import androidx.compose.material.icons.outlined.FormatListNumbered
+import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ShoppingCart
 
 // ================================================================ prices (tgju)
 
@@ -716,69 +720,47 @@ private fun AssetEditDialog(
     val q = Fa.toEn(qty).toDoubleOrNull()
     val ok = if (priced) (q != null && q >= 0) else value.rial != null
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (initial == null) "افزودن دارایی" else "ویرایش دارایی") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                var fb = 0
-                if (initial == null) FormBlock(fb++, "نوع") {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("usd", "emami", "nim", "rob", "gold18", "fund", "cash", "other").forEach { k ->
-                            FilterChip(selected = kind == k, onClick = { kind = k }, label = { Text(Prices.names[k] ?: k) })
-                        }
-                    }
-                }
-                FormBlock(fb++, "اسم") {
-                OutlinedTextField(
-                    value = name, onValueChange = { name = it }, singleLine = true,
-                    label = { Text("اسم (اختیاری)") }, placeholder = { Text(Prices.names[kind] ?: "") },
-                    modifier = Modifier.fillMaxWidth()
+    val accent = Color(0xFF00897B)
+    ColorDialog(
+        title = if (initial == null) "افزودن دارایی" else "ویرایش دارایی",
+        subtitle = if (initial == null) "نوع را انتخاب کن و خانه‌ها را پر کن" else (Prices.names[kind] ?: kind),
+        accent = accent, okText = "ذخیره", okEnabled = ok,
+        onOk = {
+            onSave(
+                Asset(
+                    id = initial?.id ?: 0, kind = kind,
+                    name = name.trim().ifEmpty { Prices.names[kind] ?: kind },
+                    qty = if (priced) q ?: 0.0 else 0.0,
+                    buyTotal = buy.rial ?: 0L,
+                    value = if (priced) 0 else value.rial ?: 0L,
+                    sort = initial?.sort ?: 0
                 )
-                }
-                FormBlock(fb++, "مقدار") {
-                if (priced) {
-                    OutlinedTextField(
-                        value = qty, onValueChange = { qty = Fa.toEn(it).filter { c -> c.isDigit() || c == '.' }.take(12) },
-                        label = { Text(if (kind == "gold18") "وزن (گرم)" else "تعداد") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                } else {
-                    MoneyField(value, if (kind == "fund") "ارزش فعلی" else "مبلغ", Modifier.fillMaxWidth())
-                }
-                }
-                if (kind != "cash") FormBlock(fb++, "خرید") { MoneyField(
-                    buy, if (kind == "fund") "مبلغ سرمایه‌گذاری‌شده (اختیاری)" else "بهای کل خرید (اختیاری)", Modifier.fillMaxWidth(),
-                    hint = { r ->
-                        if (r != null) (if (buy.rialUnit) "= " else "") + Fa.toman(r)
-                        else if (kind == "fund" && savedFromSms > 0) "خالی بگذاری، از پیامک‌ها حساب می‌شود: " + Fa.toman(savedFromSms)
-                        else "برای حساب سود و زیان"
-                    }
-                ) }
-            }
+            )
         },
-        confirmButton = {
-            Button(enabled = ok, onClick = {
-                onSave(
-                    Asset(
-                        id = initial?.id ?: 0, kind = kind,
-                        name = name.trim().ifEmpty { Prices.names[kind] ?: kind },
-                        qty = if (priced) q ?: 0.0 else 0.0,
-                        buyTotal = buy.rial ?: 0L,
-                        value = if (priced) 0 else value.rial ?: 0L,
-                        sort = initial?.sort ?: 0
-                    )
-                )
-            }) { Text("ذخیره") }
-        },
-        dismissButton = {
-            Row {
-                if (onDelete != null) TextButton(onClick = onDelete) { Text("حذف", color = MaterialTheme.colorScheme.error) }
-                TextButton(onClick = onDismiss) { Text("انصراف") }
-            }
+        onDismiss = onDismiss, onDelete = onDelete
+    ) {
+        if (initial == null) FormLine(Icons.Outlined.Category, Color(0xFF5E35B1), "نوع", null) {
+            FormChips(listOf("usd", "emami", "nim", "rob", "gold18", "fund", "cash", "other").map { it to (Prices.names[it] ?: it) }, kind, accent) { kind = it }
         }
-    )
+        FormLine(Icons.Outlined.Edit, Color(0xFF5E35B1), "اسم", "اختیاری") {
+            FormText(name, { name = it }, Prices.names[kind] ?: "بزن و بنویس", accent)
+        }
+        if (priced) FormLine(Icons.Outlined.FormatListNumbered, Color(0xFFC62828), if (kind == "gold18") "وزن" else "تعداد", if (kind == "gold18") "گرم" else null) {
+            FormText(qty, { qty = Fa.toEn(it).filter { c -> c.isDigit() || c == '.' }.take(12) }, if (kind == "gold18") "گرم" else "تعداد", accent, decimal = true)
+        } else FormLine(Icons.Outlined.AttachMoney, Color(0xFF2E7D32), if (kind == "fund") "ارزش فعلی" else "مبلغ", null) {
+            FormMoney(value, accent)
+        }
+        if (kind != "cash") FormLine(
+            Icons.Outlined.ShoppingCart, Color(0xFF1565C0),
+            if (kind == "fund") "سرمایه‌گذاری‌شده" else "بهای خرید", "اختیاری", last = true
+        ) {
+            FormMoney(buy, accent, hint = { r ->
+                if (r != null) (if (buy.rialUnit) "= " else "") + Fa.toman(r)
+                else if (kind == "fund" && savedFromSms > 0) "خالی بماند، از پیامک‌ها: " + Fa.toman(savedFromSms)
+                else "برای حساب سود و زیان"
+            })
+        }
+    }
 }
 
 

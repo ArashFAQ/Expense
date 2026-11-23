@@ -68,6 +68,9 @@ import java.net.URL
 import java.net.URLEncoder
 import java.util.Calendar
 import java.util.TimeZone
+import androidx.compose.material.icons.outlined.FormatListNumbered
+import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.material.icons.outlined.CalendarMonth
 
 // ================================================================ data
 
@@ -755,64 +758,45 @@ private fun TradeDialog(h: Holding, kind: Int, onDone: (Int, Long, Long, Long, B
     val tooMany = kind == 1 && qty != null && qty > h.qty
     val ok = (!needQty || qty != null) && (!needTotal || totalRial != null) && !tooMany
     val title = when (kind) { 0 -> "خرید"; 1 -> "فروش"; 2 -> "افزایش سرمایه / سهم جایزه"; else -> "سود نقدی" } + " " + h.stock.symbol
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                var fb = 0
-                if (needQty) FormBlock(fb++, "تعداد") { OutlinedTextField(
-                    value = qtyText, onValueChange = { qtyText = Fa.toEn(it).filter { c -> c.isDigit() }.take(12) },
-                    label = { Text(if (kind == 2) "تعداد سهم اضافه‌شده" else "تعداد سهم") }, singleLine = true,
-                    isError = tooMany,
-                    supportingText = {
-                        if (tooMany) Text("بیشتر از " + qtyStr(h.qty) + " سهمی است که داری")
-                        else if (kind == 1) Text("موجودی: " + qtyStr(h.qty) + " سهم")
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                ) }
-                if (needTotal) FormBlock(fb++, "مبلغ کل") { MoneyField(
-                    total,
-                    when (kind) {
-                        0 -> "مبلغ کل پرداختی (با کارمزد)"
-                        1 -> "مبلغ کل دریافتی (بعد از کارمزد)"
-                        else -> "مبلغ سود نقدی"
-                    },
-                    Modifier.fillMaxWidth(),
-                    hint = { t ->
-                        if (t != null && qty != null && kind != 3) (if (total.rialUnit) "= " + Fa.toman(t) + " · " else "") + "هر سهم " + Fa.num(t / qty) + (if (total.rialUnit) " ت (" + Fa.toFa(String.format(java.util.Locale.US, "%,d", t / qty)) + " ریال)" else " تومان")
-                        else if (t != null) (if (total.rialUnit) "= " else "") + Fa.toman(t)
-                        else null
-                    }
-                ) }
-                FormBlock(fb++, "تاریخ") {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                    Text("تاریخ: " + Fa.toFa("${date[0]}/${date[1]}/${date[2]}"), Modifier.weight(1f))
-                    TextButton(onClick = { pickDate = true }) { Text("تغییر") }
-                }
-                }
-                if (kind != 2) FormBlock(fb++) { Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(if (kind == 0) "از پول مفید خریدم" else "پولش به مفید آمد")
-                        Text(
-                            "موجودی مفید " + (if (kind == 0) "کم" else "زیاد") + " می‌شود",
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(checked = mofid, onCheckedChange = { mofid = it })
-                } }
-            }
+    val accent = when (kind) { 0 -> Color(0xFF1565C0); 1 -> Color(0xFF2E7D32); 2 -> Color(0xFF5E35B1); else -> Color(0xFF00897B) }
+    ColorDialog(
+        title = title, subtitle = h.stock.name.takeIf { it.isNotBlank() && it != h.stock.symbol } ?: "خانه‌های سفید را پر کن", accent = accent,
+        okText = when (kind) { 0 -> "ثبت خرید"; 1 -> "ثبت فروش"; else -> "ثبت" }, okEnabled = ok,
+        onOk = {
+            val today = Jalali.fromMillis(System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            val ts = if (date.contentEquals(today)) now else JalaliCal.toMillis(date[0], date[1], date[2], 12, 0)
+            onDone(kind, if (needQty) qty!! else 0L, if (needTotal) totalRial!! else 0L, ts, kind != 2 && mofid)
         },
-        confirmButton = {
-            Button(enabled = ok, onClick = {
-                val today = Jalali.fromMillis(System.currentTimeMillis())
-                val now = System.currentTimeMillis()
-                val ts = if (date.contentEquals(today)) now else JalaliCal.toMillis(date[0], date[1], date[2], 12, 0)
-                onDone(kind, if (needQty) qty!! else 0L, if (needTotal) totalRial!! else 0L, ts, kind != 2 && mofid)
-            }) { Text("ثبت") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
-    )
+        onDismiss = onDismiss
+    ) {
+        if (needQty) FormLine(
+            Icons.Outlined.FormatListNumbered, Color(0xFFC62828), if (kind == 2) "سهم اضافه‌شده" else "تعداد سهم",
+            if (kind == 1) "داری: " + qtyStr(h.qty) else null
+        ) {
+            FormText(
+                qtyText, { qtyText = Fa.toEn(it).filter { c -> c.isDigit() }.take(12) }, "تعداد", accent, number = true,
+                isError = tooMany, error = if (tooMany) "بیشتر از " + qtyStr(h.qty) + " سهمی است که داری" else null
+            )
+        }
+        if (needTotal) FormLine(
+            Icons.Outlined.AttachMoney, Color(0xFF2E7D32),
+            when (kind) { 0 -> "مبلغ کل"; 1 -> "مبلغ کل"; else -> "سود نقدی" },
+            when (kind) { 0 -> "پرداختی با کارمزد"; 1 -> "دریافتی بعد از کارمزد"; else -> null }
+        ) {
+            FormMoney(total, accent, hint = { t ->
+                if (t != null && qty != null && kind != 3) (if (total.rialUnit) "= " + Fa.toman(t) + " · " else "") + "هر سهم " + Fa.num(t / qty) + (if (total.rialUnit) " ت (" + Fa.toFa(String.format(java.util.Locale.US, "%,d", t / qty)) + " ریال)" else " تومان")
+                else if (t != null) (if (total.rialUnit) "= " else "") + Fa.toman(t)
+                else null
+            })
+        }
+        FormLine(Icons.Outlined.CalendarMonth, Color(0xFFEF6C00), "تاریخ", "روز معامله", last = kind == 2) {
+            FormPick(jDateText(date), "انتخاب تاریخ", accent, Icons.Outlined.CalendarMonth) { pickDate = true }
+        }
+        if (kind != 2) FormSwitch(
+            if (kind == 0) "از پول مفید خریدم" else "پولش به مفید آمد",
+            "موجودی مفید " + (if (kind == 0) "کم" else "زیاد") + " می‌شود", mofid, accent
+        ) { mofid = it }
+    }
     if (pickDate) JalaliDateDialog(date, onPick = { date = it; pickDate = false }, onDismiss = { pickDate = false })
 }

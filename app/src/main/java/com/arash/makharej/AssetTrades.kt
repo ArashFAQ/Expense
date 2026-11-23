@@ -38,6 +38,13 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.EventRepeat
+import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.FormatListNumbered
+import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.OutlinedButton
 
 /**
  * خرید/فروش دلار، سکه و طلا از پیامک بانکی.
@@ -205,79 +212,52 @@ fun AssetTradeDialog(tx: Tx, onDone: () -> Unit, onDismiss: () -> Unit) {
     val tooMany = !buy && qty != null && held != null && qty > held.qty + 1e-9
     val ok = qty != null && !tooMany && (buy || held != null)
     val word = if (buy) "خرید" else "فروش"
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(word + " · " + Fa.toman(tx.amount)) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                var fb = 0
-                // ---- ادامه‌ی معامله‌ی باز
-                open.forEach { d ->
-                    val p = trades.filter { it.dealId == d.id }.sumOf { it.total }
-                    FormBlock(fb++, "ادامه‌ی " + word + "ی قبلی") {
-                        Text(
-                            AssetTrades.dealTitle(d) + " · پرداخت‌شده " + Fa.toman(p) + (if (d.target > 0) " از " + Fa.toman(d.target) else ""),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        if (d.target <= 0) androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            androidx.compose.material3.Checkbox(checked = lastFor[d.id] == true, onCheckedChange = { lastFor[d.id] = it })
-                            Text("این آخرین پرداخت بود")
-                        }
-                        Button(onClick = {
-                            scope.launch { AssetTrades.continueDeal(ctx, tx, d, lastFor[d.id] == true); onDone() }
-                        }, modifier = Modifier.fillMaxWidth()) { Text("این پرداخت هم برای همین " + word + " است") }
-                    }
-                }
-                // ---- معامله‌ی تازه
-                FormBlock(fb++, if (open.isEmpty()) (if (buy) "چه خریدی؟" else "چه فروختی؟") else word + "ی تازه") {
-                    if (avail.isEmpty()) Text("دلار، سکه یا طلایی در دارایی‌ها ثبت نشده.")
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        avail.forEach { k -> FilterChip(selected = kind == k, onClick = { kind = k }, label = { Text(Prices.names[k] ?: k) }) }
-                    }
-                    if (!buy && held != null) Text(
-                        "داری: " + AssetTrades.label(kind, held.qty),
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    OutlinedTextField(
-                        value = qtyText, onValueChange = { qtyText = Fa.toEn(it).filter { c -> c.isDigit() || c == '.' }.take(12) },
-                        label = { Text("تعداد کل (" + AssetTrades.unit(kind) + ")") }, singleLine = true, isError = tooMany,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        supportingText = { if (tooMany) Text("بیشتر از مقداری است که داری") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    MoneyField(
-                        targetM, "مبلغ کل (اختیاری)", Modifier.fillMaxWidth(),
-                        hint = { r ->
-                            if (r != null && r > 0) (if (targetM.rialUnit) "= " + Fa.toman(r) + " · " else "") + "وقتی پرداخت‌ها به این مبلغ برسد، خودش بسته می‌شود"
-                            else "اگر در چند انتقال پرداخت می‌کنی، بزن تا خودش بسته شود؛ اگر نه، آخرین پرداخت را تیک بزن"
-                        }
-                    )
-                    if (target <= 0) androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                        androidx.compose.material3.Checkbox(checked = lastNew, onCheckedChange = { lastNew = it })
-                        Text("همین یک پرداخت است (تمام شد)")
-                    }
-                    if (qty != null) {
-                        val totalGuess = if (target > 0) target else tx.amount
-                        Text(
-                            "هر " + AssetTrades.unit(kind) + " حدود " + Fa.toman((totalGuess / qty).toLong()),
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+    val accent = Color(0xFF00897B)
+    ColorDialog(
+        title = word + " · " + Fa.toman(tx.amount),
+        subtitle = if (buy) "این برداشت خرج حساب نمی‌شود؛ به دارایی‌هایت اضافه می‌شود" else "این واریز درآمد حساب نمی‌شود؛ از دارایی‌هایت کم می‌شود",
+        accent = accent, okText = word + "ی تازه", okEnabled = ok,
+        onOk = { scope.launch { AssetTrades.startDeal(ctx, tx, kind, qty!!, target, lastNew && target <= 0); onDone() } },
+        onDismiss = onDismiss
+    ) {
+        // ---- ادامه‌ی معامله‌ی باز
+        open.forEach { d ->
+            val p = trades.filter { it.dealId == d.id }.sumOf { it.total }
+            FormLine(Icons.Outlined.EventRepeat, Color(0xFF6D4C41), "ادامه‌ی " + word + "ی قبلی", null) {
                 Text(
-                    if (buy) "این برداشت خرج حساب نمی‌شود؛ به دارایی‌هایت اضافه می‌شود."
-                    else "این واریز درآمد حساب نمی‌شود؛ از دارایی‌هایت کم می‌شود. سود فروش جزو درآمد نمی‌آید.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    AssetTrades.dealTitle(d) + " · پرداخت‌شده " + Fa.toman(p) + (if (d.target > 0) " از " + Fa.toman(d.target) else ""),
+                    fontWeight = FontWeight.SemiBold
                 )
+                if (d.target <= 0) androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    androidx.compose.material3.Checkbox(checked = lastFor[d.id] == true, onCheckedChange = { lastFor[d.id] = it })
+                    Text("این آخرین پرداخت بود")
+                }
+                OutlinedButton(onClick = {
+                    scope.launch { AssetTrades.continueDeal(ctx, tx, d, lastFor[d.id] == true); onDone() }
+                }, modifier = Modifier.fillMaxWidth()) { Text("این پرداخت هم برای همین " + word + " است") }
             }
-        },
-        confirmButton = {
-            Button(enabled = ok, onClick = {
-                scope.launch { AssetTrades.startDeal(ctx, tx, kind, qty!!, target, lastNew && target <= 0); onDone() }
-            }) { Text(word + "ی تازه") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
-    )
+        }
+        // ---- معامله‌ی تازه
+        FormLine(Icons.Outlined.Category, Color(0xFF5E35B1), if (buy) "چه خریدی؟" else "چه فروختی؟", if (!buy && held != null) "داری: " + AssetTrades.label(kind, held.qty) else null) {
+            if (avail.isEmpty()) Text("دلار، سکه یا طلایی در دارایی‌ها ثبت نشده.")
+            FormChips(avail.map { it to (Prices.names[it] ?: it) }, kind, accent) { kind = it }
+        }
+        FormLine(Icons.Outlined.FormatListNumbered, Color(0xFFC62828), "تعداد کل", AssetTrades.unit(kind)) {
+            FormText(
+                qtyText, { qtyText = Fa.toEn(it).filter { c -> c.isDigit() || c == '.' }.take(12) }, AssetTrades.unit(kind), accent,
+                decimal = true, isError = tooMany, error = if (tooMany) "بیشتر از مقداری است که داری" else qty?.let { q ->
+                    "هر " + AssetTrades.unit(kind) + " حدود " + Fa.toman(((if (target > 0) target else tx.amount) / q).toLong())
+                }
+            )
+        }
+        FormLine(Icons.Outlined.AttachMoney, Color(0xFF2E7D32), "مبلغ کل", "اختیاری", last = target > 0) {
+            FormMoney(targetM, accent, hint = { r ->
+                if (r != null && r > 0) (if (targetM.rialUnit) "= " + Fa.toman(r) + " · " else "") + "به این مبلغ برسد، خودش بسته می‌شود"
+                else "اگر در چند انتقال پرداخت می‌کنی"
+            })
+        }
+        if (target <= 0) FormSwitch("همین یک پرداخت است", "معامله همین حالا بسته می‌شود", lastNew, accent) { lastNew = it }
+    }
 }
 
 /** معامله‌های باز (در تب دارایی، زیر سرمایه‌گذاری) با دکمه‌ی «تمام شد» */

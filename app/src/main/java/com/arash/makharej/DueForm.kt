@@ -151,10 +151,10 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
                         Icons.Outlined.Edit, Color(0xFF5E35B1),
                         when (kind) { 1 -> "در وجه"; 2 -> "از طرف"; else -> "عنوان" },
                         when (kind) { 1 -> "چک برای چه کسی؟"; 2 -> "چه کسی چک داده؟"; 0 -> "مثلا وام مسکن"; else -> "مثلا اجاره" }
-                    ) { Box2(title, { title = it.take(40) }, "بزن و بنویس", accent) }
+                    ) { FormText(title, { title = it.take(40) }, "بزن و بنویس", accent) }
 
                     FormLine(Icons.Outlined.AttachMoney, Color(0xFF2E7D32), if (kind == 0) "مبلغ هر قسط" else if (isCheck) "مبلغ چک" else "مبلغ", null) {
-                        MoneyBox(money, accent)
+                        FormMoney(money, accent)
                     }
 
                     FormLine(
@@ -162,7 +162,7 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
                         if (isCheck) "تاریخ چک" else "سررسید بعدی",
                         if (isCheck) "روز وصول" else "قسطی که هنوز نداده‌ای"
                     ) {
-                        PickBox(
+                        FormPick(
                             date?.let { Fa.toFa(it[2].toString()) + " " + Fa.monthName(it[0] * 100 + it[1]).substringBefore(" ") + " " + Fa.toFa(it[0].toString()) },
                             "انتخاب تاریخ", accent, Icons.Outlined.CalendarMonth
                         ) { pickDate = true }
@@ -186,7 +186,7 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
                             ) {
                                 Text("هر", fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.width(8.dp))
-                                Box2(periodText, { periodText = Fa.toEn(it).filter { c -> c.isDigit() }.take(2) }, "۳", accent, number = true, modifier = Modifier.width(72.dp), center = true)
+                                FormText(periodText, { periodText = Fa.toEn(it).filter { c -> c.isDigit() }.take(2) }, "۳", accent, number = true, modifier = Modifier.width(72.dp), center = true)
                                 Spacer(Modifier.width(8.dp))
                                 Text("ماه یک بار", fontWeight = FontWeight.Bold)
                             }
@@ -196,8 +196,8 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
 
                     if (kind == 0) FormLine(Icons.Outlined.FormatListNumbered, Color(0xFFC62828), "اقساط", if (total != null && left != null && total < left) "کل کمتر از مانده است" else null) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Box2(leftText, { leftText = Fa.toEn(it).filter { c -> c.isDigit() }.take(3) }, "مانده", accent, number = true, modifier = Modifier.weight(1f))
-                            Box2(totalText, { totalText = Fa.toEn(it).filter { c -> c.isDigit() }.take(3) }, "کل (اختیاری)", accent, number = true, modifier = Modifier.weight(1f))
+                            FormText(leftText, { leftText = Fa.toEn(it).filter { c -> c.isDigit() }.take(3) }, "مانده", accent, number = true, modifier = Modifier.weight(1f))
+                            FormText(totalText, { totalText = Fa.toEn(it).filter { c -> c.isDigit() }.take(3) }, "کل (اختیاری)", accent, number = true, modifier = Modifier.weight(1f))
                         }
                     }
 
@@ -206,7 +206,7 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
                         if (kind == 2) "به حساب" else "از حساب", "برای یادآوری و تیک خودکار"
                     ) {
                         Box {
-                            PickBox(bank?.let { Banks.name(it) }, "انتخاب بانک", accent, null, leading = bank?.let { { BankBadge(it, 24.dp) } }) { bankMenu = true }
+                            FormPick(bank?.let { Banks.name(it) }, "انتخاب بانک", accent, null, leading = bank?.let { { BankBadge(it, 24.dp) } }) { bankMenu = true }
                             DropdownMenu(expanded = bankMenu, onDismissRequest = { bankMenu = false }) {
                                 DropdownMenuItem(text = { Text("مشخص نیست") }, onClick = { bank = null; bankMenu = false })
                                 Banks.all(ctx).filter { it != Banks.MANUAL }.forEach { b ->
@@ -217,7 +217,7 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
                     }
 
                     FormLine(Icons.Outlined.Notes, Color(0xFF757575), "توضیح", "اختیاری", last = true) {
-                        Box2(note, { note = it.take(80) }, if (isCheck) "مثلا شماره‌ی چک" else "یادداشت", accent)
+                        FormText(note, { note = it.take(80) }, if (isCheck) "مثلا شماره‌ی چک" else "یادداشت", accent)
                     }
 
                     // ---- خلاصه
@@ -264,7 +264,7 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
 }
 
 @Composable
-private fun HeadChoice(title: String, sub: String, icon: ImageVector, selected: Boolean, accent: Color, modifier: Modifier, onClick: () -> Unit) {
+fun HeadChoice(title: String, sub: String, icon: ImageVector, selected: Boolean, accent: Color, modifier: Modifier, onClick: () -> Unit) {
     val fg = if (selected) accent else Color.White
     Column(
         modifier.clip(RoundedCornerShape(16.dp)).background(if (selected) Color.White else Color.White.copy(alpha = 0.15f))
@@ -279,7 +279,7 @@ private fun HeadChoice(title: String, sub: String, icon: ImageVector, selected: 
 
 /** یک ردیف: عنوان و آیکون سمت راست، جای پر کردن سمت چپ */
 @Composable
-private fun FormLine(icon: ImageVector, iconColor: Color, label: String, sub: String?, last: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
+fun FormLine(icon: ImageVector, iconColor: Color, label: String, sub: String?, last: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.width(128.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(iconColor.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
@@ -297,7 +297,7 @@ private fun FormLine(icon: ImageVector, iconColor: Color, label: String, sub: St
 }
 
 @Composable
-private fun boxColors(accent: Color) = OutlinedTextFieldDefaults.colors(
+fun formBoxColors(accent: Color) = OutlinedTextFieldDefaults.colors(
     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
     focusedContainerColor = MaterialTheme.colorScheme.surface,
     focusedBorderColor = accent,
@@ -306,31 +306,37 @@ private fun boxColors(accent: Color) = OutlinedTextFieldDefaults.colors(
 
 /** کادر خالی با راهنمای کم‌رنگ داخلش */
 @Composable
-private fun Box2(
+fun FormText(
     value: String, onChange: (String) -> Unit, placeholder: String, accent: Color,
-    number: Boolean = false, modifier: Modifier = Modifier.fillMaxWidth(), center: Boolean = false
+    number: Boolean = false, modifier: Modifier = Modifier.fillMaxWidth(), center: Boolean = false,
+    isError: Boolean = false, decimal: Boolean = false, error: String? = null
 ) {
     OutlinedTextField(
-        value = value, onValueChange = onChange, singleLine = true, modifier = modifier,
+        value = value, onValueChange = onChange, singleLine = true, modifier = modifier, isError = isError,
+        supportingText = error?.let { e -> { Text(e) } },
         placeholder = { Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f), modifier = if (center) Modifier.fillMaxWidth() else Modifier, textAlign = if (center) TextAlign.Center else null) },
         textStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, textAlign = if (center) TextAlign.Center else TextAlign.Start),
-        shape = RoundedCornerShape(13.dp), colors = boxColors(accent),
-        keyboardOptions = if (number) KeyboardOptions(keyboardType = KeyboardType.Number) else KeyboardOptions.Default
+        shape = RoundedCornerShape(13.dp), colors = formBoxColors(accent),
+        keyboardOptions = when {
+            decimal -> KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            number -> KeyboardOptions(keyboardType = KeyboardType.Number)
+            else -> KeyboardOptions.Default
+        }
     )
 }
 
 /** مبلغ با دکمه‌ی تومان ⇄ ریال */
 @Composable
-private fun MoneyBox(state: MoneyState, accent: Color) {
+fun FormMoney(state: MoneyState, accent: Color, placeholder: String = "مبلغ", hint: ((Long?) -> String?)? = null) {
     val ctx = LocalContext.current
     val r = state.rial
     OutlinedTextField(
         value = state.text,
         onValueChange = { state.text = Fa.toEn(it).filter { c -> c.isDigit() }.take(if (state.rialUnit) 15 else 14) },
         singleLine = true, modifier = Modifier.fillMaxWidth(),
-        placeholder = { Text("مبلغ", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)) },
+        placeholder = { Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)) },
         textStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-        shape = RoundedCornerShape(13.dp), colors = boxColors(accent),
+        shape = RoundedCornerShape(13.dp), colors = formBoxColors(accent),
         suffix = {
             Surface(
                 onClick = { state.switchUnit(!state.rialUnit); Money.setRialUnit(ctx, state.rialUnit) },
@@ -342,14 +348,14 @@ private fun MoneyBox(state: MoneyState, accent: Color) {
                 )
             }
         },
-        supportingText = if (r != null) ({ Text(Fa.toman(r)) }) else null,
+        supportingText = (hint?.invoke(r) ?: r?.let { Fa.toman(it) })?.let { t -> { Text(t) } },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
     )
 }
 
 /** کادر انتخابی (تاریخ / بانک) */
 @Composable
-private fun PickBox(value: String?, placeholder: String, accent: Color, icon: ImageVector?, leading: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
+fun FormPick(value: String?, placeholder: String, accent: Color, icon: ImageVector?, leading: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(13.dp))
             .background(if (value != null) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
@@ -421,3 +427,94 @@ private fun Summary(kind: Int, amount: Long?, date: IntArray?, period: Int?, lef
         }
     }
 }
+
+/**
+ * پنجره‌ی فرم رنگی (مثل فرم قسط): سربرگ رنگی با عنوان، زیرعنوان و (اختیاری) گزینه‌های بالای فرم،
+ * ردیف‌های فرم در وسط (قابل اسکرول) و دکمه‌های ثبت/انصراف پایین.
+ */
+@Composable
+fun ColorDialog(
+    title: String, subtitle: String?, accent: Color,
+    okText: String?, okEnabled: Boolean, onOk: () -> Unit, onDismiss: () -> Unit,
+    header: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? = null,
+    cancelText: String = "انصراف",
+    onDelete: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            Modifier.fillMaxWidth(0.94f).heightIn(max = 760.dp),
+            shape = RoundedCornerShape(30.dp), color = MaterialTheme.colorScheme.surface
+        ) {
+            Column {
+                Column(Modifier.fillMaxWidth().background(accent).padding(start = 22.dp, end = 22.dp, top = 20.dp, bottom = 16.dp)) {
+                    Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    if (subtitle != null) Text(subtitle, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
+                    if (header != null) {
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), content = header)
+                    }
+                }
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 4.dp), content = content)
+                Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 10.dp, bottom = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (okText != null) Button(
+                        enabled = okEnabled, modifier = Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White, disabledContainerColor = accent.copy(alpha = 0.35f), disabledContentColor = Color.White),
+                        onClick = onOk
+                    ) { Text(okText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium) }
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.height(52.dp).let { if (okText == null) it.weight(1f) else it }, shape = RoundedCornerShape(16.dp)) { Text(cancelText) }
+                }
+                if (onDelete != null) androidx.compose.material3.TextButton(
+                    onClick = onDelete, modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp)
+                ) { Text("حذف", color = MaterialTheme.colorScheme.error) }
+            }
+        }
+    }
+}
+
+/** ردیف کلید روشن/خاموش با توضیح */
+@Composable
+fun FormSwitch(title: String, sub: String?, checked: Boolean, accent: Color, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.Bold)
+            if (sub != null) Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onChange, colors = SwitchDefaults.colors(checkedTrackColor = accent))
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+}
+
+/** گزینه‌های تک‌انتخابی به شکل قرص‌های رنگی */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun <T> FormChips(options: List<Pair<T, String>>, selected: T?, accent: Color, onPick: (T) -> Unit) {
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        options.forEach { (v, label) ->
+            val on = v == selected
+            Text(
+                label,
+                Modifier.clip(RoundedCornerShape(50)).background(if (on) accent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .border(1.dp, if (on) accent else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))
+                    .clickable { onPick(v) }.padding(horizontal = 12.dp, vertical = 6.dp),
+                color = if (on) Color.White else MaterialTheme.colorScheme.onSurface,
+                fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, style = MaterialTheme.typography.labelLarge
+            )
+        }
+    }
+}
+
+/** متن راهنمای کوچک داخل فرم */
+@Composable
+fun FormInfo(text: String, accent: Color) {
+    val shape = RoundedCornerShape(16.dp)
+    Text(
+        text,
+        Modifier.fillMaxWidth().padding(vertical = 10.dp).clip(shape).background(accent.copy(alpha = 0.06f))
+            .border(1.dp, accent.copy(alpha = 0.22f), shape).padding(12.dp),
+        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+/** «۲۶ آذر ۱۴۰۵» */
+fun jDateText(d: IntArray) = Fa.toFa(d[2].toString()) + " " + Fa.monthName(d[0] * 100 + d[1]) + " " + Fa.toFa(d[0].toString())

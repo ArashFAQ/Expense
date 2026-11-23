@@ -52,6 +52,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.material.icons.outlined.Notes
 
 val LoanColor = Color(0xFF7E57C2)
 val DebtColor = Color(0xFFEF6C00)
@@ -194,48 +198,27 @@ fun LoanPersonDialog(
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
-    var text by remember { mutableStateOf("") }
+    val money = rememberMoney(null)
     var note by remember { mutableStateOf("") }
-    val v = Fa.toEn(text).filter { it.isDigit() }.toLongOrNull()?.takeIf { it > 0 }
+    val v = money.rial?.takeIf { it > 0 }
     val ok = name.isNotBlank() && (!askAmount || v != null)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column {
-                var fb = 0
-                FormBlock(fb++, label) {
-                OutlinedTextField(
-                    value = name, onValueChange = { name = it.take(40) }, singleLine = true,
-                    label = { Text(label) }, modifier = Modifier.fillMaxWidth()
-                )
-                val sug = persons.filter { name.isBlank() || (it.contains(name.trim(), true) && it != name.trim()) }.take(8)
-                if (sug.isNotEmpty()) {
-                    FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        sug.forEach { p -> AssistChip(onClick = { name = p }, label = { Text(p) }) }
-                    }
-                }
-                }
-                if (askAmount) {
-                    FormBlock(fb++, "مبلغ") { OutlinedTextField(
-                        value = text, onValueChange = { text = Fa.toEn(it).filter { c -> c.isDigit() }.take(13) },
-                        label = { Text("مبلغ") }, suffix = { Text("تومان") }, singleLine = true,
-                        supportingText = { if (v != null) Text(Fa.toman(v * 10)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
-                    ) }
-                    FormBlock(fb++) { OutlinedTextField(
-                        value = note, onValueChange = { note = it.take(80) }, singleLine = true,
-                        label = { Text("توضیح (اختیاری)") }, modifier = Modifier.fillMaxWidth()
-                    ) }
-                }
+    val accent = Color(0xFF6A1B9A)
+    ColorDialog(
+        title = title, subtitle = "خانه‌های سفید را پر کن", accent = accent,
+        okText = "ثبت", okEnabled = ok, onOk = { onOk(name.trim(), v ?: 0, note.trim()) }, onDismiss = onDismiss
+    ) {
+        FormLine(Icons.Outlined.Person, Color(0xFF5E35B1), label.removeSuffix("؟").removeSuffix(" ") + "؟", null, last = !askAmount) {
+            FormText(name, { name = it.take(40) }, "اسم", accent)
+            val sug = persons.filter { name.isBlank() || (it.contains(name.trim(), true) && it != name.trim()) }.take(8)
+            if (sug.isNotEmpty()) FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                sug.forEach { p -> AssistChip(onClick = { name = p }, label = { Text(p) }) }
             }
-        },
-        confirmButton = {
-            Button(enabled = ok, onClick = { onOk(name.trim(), (v ?: 0) * 10, note.trim()) }) { Text("ثبت") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
-    )
+        }
+        if (askAmount) {
+            FormLine(Icons.Outlined.AttachMoney, Color(0xFF2E7D32), "مبلغ", null) { FormMoney(money, accent) }
+            FormLine(Icons.Outlined.Notes, Color(0xFF757575), "توضیح", "اختیاری", last = true) { FormText(note, { note = it.take(80) }, "یادداشت", accent) }
+        }
+    }
 }
 
 /** دیالوگ وارد کردن مبلغ (تومان) */

@@ -52,6 +52,16 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material.icons.outlined.CardGiftcard
+import androidx.compose.material.icons.outlined.Notes
+import androidx.compose.ui.graphics.Color
 
 /** کارت هدیه: حساب بدون پیامک. دریافت = درآمد، هر خرید = خرج؛ مانده = مبلغ کارت − خرج‌ها */
 @Entity
@@ -188,52 +198,34 @@ fun GiftCardAddDialog(cats: List<Category>, onDismiss: () -> Unit) {
     val expenseCats = cats.filter { !it.income }
     var name by remember { mutableStateOf("") }
     var bank by remember { mutableStateOf(Banks.MELLAT) }
-    var amount by remember { mutableStateOf("") }
+    val money = rememberMoney(null)
     var inCat by remember { mutableStateOf(incomeCats.firstOrNull { it.icon == "work" || it.name == "حقوق" }?.id) }
     var pin1 by remember { mutableStateOf("") }
     var pin2 by remember { mutableStateOf("") }
     var spentAll by remember { mutableStateOf(false) }
     var outCat by remember { mutableStateOf<Long?>(null) }
-    val rial = parseToman(amount)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("کارت هدیه") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                FormBlock(0, "کارت") {
-                    OutlinedTextField(name, { name = it }, label = { Text("اسم (مثلا هدیه‌ی آبان)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(6.dp))
-                    BankPickRow(bank) { bank = it }
-                    Spacer(Modifier.height(6.dp))
-                    OutlinedTextField(
-                        amount, { amount = it }, label = { Text("مبلغ کارت (تومان)") }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()
-                    )
-                    rial?.let { Text(Fa.toman(it), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                }
-                FormBlock(1, "بابت (دسته‌ی درآمد)") { CatDropdown(incomeCats, inCat) { inCat = it } }
-                FormBlock(0, "رمزها (اختیاری)") {
-                    Text("فقط روی همین گوشی و رمزنگاری‌شده نگه داشته می‌شوند و در فایل پشتیبان نمی‌آیند.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedTextField(pin1, { pin1 = it }, label = { Text("رمز اول") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(pin2, { pin2 = it }, label = { Text("رمز دوم") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                }
-                FormBlock(1) {
-                    Row(Modifier.clickable { spentAll = !spentAll }, verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(spentAll, { spentAll = it })
-                        Text("همه‌اش را یک‌جا خرج کردم")
-                    }
-                    if (spentAll) CatDropdown(expenseCats, outCat) { outCat = it }
-                }
+    val rial = money.rial?.takeIf { it > 0 }
+    val accent = Color(0xFFD81B60)
+    ColorDialog(
+        title = "کارت هدیه", subtitle = "کارتی که بابت حقوق یا هدیه گرفته‌ای", accent = accent,
+        okText = "ثبت کارت", okEnabled = rial != null && name.isNotBlank(),
+        onOk = { val r = rial ?: return@ColorDialog; scope.launch { GiftCards.add(ctx, name, bank, r, inCat, pin1, pin2, outCat, spentAll); onDismiss() } },
+        onDismiss = onDismiss
+    ) {
+        FormLine(Icons.Outlined.Edit, Color(0xFF5E35B1), "اسم کارت", "مثلا هدیه‌ی آبان") { FormText(name, { name = it }, "بزن و بنویس", accent) }
+        FormLine(Icons.Outlined.AccountBalance, Color(0xFF1565C0), "بانک", null) { BankPickRow(bank) { bank = it } }
+        FormLine(Icons.Outlined.AttachMoney, Color(0xFF2E7D32), "مبلغ کارت", null) { FormMoney(money, accent) }
+        FormLine(Icons.Outlined.Category, Color(0xFFEF6C00), "بابت", "دسته‌ی درآمد") { CatDropdown(incomeCats, inCat) { inCat = it } }
+        FormLine(Icons.Outlined.Lock, Color(0xFF757575), "رمزها", "اختیاری") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FormText(pin1, { pin1 = it }, "رمز اول", accent, number = true, modifier = Modifier.weight(1f))
+                FormText(pin2, { pin2 = it }, "رمز دوم", accent, number = true, modifier = Modifier.weight(1f))
             }
-        },
-        confirmButton = {
-            TextButton(enabled = rial != null && name.isNotBlank(), onClick = {
-                val r = rial ?: return@TextButton
-                scope.launch { GiftCards.add(ctx, name, bank, r, inCat, pin1, pin2, outCat, spentAll); onDismiss() }
-            }) { Text("ثبت") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
-    )
+        }
+        FormSwitch("همه‌اش را یک‌جا خرج کردم", "خرجش هم همین حالا ثبت می‌شود", spentAll, accent) { spentAll = it }
+        if (spentAll) FormLine(Icons.Outlined.ShoppingCart, Color(0xFFC62828), "دسته‌ی خرج", null, last = true) { CatDropdown(expenseCats, outCat) { outCat = it } }
+        FormInfo("رمزها فقط روی همین گوشی و رمزنگاری‌شده نگه داشته می‌شوند و در فایل پشتیبان نمی‌آیند.", accent)
+    }
 }
 
 /** تب خرج‌ها ← «+ خرج از کارت هدیه» (فقط وقتی کارت فعال هست) */
@@ -242,50 +234,39 @@ fun GiftSpendDialog(cards: List<GiftCard>, txs: List<Tx>, cats: List<Category>, 
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var sel by remember { mutableStateOf(preset ?: cards.firstOrNull()) }
-    var amount by remember { mutableStateOf("") }
+    val money = rememberMoney(null)
     var cat by remember { mutableStateOf<Long?>(null) }
     var note by remember { mutableStateOf("") }
-    val rial = parseToman(amount)
+    val rial = money.rial?.takeIf { it > 0 }
     val bal = sel?.let { GiftCards.balance(it, txs) } ?: 0L
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("خرج از کارت هدیه") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                if (cards.size > 1 && preset == null) FormBlock(0, "کدام کارت؟") {
-                    cards.forEach { c ->
-                        Row(Modifier.fillMaxWidth().clickable { sel = c }, verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(sel?.id == c.id, { sel = c })
-                            BankBadge(c.bank, 24.dp)
-                            Spacer(Modifier.width(6.dp))
-                            Text(c.name, Modifier.weight(1f))
-                            Text(Fa.toman(GiftCards.balance(c, txs)), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                } else sel?.let { c ->
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
-                        BankBadge(c.bank, 28.dp)
-                        Spacer(Modifier.width(8.dp))
-                        Text(c.name + " · مانده " + Fa.toman(bal))
-                    }
+    val accent = Color(0xFFD81B60)
+    ColorDialog(
+        title = "خرج از کارت هدیه", subtitle = sel?.let { it.name + " · مانده " + Fa.toman(bal) }, accent = accent,
+        okText = "ثبت خرج", okEnabled = rial != null && sel != null,
+        onOk = {
+            val r = rial ?: return@ColorDialog
+            val c = sel ?: return@ColorDialog
+            scope.launch { GiftCards.spend(ctx, c, r, cat, note); onDismiss() }
+        },
+        onDismiss = onDismiss
+    ) {
+        if (cards.size > 1 && preset == null) FormLine(Icons.Outlined.CardGiftcard, Color(0xFFD81B60), "کدام کارت؟", null) {
+            cards.forEach { c ->
+                Row(Modifier.fillMaxWidth().clickable { sel = c }, verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(sel?.id == c.id, { sel = c })
+                    BankBadge(c.bank, 24.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(c.name, Modifier.weight(1f))
+                    Text(Fa.toman(GiftCards.balance(c, txs)), style = MaterialTheme.typography.labelSmall)
                 }
-                FormBlock(1, "مبلغ (تومان)") {
-                    OutlinedTextField(amount, { amount = it }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                    if (rial != null && rial > bal) Text("بیشتر از مانده‌ی کارت است.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
-                }
-                FormBlock(0, "دسته") { CatDropdown(cats.filter { !it.income }, cat) { cat = it } }
-                FormBlock(1, "توضیح (اختیاری)") { OutlinedTextField(note, { note = it }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
             }
-        },
-        confirmButton = {
-            TextButton(enabled = rial != null && sel != null, onClick = {
-                val r = rial ?: return@TextButton
-                val c = sel ?: return@TextButton
-                scope.launch { GiftCards.spend(ctx, c, r, cat, note); onDismiss() }
-            }) { Text("ثبت") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
-    )
+        }
+        FormLine(Icons.Outlined.AttachMoney, Color(0xFF2E7D32), "مبلغ", null) {
+            FormMoney(money, accent, hint = { r -> if (r != null && r > bal) "بیشتر از مانده‌ی کارت است" else r?.let { Fa.toman(it) } })
+        }
+        FormLine(Icons.Outlined.Category, Color(0xFFEF6C00), "دسته", null) { CatDropdown(cats.filter { !it.income }, cat) { cat = it } }
+        FormLine(Icons.Outlined.Notes, Color(0xFF757575), "توضیح", "اختیاری", last = true) { FormText(note, { note = it }, "یادداشت", accent) }
+    }
 }
 
 /** دارایی ← روی کارت هدیه: مانده، رمزها، خرج‌ها، تصحیح مانده */
