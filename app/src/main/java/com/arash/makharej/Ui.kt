@@ -1220,6 +1220,7 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
     val money = rememberMoney(null)
     var sel by remember { mutableStateOf<Long?>(null) }
     var note by remember { mutableStateOf("") }
+    var newCat by remember { mutableStateOf(false) }
     val amount: Long? = money.rial?.takeIf { it > 0 }
     var date by remember { mutableStateOf(Jalali.fromMillis(System.currentTimeMillis())) }
     var pickDate by remember { mutableStateOf(false) }
@@ -1264,19 +1265,10 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
         FormLine(Icons.Outlined.CalendarMonth, Color(0xFFEF6C00), "تاریخ", null) {
             FormPick((if (isToday) "امروز، " else "") + jDateText(date), "انتخاب تاریخ", accent, Icons.Outlined.CalendarMonth) { pickDate = true }
         }
-        FormLine(Icons.Outlined.Category, Color(0xFF5E35B1), "دسته", if (isExpense) null else "اختیاری") {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                cats.filter { it.income == !isExpense }.forEach { c ->
-                    val col = c.uiColor()
-                    FilterChip(
-                        selected = sel == c.id,
-                        onClick = { sel = if (sel == c.id) null else c.id },
-                        label = { Text(c.name) },
-                        leadingIcon = { Icon(c.uiIcon(), null, tint = col, modifier = Modifier.size(18.dp)) }
-                    )
-                }
-            }
-        }
+        // دسته: عرض کامل، شبکه‌ی مرتب ۴تایی (مثل صفحه‌ی نوتیفیکیشن)
+        FormHeading(Icons.Outlined.Category, Color(0xFF5E35B1), "دسته", if (isExpense) "روی یکی بزن" else "اختیاری")
+        CategoryCircles(cats.filter { it.income == !isExpense }, sel, accent, onAdd = { newCat = true }) { sel = if (sel == it) null else it }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
         FormLine(Icons.Outlined.Notes, Color(0xFF757575), "توضیح", "اختیاری", last = true) {
             FormText(note, { note = it }, "یادداشت", accent)
             NoteSuggestions(stats, sel, note) { n, c ->
@@ -1289,6 +1281,7 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
     if (pickDate) {
         JalaliDateDialog(date, onPick = { date = it; pickDate = false }, onDismiss = { pickDate = false })
     }
+    if (newCat) NewCategoryDialog(cats, income = !isExpense, db = db, onCreated = { id -> newCat = false; sel = id }) { newCat = false }
 }
 
 @Composable

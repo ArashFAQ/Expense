@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.material.icons.outlined.Add
 
 /**
  * فرم چک یا قسط. قسط (و پرداخت تکراری) و چک فرم‌های جدا دارند:
@@ -530,3 +531,64 @@ fun onAccent(c: Color): Color = if (c.luminance() > 0.5f) Color(0xFF1C1B1F) else
 
 /** رنگ accent برای متن روی سفید (رنگ‌های خیلی روشن تیره می‌شوند تا خوانا باشند) */
 fun accentInk(c: Color): Color = if (c.luminance() > 0.5f) Color(0xFF1C1B1F) else c
+
+/** عنوان بخشِ تمام‌عرض (مثل «دسته») با همان آیکون رنگی ردیف‌ها */
+@Composable
+fun FormHeading(icon: ImageVector, iconColor: Color, label: String, sub: String?) {
+    Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(iconColor.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = iconColor, modifier = Modifier.size(19.dp))
+        }
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(label, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+            if (sub != null) Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** دسته‌ها در شبکه‌ی ۴تایی: دایره‌ی رنگی کم‌رنگ + اسم؛ انتخاب‌شده پررنگ با حلقه */
+@Composable
+fun CategoryCircles(list: List<Category>, sel: Long?, accent: Color, onAdd: (() -> Unit)? = null, onPick: (Long) -> Unit) {
+    val cols = 4
+    val cells: List<Category?> = list + if (onAdd != null) listOf(null) else emptyList()
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        cells.chunked(cols).forEach { row ->
+            Row(Modifier.fillMaxWidth()) {
+                row.forEach { c ->
+                    Column(
+                        Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
+                            .clickable { if (c == null) onAdd?.invoke() else onPick(c.id) }.padding(vertical = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (c == null) {
+                            Box(
+                                Modifier.size(50.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                                    .border(1.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f), androidx.compose.foundation.shape.CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) { Icon(Icons.Outlined.Add, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            Text("دسته‌ی جدید", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                        } else {
+                            val on = sel == c.id
+                            val cc = c.uiColor()
+                            Box(
+                                Modifier.size(56.dp).let {
+                                    if (on) it.border(2.dp, accentInk(cc).copy(alpha = if (cc.luminance() > 0.5f) 0.5f else 1f), androidx.compose.foundation.shape.CircleShape) else it
+                                }.padding(3.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                                    .background(if (on) cc else cc.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) { Icon(c.uiIcon(), null, tint = if (on) onAccent(cc) else cc, modifier = Modifier.size(24.dp)) }
+                            Text(
+                                c.name, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, maxLines = 2,
+                                fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                                color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 2.dp, start = 2.dp, end = 2.dp)
+                            )
+                        }
+                    }
+                }
+                repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}

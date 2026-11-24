@@ -146,76 +146,135 @@ fun JalaliDateDialog(
     if (d > len) d = len
     fun key(yy: Int, mm: Int, dd: Int) = yy * 10000 + mm * 100 + dd
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("انتخاب تاریخ") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { y = today[0]; m = today[1]; d = today[2] }) { Text("امروز") }
-                    if (allowFuture) OutlinedButton(onClick = {
-                        val n = Dues.shiftMonths(today, 1)
-                        y = n[0]; m = n[1]; d = minOf(n[2], JalaliCal.monthLength(n[0], n[1]))
-                    }) { Text("ماه بعد") }
-                    else OutlinedButton(onClick = {
-                        val j = Jalali.fromMillis(System.currentTimeMillis() - 86_400_000L)
-                        y = j[0]; m = j[1]; d = j[2]
-                    }) { Text("دیروز") }
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { y-- }) { Icon(Icons.Filled.KeyboardArrowRight, "سال قبل") }
+    val primary = MaterialTheme.colorScheme.primary
+    val onPrimary = MaterialTheme.colorScheme.onPrimary
+    // روز هفته‌ی اول ماه (شنبه = ۰)
+    fun weekday(yy: Int, mm: Int, dd: Int): Int {
+        val c = java.util.Calendar.getInstance().apply { timeInMillis = JalaliCal.toMillis(yy, mm, dd, 12, 0) }
+        return c.get(java.util.Calendar.DAY_OF_WEEK) % 7
+    }
+    val dayNames = listOf("شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج‌شنبه", "جمعه")
+    val okEnabled = key(y, m, d) <= todayKey
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxWidth(0.94f), shape = RoundedCornerShape(30.dp), color = MaterialTheme.colorScheme.surface) {
+            Column {
+                // ---- سربرگ: تاریخ انتخاب‌شده
+                Column(Modifier.fillMaxWidth().background(primary).padding(horizontal = 22.dp, vertical = 16.dp)) {
+                    Text("تاریخ انتخاب‌شده", color = onPrimary.copy(alpha = 0.85f), style = MaterialTheme.typography.labelMedium)
                     Text(
-                        Fa.toFa(y.toString()), Modifier.weight(1f),
-                        textAlign = TextAlign.Center, fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium
+                        dayNames[weekday(y, m, d)] + " " + Fa.toFa(d.toString()) + " " + Fa.monthName(y * 100 + m) + " " + Fa.toFa(y.toString()),
+                        color = onPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold
                     )
-                    IconButton(onClick = { y++ }, enabled = allowFuture || y < today[0]) { Icon(Icons.Filled.KeyboardArrowLeft, "سال بعد") }
                 }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    (1..12).forEach { mm ->
-                        val future = key(y, mm, 1) > todayKey
-                        FilterChip(
-                            selected = m == mm, enabled = !future,
-                            onClick = { m = mm },
-                            label = { Text(Fa.monthName(y * 100 + mm)) }
-                        )
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                    // ---- میان‌برها
+                    Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { y = today[0]; m = today[1]; d = today[2] }) { Text("امروز") }
+                        if (allowFuture) OutlinedButton(onClick = {
+                            val n = Dues.shiftMonths(today, 1)
+                            y = n[0]; m = n[1]; d = minOf(n[2], JalaliCal.monthLength(n[0], n[1]))
+                        }) { Text("ماه بعد") }
+                        else OutlinedButton(onClick = {
+                            val j = Jalali.fromMillis(System.currentTimeMillis() - 86_400_000L)
+                            y = j[0]; m = j[1]; d = j[2]
+                        }) { Text("دیروز") }
                     }
-                }
-                Spacer(Modifier.height(8.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    (1..len).forEach { dd ->
-                        val future = key(y, m, dd) > todayKey
-                        val sel = d == dd
-                        Box(
-                            Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(if (sel) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                .clickable(enabled = !future) { d = dd }
-                                .alpha(if (future) 0.3f else 1f),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    // ---- سال
+                    Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { y-- }) { Icon(Icons.Filled.KeyboardArrowRight, "سال قبل") }
+                        Text(
+                            Fa.toFa(y.toString()), Modifier.weight(1f),
+                            textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium
+                        )
+                        IconButton(onClick = { y++ }, enabled = allowFuture || y < today[0]) { Icon(Icons.Filled.KeyboardArrowLeft, "سال بعد") }
+                    }
+                    // ---- ماه‌ها: ۴ ستون هم‌اندازه
+                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        (1..12).chunked(4).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                row.forEach { mm ->
+                                    val future = key(y, mm, 1) > todayKey
+                                    val on = m == mm
+                                    Box(
+                                        Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(12.dp))
+                                            .background(
+                                                when {
+                                                    on -> primary
+                                                    future -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                                }
+                                            )
+                                            .clickable(enabled = !future) { m = mm },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            Fa.monthName(y * 100 + mm), maxLines = 1,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                                            color = when {
+                                                on -> onPrimary
+                                                future -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                                                else -> MaterialTheme.colorScheme.onSurface
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                    // ---- روزها: زیر روز هفته‌ی درست
+                    Row {
+                        listOf("ش", "ی", "د", "س", "چ", "پ", "ج").forEach {
                             Text(
-                                Fa.toFa(dd.toString()),
-                                color = if (sel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                it, Modifier.weight(1f), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
+                    val first = weekday(y, m, 1)
+                    val cells: List<Int?> = List(first) { null } + (1..len).toList()
+                    cells.chunked(7).forEach { week ->
+                        Row(Modifier.padding(vertical = 2.dp)) {
+                            week.forEach { dd ->
+                                Box(Modifier.weight(1f).height(44.dp), contentAlignment = Alignment.Center) {
+                                    if (dd != null) {
+                                        val future = key(y, m, dd) > todayKey
+                                        val on = d == dd
+                                        Box(
+                                            Modifier.size(40.dp).clip(CircleShape)
+                                                .background(if (on) primary else Color.Transparent)
+                                                .clickable(enabled = !future) { d = dd },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                Fa.toFa(dd.toString()),
+                                                fontWeight = if (on) FontWeight.Bold else FontWeight.SemiBold,
+                                                color = when {
+                                                    on -> onPrimary
+                                                    future -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
+                                                    else -> MaterialTheme.colorScheme.onSurface
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            repeat(7 - week.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        enabled = okEnabled, onClick = { onPick(intArrayOf(y, m, d)) },
+                        modifier = Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(16.dp)
+                    ) { Text("تأیید", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium) }
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.height(52.dp), shape = RoundedCornerShape(16.dp)) { Text("انصراف") }
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                enabled = key(y, m, d) <= todayKey,
-                onClick = { onPick(intArrayOf(y, m, d)) }
-            ) { Text("تأیید") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } }
-    )
+        }
+    }
 }
 
 // ================================================================ Search
