@@ -146,7 +146,7 @@ private fun SegItem(label: String, icon: ImageVector, on: Boolean, modifier: Mod
 // ---------------------------------------------------------------- محور مشترک
 
 /** عدد میلیون تومان با یک رقم اعشار: ۵۰٫۱ */
-private fun mil(rial: Long): String {
+internal fun mil(rial: Long): String {
     val m = rial / 10_000_000.0
     return Fa.toFa(String.format(Locale.US, "%.1f", m).removeSuffix(".0")).replace('.', '٫')
 }

@@ -78,6 +78,10 @@ import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.text.drawText
+import kotlin.math.roundToInt
 
 // ================================================================ prices (tgju)
 
@@ -256,9 +260,17 @@ object Wealth {
     }
 
     /** جمع دارایی هر ماه (آخرین مقدار دیده‌شده در آن ماه) */
-    fun saveSnapshot(ctx: Context, total: Long) {
+    fun saveSnapshot(ctx: Context, total: Long, banks: Long = 0, invest: Long = 0) {
         if (total <= 0) return
-        prefs(ctx).edit().putLong("nw_" + Jalali.currentYm(), total).apply()
+        val ym = Jalali.currentYm()
+        prefs(ctx).edit().putLong("nw_$ym", total).putLong("nwb_$ym", banks).putLong("nwi_$ym", invest).apply()
+    }
+
+    /** ریز یک ماه: (بانک‌ها، سرمایه‌گذاری) اگر ثبت شده باشد */
+    fun snapshotParts(ctx: Context, ym: Int): Pair<Long, Long>? {
+        val p = prefs(ctx)
+        if (!p.contains("nwb_$ym")) return null
+        return p.getLong("nwb_$ym", 0) to p.getLong("nwi_$ym", 0)
     }
 
     fun snapshots(ctx: Context): List<Pair<Int, Long>> =
@@ -349,7 +361,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
     val giftTotal = activeGifts.sumOf { GiftCards.balance(it, txs) }
     var giftOpen by remember { mutableStateOf<GiftCard?>(null) }
     val total = bankTotal + giftTotal + investTotal + stockTotal + loanTotal - debtTotal
-    LaunchedEffect(total) { Wealth.saveSnapshot(ctx, total) }
+    LaunchedEffect(total) { Wealth.saveSnapshot(ctx, total, bankTotal + giftTotal, investTotal + stockTotal) }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
@@ -401,7 +413,7 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                     val snaps = Wealth.snapshots(ctx)
                     if (snaps.size >= 2) {
                         Spacer(Modifier.height(12.dp))
-                        WealthChart(snaps)
+                        WealthChart(snaps.takeLast(12)) { Wealth.snapshotParts(ctx, it) }
                     }
                 }
             }
@@ -667,25 +679,107 @@ private fun AssetRow(icon: ImageVector, color: Color, title: String, sub: String
 
 /** نمودار ساده‌ی جمع دارایی ماه به ماه */
 @Composable
-private fun WealthChart(points: List<Pair<Int, Long>>) {
-    val line = MaterialTheme.colorScheme.primary
-    Column(Modifier.fillMaxWidth()) {
-        Canvas(Modifier.fillMaxWidth().height(90.dp)) {
-            val max = points.maxOf { it.second }.toFloat()
-            val min = points.minOf { it.second }.toFloat()
-            val range = (max - min).coerceAtLeast(1f)
-            val step = size.width / (points.size - 1)
-            val pts = points.mapIndexed { i, p ->
-                Offset(i * step, size.height - 8f - (p.second - min) / range * (size.height - 16f))
+private fun WealthChart(points: List<Pair<Int, Long>>, parts: (Int) -> Pair<Long, Long>?) {
+    val accent = MaterialTheme.colorScheme.primary
+    val grid = MaterialTheme.colorScheme.outlineVariant
+    val label = MaterialTheme.colorScheme.onSurfaceVariant
+    val ink = MaterialTheme.colorScheme.onSurface
+    val surface = MaterialTheme.colorScheme.surface
+    val tm = androidx.compose.ui.text.rememberTextMeasurer()
+    val small = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
+    var sel by remember(points.size) { mutableStateOf(points.lastIndex) }
+    // محور: از عددی گرد کمی پایین‌تر از کمترین ماه، تا تغییرهای کوچک بزرگ دیده نشوند
+    val maxV = points.maxOf { it.second }
+    val minV = points.minOf { it.second }
+    val span = (maxV - minV).coerceAtLeast(maxV / 10).coerceAtLeast(10_000_000L)
+    val stepCands = listOf(1L, 2L, 5L, 10L, 20L, 25L, 50L, 100L, 200L, 250L, 500L, 1000L, 2000L, 5000L, 10000L).map { it * 10_000_000L }
+    val step = stepCands.firstOrNull { it * 3 >= span * 1.2 } ?: stepCands.last()
+    val lo = ((minV - span / 5) / step).coerceAtLeast(0) * step
+    val hi = ((maxV + span / 5 + step - 1) / step) * step
+
+    // تغییر ماه آخر نسبت به ماه قبل
+    if (points.size >= 2) {
+        val last = points.last().second
+        val prev = points[points.size - 2].second
+        val d = last - prev
+        val pct = if (prev != 0L) d * 1000 / prev else 0L
+        Text(
+            (if (d >= 0) "+" else "−") + millionsText(kotlin.math.abs(d)) + "  (" + Fa.toFa((kotlin.math.abs(pct) / 10.0).toString()).replace('.', '٫') + "٪" +
+                (if (d >= 0) "+" else "−") + ")  نسبت به " + Fa.monthName(points[points.size - 2].first),
+            Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
+            color = if (d >= 0) IncomeColor else ExpenseColor
+        )
+        Spacer(Modifier.height(6.dp))
+    }
+    val n = points.size
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
+        Canvas(
+            Modifier.fillMaxWidth().height(200.dp).pointerInput(n) {
+                detectTapGestures { p ->
+                    val left = 34.dp.toPx(); val right = size.width - 16.dp.toPx()
+                    val stepX = if (n > 1) (right - left) / (n - 1) else 0f
+                    sel = if (n > 1) ((p.x - left) / stepX).roundToInt().coerceIn(0, n - 1) else 0
+                }
             }
-            val path = Path().apply { moveTo(pts[0].x, pts[0].y); pts.drop(1).forEach { lineTo(it.x, it.y) } }
-            drawPath(path, line, style = Stroke(width = 3.dp.toPx()))
-            pts.forEach { drawCircle(line, 3.5.dp.toPx(), it) }
+        ) {
+            val left = 34.dp.toPx(); val right = size.width - 16.dp.toPx()
+            val top = 26.dp.toPx(); val bottom = size.height - 24.dp.toPx()
+            fun y(v: Long) = bottom - ((v - lo).toFloat() / (hi - lo).toFloat()) * (bottom - top)
+            var g = lo
+            while (g <= hi) {
+                val gy = y(g)
+                drawLine(grid, Offset(left, gy), Offset(right, gy), strokeWidth = 1f)
+                val t = tm.measure(mil(g), small.copy(color = label))
+                drawText(t, topLeft = Offset(left - t.size.width - 4.dp.toPx(), gy - t.size.height / 2f))
+                g += step
+            }
+            val stepX = if (n > 1) (right - left) / (n - 1) else 0f
+            val pts = points.mapIndexed { i, p -> Offset(if (n > 1) left + i * stepX else (left + right) / 2, y(p.second)) }
+            if (n >= 2) {
+                val path = Path().apply { moveTo(pts[0].x, pts[0].y); pts.drop(1).forEach { lineTo(it.x, it.y) } }
+                val area = Path().apply { addPath(path); lineTo(pts.last().x, bottom); lineTo(pts.first().x, bottom); close() }
+                drawPath(area, accent.copy(alpha = 0.10f))
+                drawPath(path, accent, style = Stroke(width = 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+            }
+            pts.forEachIndexed { i, o ->
+                if (i == sel) drawCircle(accent, 6.dp.toPx(), o)
+                else { drawCircle(surface, 4.5.dp.toPx(), o); drawCircle(accent, 4.5.dp.toPx(), o, style = Stroke(2.dp.toPx())) }
+                // عدد هر ماه بالای نقطه
+                val vt = tm.measure(mil(points[i].second), small.copy(color = if (i == sel) accent else ink, fontWeight = FontWeight.Bold))
+                drawText(vt, topLeft = Offset((o.x - vt.size.width / 2f).coerceIn(0f, size.width - vt.size.width), (o.y - vt.size.height - 6.dp.toPx()).coerceAtLeast(0f)))
+                // اسم ماه زیر محور
+                val mt = tm.measure(Fa.monthName(points[i].first), small.copy(color = if (i == sel) accent else label, fontWeight = if (i == sel) FontWeight.Bold else FontWeight.Normal))
+                drawText(mt, topLeft = Offset((o.x - mt.size.width / 2f).coerceIn(0f, size.width - mt.size.width), bottom + 6.dp.toPx()))
+            }
         }
-        Row(Modifier.fillMaxWidth()) {
-            Text(Fa.monthTitle(points.first().first), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
-            Text(Fa.monthTitle(points.last().first), style = MaterialTheme.typography.labelSmall)
+    }
+    Text("میلیون تومان", Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, color = label, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+    // ریز ماه انتخاب‌شده
+    val (ym, tot) = points[sel]
+    val pr = parts(ym)
+    Column(
+        Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)).padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Row {
+            Text(Fa.monthName(ym) + " " + Fa.toFa((ym / 100).toString()), Modifier.weight(1f), fontWeight = FontWeight.Bold)
+            Text(Fa.toman(tot), fontWeight = FontWeight.Bold)
         }
+        if (pr != null) {
+            Row(Modifier.padding(top = 4.dp)) {
+                Text("بانک‌ها", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                Text(millionsText(pr.first), style = MaterialTheme.typography.bodySmall)
+            }
+            Row(Modifier.padding(top = 2.dp)) {
+                Text("سرمایه‌گذاری و سهام", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                Text(millionsText(pr.second), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        Text(
+            if (sel == points.lastIndex) "عدد ماه جاری با هر بار باز شدن این صفحه به‌روز می‌شود" else "آخرین عددی که در این ماه دیده شد · روی ماه دیگری بزن",
+            style = MaterialTheme.typography.labelSmall, color = label, modifier = Modifier.padding(top = 4.dp)
+        )
     }
 }
 
