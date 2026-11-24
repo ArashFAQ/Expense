@@ -361,7 +361,14 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
     val giftTotal = activeGifts.sumOf { GiftCards.balance(it, txs) }
     var giftOpen by remember { mutableStateOf<GiftCard?>(null) }
     val total = bankTotal + giftTotal + investTotal + stockTotal + loanTotal - debtTotal
-    LaunchedEffect(total) { Wealth.saveSnapshot(ctx, total, bankTotal + giftTotal, investTotal + stockTotal) }
+    // عدد ماه فقط وقتی ذخیره می‌شود که چند ثانیه ثابت مانده (عددهای موقتِ حین بارگذاری قیمت‌ها ذخیره نشوند)
+    LaunchedEffect(total) {
+        kotlinx.coroutines.delay(4000)
+        val inv = investTotal + stockTotal
+        val prev = Wealth.snapshotParts(ctx, Jalali.currentYm())
+        if (inv == 0L && prev != null && prev.second > 0) return@LaunchedEffect // سرمایه‌گذاری هنوز نرسیده
+        Wealth.saveSnapshot(ctx, total, bankTotal + giftTotal, inv)
+    }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
@@ -410,10 +417,14 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                             )
                         }
                     }
-                    val snaps = Wealth.snapshots(ctx)
+                    // ماه جاری همیشه از عدد زنده‌ی بالای صفحه
+                    val curYm = Jalali.currentYm()
+                    val snaps = Wealth.snapshots(ctx).filter { it.first != curYm } + listOfNotNull((curYm to total).takeIf { total > 0 })
                     if (snaps.size >= 2) {
                         Spacer(Modifier.height(12.dp))
-                        WealthChart(snaps.takeLast(12)) { Wealth.snapshotParts(ctx, it) }
+                        WealthChart(snaps.takeLast(12)) { ym ->
+                            if (ym == curYm) (bankTotal + giftTotal) to (investTotal + stockTotal) else Wealth.snapshotParts(ctx, ym)
+                        }
                     }
                 }
             }
