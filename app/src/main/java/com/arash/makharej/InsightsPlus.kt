@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
+import androidx.compose.ui.text.drawText
 
 /**
  * تحلیل‌های تکمیلی: تاریخ شروع تحلیل، نمره‌ی سلامت مالی، سرعت خرج، جریان پول، خرج‌های کوچک، ساعت خرج،
