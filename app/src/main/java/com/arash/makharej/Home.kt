@@ -445,6 +445,8 @@ fun HomeTab(
             }
         }
     
+        // ---- تقویم ماه
+        item { MonthCalendarCard(txs, cats, dues, ym) }
         // ---- تحلیل ماه (پایین صفحه‌ی خانه؛ روی گوشی، بدون ارسال داده)
         item { InsightsCard(txs, cats, dues, ym) }
     }
