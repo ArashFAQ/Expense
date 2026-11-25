@@ -337,6 +337,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         super.onCreate(savedInstanceState)
         Notifier.ensureChannel(this)
         Backup.schedule(this)
+        InsightsMore.schedule(this)
         ThemeSettings.load(this)
         Learned.banks(this)
         RemoteBanks.entries(this)

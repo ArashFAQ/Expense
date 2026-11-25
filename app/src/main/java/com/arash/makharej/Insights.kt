@@ -347,6 +347,7 @@ object Insights {
                 )
             }
         }
+        out += InsightsMore.compute(ctx, txs, cats, dues, ym)
         return out.sortedByDescending { it.score }
     }
 
@@ -437,8 +438,11 @@ private fun Legend(items: List<Triple<String, Long, Color>>) {
 
 /** صفحه‌ی کامل تحلیل */
 @Composable
-fun InsightsScreen(txs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int, items: List<Insights.Item>, onClose: () -> Unit) {
+fun InsightsScreen(txs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int, items0: List<Insights.Item>, onClose: () -> Unit) {
     val ctx = LocalContext.current
+    var tick by remember { mutableStateOf(0) }
+    val items = remember(tick, txs, cats, dues, ym) { if (tick == 0) items0 else Insights.compute(ctx, txs, cats, dues, ym) }
+    val review = remember(txs, cats, ym) { InsightsMore.yearReview(txs, cats, ym / 100) }
     val catById = cats.associateBy { it.id }
     val counted = txs.counted()
     val exp = counted.filter { it.isExpense }.expandSplits()
@@ -458,6 +462,11 @@ fun InsightsScreen(txs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int
                     Text("تحلیل " + Fa.monthTitle(ym), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 }
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+                    // ---------------- مرور سال
+                    if (review != null) {
+                        Spacer(Modifier.height(10.dp))
+                        YearReviewCard(review)
+                    }
                     // ---------------- خرج‌ها
                     Section("📉 خرج‌ها") {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -496,6 +505,18 @@ fun InsightsScreen(txs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int
                             StackBar(listOf(fixed to Color(0xFF6D4C41), (spent - fixed) to Color(0xFFF2B705)))
                             Legend(listOf(Triple("ثابت (قسط، قبض، اجاره)", fixed, Color(0xFF6D4C41)), Triple("دلخواه", spent - fixed, Color(0xFFF2B705))))
                         }
+                    }
+                    // ---------------- عادت‌ها و رکوردها
+                    val habits = items.filter { it.section == InsightsMore.HABITS }
+                    if (habits.isNotEmpty()) Section("🎁 عادت‌ها، رکوردها و تورم شخصی") {
+                        habits.forEachIndexed { i, it -> InsightRow(it, i > 0) }
+                    }
+                    // ---------------- برنامه‌ریزی: چالش، «اگر…»، هدف، سقف‌ها، خلاصه‌ی هفتگی
+                    Section("🧭 برنامه‌ریزی") {
+                        val plan = items.filter { it.section == InsightsMore.PLAN }
+                        plan.forEachIndexed { i, it -> InsightRow(it, i > 0) }
+                        if (plan.isNotEmpty()) HorizontalDivider(Modifier.padding(bottom = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        BudgetsAndGoal(cats, txs) { tick++ }
                     }
                     // ---------------- درآمد و پس‌انداز
                     val save = items.filter { it.section == Insights.SAVE }
