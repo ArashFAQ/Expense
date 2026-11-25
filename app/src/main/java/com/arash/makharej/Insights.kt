@@ -285,17 +285,18 @@ object Insights {
         if (inst.isNotEmpty() && avgIn > 0) {
             val monthly = inst.sumOf { it.amount / maxOf(it.period, 1) }
             val share = (monthly * 100 / avgIn).toInt()
-            val firstEnd = inst.minByOrNull { d -> Dues.dateAt(d, d.count - 1).let { it[0] * 10000 + it[1] * 100 + it[2] } }
+            val endOf = { d: Due -> Dues.dateAt(d, d.count - 1) ?: intArrayOf(9999, 12, 29) }
+            val firstEnd = inst.minByOrNull { d -> endOf(d).let { it[0] * 10000 + it[1] * 100 + it[2] } }
             val after = firstEnd?.let { e -> ((monthly - e.amount / maxOf(e.period, 1)) * 100 / avgIn).toInt() }
             out += Item(
                 "🏦", Color(0xFF6D4C41).copy(alpha = 0.12f),
                 listOf(Seg("اقساط "), Seg(pctText(share), if (share > 30) Red else null, true), Seg(" درآمدت است")),
                 (if (share > 30) "بیشتر از حدِ معمولِ ۳۰٪" else "زیر حدِ معمولِ ۳۰٪") +
                     (if (firstEnd != null && after != null && inst.size > 1) "؛ با تمام شدن «" + firstEnd.title + "» در " +
-                        Dues.dateAt(firstEnd, firstEnd.count - 1).let { Fa.monthName(it[0] * 100 + it[1]) + " " + Fa.toFa(it[0].toString()) } +
+                        endOf(firstEnd).let { Fa.monthName(it[0] * 100 + it[1]) + " " + Fa.toFa(it[0].toString()) } +
                         " به " + pctText(after) + " می‌رسد"
                     else if (firstEnd != null) "؛ آخرین قسط «" + firstEnd.title + "»: " +
-                        Dues.dateAt(firstEnd, firstEnd.count - 1).let { Fa.monthName(it[0] * 100 + it[1]) + " " + Fa.toFa(it[0].toString()) }
+                        endOf(firstEnd).let { Fa.monthName(it[0] * 100 + it[1]) + " " + Fa.toFa(it[0].toString()) }
                     else ""),
                 if (share > 30) 62 else 30, SAVE
             )
@@ -417,6 +418,7 @@ private fun StackBar(parts: List<Pair<Long, Color>>, height: Int = 12) {
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun Legend(items: List<Triple<String, Long, Color>>) {
     val total = items.sumOf { it.second }.coerceAtLeast(1)
