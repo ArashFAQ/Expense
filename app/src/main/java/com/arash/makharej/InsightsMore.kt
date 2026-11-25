@@ -368,7 +368,7 @@ object InsightsMore {
 
     suspend fun digestText(ctx: Context): Pair<String, String>? {
         val db = AppDb.get(ctx)
-        val txs = db.tx().list(); val cats = db.cat().list(); val dues = db.due().list()
+        val txs = InsightsPlus.scope(ctx, db.tx().list()); val cats = db.cat().list(); val dues = db.due().list()
         val since = System.currentTimeMillis() - 7L * 86_400_000L
         val week = txs.counted().filter { it.isExpense && it.ts >= since }.expandSplits()
         val prevWeek = txs.counted().filter { it.isExpense && it.ts in (since - 7L * 86_400_000L) until since }.expandSplits()

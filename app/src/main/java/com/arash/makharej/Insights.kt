@@ -348,6 +348,7 @@ object Insights {
             }
         }
         out += InsightsMore.compute(ctx, txs, cats, dues, ym)
+        out += InsightsPlus.compute(ctx, txs, cats, dues, ym)
         return out.sortedByDescending { it.score }
     }
 
@@ -380,8 +381,11 @@ private fun InsightRow(it: Insights.Item, divider: Boolean) {
 
 /** کارت «تحلیل این ماه» در خانه: ۴ نکته‌ی مهم‌تر */
 @Composable
-fun InsightsCard(txs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int) {
+fun InsightsCard(allTxs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int) {
     val ctx = LocalContext.current
+    var startTick by remember { mutableStateOf(0) }
+    // فقط داده‌های بعد از «شروع تحلیل»
+    val txs = remember(allTxs, startTick) { InsightsPlus.scope(ctx, allTxs) }
     val items = remember(txs, cats, dues, ym) { Insights.recordUsd(ctx); Insights.compute(ctx, txs, cats, dues, ym) }
     var full by remember { mutableStateOf(false) }
     if (items.isEmpty()) return
@@ -397,7 +401,7 @@ fun InsightsCard(txs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int) 
             items.take(4).forEachIndexed { i, it -> InsightRow(it, i > 0) }
         }
     }
-    if (full) InsightsScreen(txs, cats, dues, ym, items) { full = false }
+    if (full) InsightsScreen(allTxs, cats, dues, ym, items, onStartChanged = { startTick++ }) { full = false }
 }
 
 @Composable
@@ -438,9 +442,14 @@ private fun Legend(items: List<Triple<String, Long, Color>>) {
 
 /** صفحه‌ی کامل تحلیل */
 @Composable
-fun InsightsScreen(txs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int, items0: List<Insights.Item>, onClose: () -> Unit) {
+fun InsightsScreen(allTxs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int, items0: List<Insights.Item>, onStartChanged: () -> Unit = {}, onClose: () -> Unit) {
     val ctx = LocalContext.current
     var tick by remember { mutableStateOf(0) }
+    var pickStart by remember { mutableStateOf(false) }
+    val startD = remember(tick, allTxs) { InsightsPlus.start(ctx, allTxs) }
+    val txs = remember(tick, allTxs) { InsightsPlus.scope(ctx, allTxs) }
+    val health = remember(tick, txs, cats, dues) { InsightsPlus.health(ctx, txs, cats, dues) }
+    val fc = remember(txs, cats, dues) { InsightsPlus.forecast(ctx, txs, cats, dues) }
     val items = remember(tick, txs, cats, dues, ym) { if (tick == 0) items0 else Insights.compute(ctx, txs, cats, dues, ym) }
     val review = remember(txs, cats, ym) { InsightsMore.yearReview(txs, cats, ym / 100) }
     val catById = cats.associateBy { it.id }
@@ -462,6 +471,23 @@ fun InsightsScreen(txs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int
                     Text("تحلیل " + Fa.monthTitle(ym), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 }
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+                    // ---------------- شروع تحلیل
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .clickable { pickStart = true }.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("شروع تحلیل از " + jDateText(startD), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                            Text("داده‌های قبل از این تاریخ در تحلیل‌ها حساب نمی‌شوند", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text("تغییر", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    }
+                    StartPicker(pickStart, startD, onPick = { InsightsPlus.setStart(ctx, it); pickStart = false; tick++; onStartChanged() }) { pickStart = false }
+                    // ---------------- نمره‌ی سلامت مالی
+                    if (health != null) Section("🩺 سلامت مالی") {
+                        HealthCard(health, InsightsPlus.healthAt(ctx, Jalali.shiftYm(Jalali.currentYm(), -1)))
+                    }
                     // ---------------- مرور سال
                     if (review != null) {
                         Spacer(Modifier.height(10.dp))
@@ -475,6 +501,9 @@ fun InsightsScreen(txs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int
                             if (avg3 != null) Kpi("میانگین ماه‌های قبل", millionsText(avg3), null, Modifier.weight(1f))
                         }
                         items.filter { it.section == Insights.SPEND && it.emoji != "🔮" }.forEachIndexed { i, it -> InsightRow(it, true) }
+                        HorizontalDivider(Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        PaceChart(txs, ym)
+                        HourBars(txs)
                         // روزهای هفته
                         val since = System.currentTimeMillis() - 90L * 86_400_000L
                         val recent = exp.filter { it.ts >= since }
@@ -520,8 +549,21 @@ fun InsightsScreen(txs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int
                     }
                     // ---------------- درآمد و پس‌انداز
                     val save = items.filter { it.section == Insights.SAVE }
-                    if (save.isNotEmpty()) Section("💰 درآمد و پس‌انداز") {
+                    Section("💰 درآمد و پس‌انداز") {
                         save.forEachIndexed { i, it -> InsightRow(it, i > 0) }
+                        MoneyFlow(txs, cats, ym)
+                    }
+                    // ---------------- آینده
+                    val fut = items.filter { it.section == InsightsPlus.FUTURE }
+                    if (fut.isNotEmpty() || fc != null) Section("🔮 آینده") {
+                        fut.forEachIndexed { i, it -> InsightRow(it, i > 0) }
+                        if (fc != null) ForecastChart(fc)
+                    }
+                    // ---------------- نمای زمانی
+                    Section("📅 نمای زمانی") {
+                        HeatCalendar(txs, startD[0] * 100 + startD[1])
+                        CategoryTrends(txs, cats, startD[0] * 100 + startD[1])
+                        PriceTracker(txs)
                     }
                     // ---------------- سرمایه‌گذاری
                     val inv = items.filter { it.section == Insights.INVEST }
@@ -539,6 +581,8 @@ fun InsightsScreen(txs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int
                         inv.forEachIndexed { i, it -> InsightRow(it, alloc != null || i > 0) }
                         if (alloc == null) Text("برای تحلیل سرمایه‌گذاری، یک بار تب «دارایی» را باز کن.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    Spacer(Modifier.height(8.dp))
+                    ComingSoon(ctx, allTxs)
                     Text(
                         "همه‌ی این‌ها روی گوشی و از روی داده‌های خودت حساب شده‌اند · این‌ها محاسبه‌اند، نه توصیه‌ی مالی",
                         Modifier.fillMaxWidth().padding(top = 12.dp), textAlign = TextAlign.Center,
@@ -548,6 +592,11 @@ fun InsightsScreen(txs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: Int
             }
         }
     }
+}
+
+@Composable
+private fun StartPicker(show: Boolean, d: IntArray, onPick: (IntArray) -> Unit, onDismiss: () -> Unit) {
+    if (show) JalaliDateDialog(d, onPick = onPick, onDismiss = onDismiss)
 }
 
 @Composable
