@@ -368,6 +368,20 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
         val prev = Wealth.snapshotParts(ctx, Jalali.currentYm())
         if (inv == 0L && prev != null && prev.second > 0) return@LaunchedEffect // سرمایه‌گذاری هنوز نرسیده
         Wealth.saveSnapshot(ctx, total, bankTotal + giftTotal, inv)
+        // برای «تحلیل»: ترکیب دارایی و بزرگ‌ترین سهم
+        val byKind = { ks: Set<String> -> assets.filter { it.kind in ks }.sumOf { values[it.id] ?: 0L } }
+        val active = holdings.filter { it.qty > 0 }
+        val top = active.maxByOrNull { it.value(ctx) ?: it.cost }
+        Insights.saveAlloc(
+            ctx, Insights.Alloc(
+                bank = bankTotal + giftTotal, stock = stockTotal, fund = byKind(setOf("fund")),
+                goldUsd = byKind(setOf("usd", "emami", "nim", "rob", "gerami", "gold18", "ons")),
+                other = byKind(setOf("cash", "other")),
+                stockCost = active.sumOf { it.cost }, topStock = top?.let { it.value(ctx) ?: it.cost } ?: 0L,
+                topName = top?.stock?.symbol ?: "", usd = Prices.price(ctx, "usd")?.first ?: 0L
+            )
+        )
+        Insights.recordUsd(ctx)
     }
 
     LazyColumn(

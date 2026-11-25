@@ -285,6 +285,9 @@ fun HomeTab(
 
         if (dues.any { Dues.open(it) && (Dues.daysTo(it) ?: 99) <= 7 }) item { UpcomingDuesCard(dues, onOpenAssets) }
 
+        // ---- تحلیل ماه (روی گوشی، بدون ارسال داده)
+        item { InsightsCard(txs, cats, dues, ym) }
+
         if (uncat > 0) item {
             Card(
                 onClick = onOpenExpenses, shape = RoundedCornerShape(16.dp),
