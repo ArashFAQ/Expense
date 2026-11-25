@@ -216,7 +216,9 @@ object InsightsMore {
             val days = byDay.keys.toSortedSet()
             if (days.size >= 10) {
                 var best = 0; var bestEnd = 0
-                var y = year; var mo = 1; var d = 1; var run = 0
+                // از اولین روزی که داده هست (نه از اول سال)
+                val first = days.first()
+                var y = first / 10000; var mo = first / 100 % 100; var d = first % 100; var run = 0
                 val endKey = if (year == today[0]) curYm * 100 + today[2] else year * 10000 + 1229
                 while (y * 10000 + mo * 100 + d <= endKey) {
                     val key = y * 10000 + mo * 100 + d
