@@ -74,10 +74,18 @@ fun YearChartCard(counted: List<Tx>, cats: List<Category>, year: Int) {
     var sel by remember(year) { mutableIntStateOf(lastIdx.coerceAtLeast(0)) }
     val months = (1..12).map { year * 100 + it }
     val inYear = counted.filter { it.ym / 100 == year }
-    val out = months.map { m -> inYear.filter { it.ym == m && it.isExpense }.sumOf { it.eff } }
+    // خرج روزمره و خرج خاص جدا: میانگین، روند و پرخرج‌ترین ماه روی خرج روزمره
+    val routine = months.map { m -> inYear.filter { it.ym == m && it.isExpense && !it.special }.sumOf { it.eff } }
+    val special = months.map { m -> inYear.filter { it.ym == m && it.isExpense && it.special }.sumOf { it.eff } }
+    val out = months.indices.map { routine[it] + special[it] }
     val inc = months.map { m -> inYear.filter { it.ym == m && !it.isExpense }.sumOf { it.eff } }
-    val shown = out.take(lastIdx + 1)
+    val shown = routine.take(lastIdx + 1)
     val active = shown.count { it > 0 }.coerceAtLeast(1)
+    val specialSum = special.take(lastIdx + 1).sum()
+    // ماه‌های قبل از «شروع تحلیل» (داده‌ی نادقیقِ قبل از نصب) کم‌رنگ‌اند
+    val start = InsightsPlus.start(ctx, counted)
+    val startYm = start[0] * 100 + start[1]
+    val startIdx = months.indexOfFirst { it >= startYm }.let { if (it < 0) 12 else it }
 
     Card(shape = RoundedCornerShape(24.dp), colors = cardColors()) {
         Column(Modifier.fillMaxWidth().padding(18.dp)) {
@@ -92,18 +100,23 @@ fun YearChartCard(counted: List<Tx>, cats: List<Category>, year: Int) {
             ModeSwitch(mode) { mode = it; prefs.edit().putInt("yearChart", it).apply() }
             Spacer(Modifier.height(12.dp))
             when (mode) {
-                0 -> StackedYear(inYear, cats, months, out, lastIdx, sel) { sel = it }
-                1 -> IncomeYear(months, out, inc, lastIdx, sel) { sel = it }
+                0 -> StackedYear(inYear, cats, months, out, routine, lastIdx, sel, startIdx) { sel = it }
+                1 -> IncomeYear(months, routine, special, inc, lastIdx, sel, startIdx) { sel = it }
                 else -> {
-                    val prev = months.map { m -> counted.filter { it.ym == m - 100 && it.isExpense }.sumOf { it.eff } }
-                    TrendYear(months, out, prev, lastIdx, sel) { sel = it }
+                    // سال قبل فقط برای ماه‌هایی که بعد از «شروع تحلیل» هستند
+                    val prev = months.map { m -> if (m - 100 < startYm) 0L else counted.filter { it.ym == m - 100 && it.isExpense && !it.special }.sumOf { it.eff } }
+                    TrendYear(months, routine, special, prev, lastIdx, sel) { sel = it }
                 }
             }
             if (mode != 1 && shown.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
-                StatLine("جمع سال", Fa.toman(shown.sum()), ExpenseColor)
+                StatLine("جمع سال", Fa.toman(shown.sum() + specialSum), ExpenseColor)
+                if (specialSum > 0) {
+                    Spacer(Modifier.height(6.dp))
+                    StatLine("⭐ از این، خرج خاص", Fa.toman(specialSum), SpecialInk)
+                }
                 Spacer(Modifier.height(6.dp))
-                StatLine("میانگین ماهانه", Fa.toman(shown.sum() / active), null)
+                StatLine(if (specialSum > 0) "میانگین ماهانه (روزمره)" else "میانگین ماهانه", Fa.toman(shown.sum() / active), null)
                 val peak = shown.withIndex().maxByOrNull { it.value }
                 if (peak != null && peak.value > 0) {
                     Spacer(Modifier.height(6.dp))
@@ -219,7 +232,7 @@ private fun ChartCanvas(lastIdx: Int, onSel: (Int) -> Unit, draw: DrawScope.(gut
 private class Series(val name: String, val color: Color, val values: List<Long>)
 
 @Composable
-private fun StackedYear(inYear: List<Tx>, cats: List<Category>, months: List<Int>, out: List<Long>, lastIdx: Int, sel: Int, onSel: (Int) -> Unit) {
+private fun StackedYear(inYear: List<Tx>, cats: List<Category>, months: List<Int>, out: List<Long>, routine: List<Long>, lastIdx: Int, sel: Int, startIdx: Int, onSel: (Int) -> Unit) {
     val catById = cats.associateBy { it.id }
     val specials = inYear.filter { it.isExpense && it.special }
     val items = inYear.filter { it.isExpense && !it.special }.expandSplits()
@@ -230,7 +243,9 @@ private fun StackedYear(inYear: List<Tx>, cats: List<Category>, months: List<Int
         val c = catById[id]!!
         Series(c.name, c.uiColor(), months.map { m -> items.filter { it.ym == m && it.categoryId == id }.sumOf { it.eff } })
     } + Series("سایر", Color(0xFFB0A9BD), months.map { m ->
-        items.filter { it.ym == m && (it.categoryId == null || it.categoryId !in top) }.sumOf { it.eff }
+        items.filter { it.ym == m && it.categoryId != null && it.categoryId !in top }.sumOf { it.eff }
+    }) + Series("بدون دسته", Color(0xFFDAD6E1), months.map { m ->
+        items.filter { it.ym == m && (it.categoryId == null || catById[it.categoryId] == null) }.sumOf { it.eff }
     }) + Series("⭐ خرج خاص", SpecialColor, months.map { m -> specials.filter { it.ym == m }.sumOf { it.eff } })
 
     val tm = rememberTextMeasurer()
@@ -241,7 +256,8 @@ private fun StackedYear(inYear: List<Tx>, cats: List<Category>, months: List<Int
     val accent = MaterialTheme.colorScheme.primary
     val empty = MaterialTheme.colorScheme.surfaceVariant
     val shownOut = out.take(lastIdx + 1)
-    val avg = if (shownOut.isEmpty()) 0L else shownOut.sum() / shownOut.count { it > 0 }.coerceAtLeast(1)
+    val shownRoutine = routine.take(lastIdx + 1)
+    val avg = if (shownRoutine.isEmpty()) 0L else shownRoutine.sum() / shownRoutine.count { it > 0 }.coerceAtLeast(1)
     val (axisMax, step) = niceAxis(shownOut.maxOrNull() ?: 0L)
 
     ChartCanvas(lastIdx, onSel) { gutter ->
@@ -255,7 +271,7 @@ private fun StackedYear(inYear: List<Tx>, cats: List<Category>, months: List<Int
                 continue
             }
             var y0 = f.bottom
-            val alpha = if (i == sel) 1f else 0.82f
+            val alpha = (if (i == sel) 1f else 0.82f) * (if (i < startIdx) 0.45f else 1f)
             series.forEach { s ->
                 val h = (s.values[i].toFloat() / axisMax) * (f.bottom - f.top)
                 if (h > 0f) drawRect(s.color.copy(alpha = alpha), Offset(x - bw / 2, y0 - h), Size(bw, h))
@@ -277,13 +293,12 @@ private fun StackedYear(inYear: List<Tx>, cats: List<Category>, months: List<Int
         }
         monthLabels(f, lastIdx, sel, tm, small, label, accent)
     }
-    // راهنمای رنگ‌ها
-    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
-        series.filter { s -> s.values.any { it > 0 } }.forEach { s -> Legend(s.color, s.name) }
-    }
+    // راهنمای رنگ‌ها (هر مورد یک‌خطی؛ اگر جا نشد کل مورد به خط بعد می‌رود)
+    LegendFlow { series.filter { s -> s.values.any { it > 0 } }.forEach { s -> Legend(s.color, s.name) } }
     Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center) {
-        Legend(MaterialTheme.colorScheme.primary, "میانگین ماهانه " + mil(avg), dashed = true)
+        Legend(MaterialTheme.colorScheme.primary, "میانگین ماهانه " + mil(avg) + if (routine != out) " (بدون خرج خاص)" else "", dashed = true)
     }
+    if (startIdx in 1..11) StartNote(months[startIdx])
     // ریز ماه انتخاب‌شده
     if (sel <= lastIdx) {
         Column(
@@ -309,14 +324,35 @@ private fun Legend(color: Color, text: String, dashed: Boolean = false) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = if (dashed) 14.dp else 10.dp, height = if (dashed) 2.dp else 10.dp).clip(RoundedCornerShape(3.dp)).background(color))
         Spacer(Modifier.width(4.dp))
-        Text(text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
     }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun LegendFlow(content: @Composable () -> Unit) {
+    androidx.compose.foundation.layout.FlowRow(
+        Modifier.fillMaxWidth().padding(top = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) { content() }
+}
+
+/** یادداشت ماه‌های کم‌رنگ (قبل از شروع تحلیل) */
+@Composable
+private fun StartNote(startYm: Int) {
+    Text(
+        "ماه‌های کم‌رنگ قبل از «شروع تحلیل» (" + Fa.monthName(startYm) + ") هستند و داده‌شان کامل نیست",
+        Modifier.fillMaxWidth().padding(top = 4.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 // ---------------------------------------------------------------- ۲. خرج و درآمد کنار هم
 
 @Composable
-private fun IncomeYear(months: List<Int>, out: List<Long>, inc: List<Long>, lastIdx: Int, sel: Int, onSel: (Int) -> Unit) {
+private fun IncomeYear(months: List<Int>, routine: List<Long>, special: List<Long>, inc: List<Long>, lastIdx: Int, sel: Int, startIdx: Int, onSel: (Int) -> Unit) {
+    val out = months.indices.map { routine[it] + special[it] }
     val tm = rememberTextMeasurer()
     val small = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
     val grid = MaterialTheme.colorScheme.outlineVariant
@@ -335,12 +371,14 @@ private fun IncomeYear(months: List<Int>, out: List<Long>, inc: List<Long>, last
                 drawRoundRect(empty, Offset(x - bw, f.bottom - 4.dp.toPx()), Size(bw * 2, 4.dp.toPx()), CornerRadius(4f, 4f))
                 continue
             }
-            val a = if (i == sel) 1f else 0.75f
+            val a = (if (i == sel) 1f else 0.75f) * (if (i < startIdx) 0.45f else 1f)
             val hi = (inc[i].toFloat() / axisMax) * (f.bottom - f.top)
             val he = (out[i].toFloat() / axisMax) * (f.bottom - f.top)
-            // درآمد چپ، خرج راست
+            val hr = (routine[i].toFloat() / axisMax) * (f.bottom - f.top)
+            // درآمد چپ، خرج راست (بخش زرد بالای ستون = خرج خاص)
             drawRoundRect(IncomeColor.copy(alpha = a), Offset(x - bw, f.bottom - hi), Size(bw - 1f, hi), CornerRadius(3.dp.toPx()))
-            drawRoundRect(ExpenseColor.copy(alpha = a), Offset(x + 1f, f.bottom - he), Size(bw - 1f, he), CornerRadius(3.dp.toPx()))
+            if (he > 0f) drawRoundRect(SpecialColor.copy(alpha = a), Offset(x + 1f, f.bottom - he), Size(bw - 1f, he), CornerRadius(3.dp.toPx()))
+            if (hr > 0f) drawRoundRect(ExpenseColor.copy(alpha = a), Offset(x + 1f, f.bottom - hr), Size(bw - 1f, hr), CornerRadius(3.dp.toPx()))
             if (i == sel) {
                 val sv = inc[i] - out[i]
                 val t = tm.measure((if (sv >= 0) "+" else "−") + mil(kotlin.math.abs(sv)), small.copy(color = if (sv >= 0) IncomeColor else ExpenseColor, fontWeight = FontWeight.Bold))
@@ -350,20 +388,23 @@ private fun IncomeYear(months: List<Int>, out: List<Long>, inc: List<Long>, last
         }
         monthLabels(f, lastIdx, sel, tm, small, label, accent)
     }
-    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
+    LegendFlow {
         Legend(IncomeColor, "درآمد")
         Legend(ExpenseColor, "خرج")
+        if (special.any { it > 0 }) Legend(SpecialColor, "⭐ خرج خاص")
     }
+    if (startIdx in 1..11) StartNote(months[startIdx])
     if (sel <= lastIdx) {
         val sv = inc[sel] - out[sel]
         Text(
-            Fa.monthName(months[sel]) + ":  درآمد " + mil(inc[sel]) + "  ·  خرج " + mil(out[sel]) + "  ·  " +
+            Fa.monthName(months[sel]) + ":  درآمد " + mil(inc[sel]) + "  ·  خرج " + mil(out[sel]) +
+                (if (special[sel] > 0) " (خاص " + mil(special[sel]) + ")" else "") + "  ·  " +
                 (if (sv >= 0) "پس‌انداز " else "کسری ") + mil(kotlin.math.abs(sv)) + " میلیون",
             Modifier.fillMaxWidth().padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
     }
-    val so = out.take(lastIdx + 1).sum()
+    val so = out.take(lastIdx + 1).sum() // جمع کل (با خرج خاص): پولی که واقعاً رفته
     val si = inc.take(lastIdx + 1).sum()
     Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         SumBox("جمع خرج", mil(so), null, Modifier.weight(1f))
@@ -386,7 +427,7 @@ private fun SumBox(title: String, value: String, color: Color?, modifier: Modifi
 // ---------------------------------------------------------------- ۳. روند (خطی دقیق + سال قبل)
 
 @Composable
-private fun TrendYear(months: List<Int>, out: List<Long>, prev: List<Long>, lastIdx: Int, sel: Int, onSel: (Int) -> Unit) {
+private fun TrendYear(months: List<Int>, out: List<Long>, special: List<Long>, prev: List<Long>, lastIdx: Int, sel: Int, onSel: (Int) -> Unit) {
     val tm = rememberTextMeasurer()
     val small = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
     val grid = MaterialTheme.colorScheme.outlineVariant
@@ -419,9 +460,19 @@ private fun TrendYear(months: List<Int>, out: List<Long>, prev: List<Long>, last
                 if (i == sel) drawCircle(accent, 6.dp.toPx(), o)
                 else { drawCircle(surface, 4.dp.toPx(), o); drawCircle(accent, 4.dp.toPx(), o, style = Stroke(2.dp.toPx())) }
             }
+            // ⭐ بالای ماه‌هایی که خرج خاص دارند (خط روی خرج روزمره است)
+            pts.forEachIndexed { i, o ->
+                if (special[i] > 0) {
+                    val st = tm.measure("⭐", small.copy(fontSize = 12.sp))
+                    drawText(st, topLeft = Offset(o.x - st.size.width / 2f, o.y - st.size.height - 8.dp.toPx()))
+                }
+            }
             // برچسب ماه انتخاب‌شده
             if (sel <= lastIdx) {
-                val l1 = tm.measure(Fa.monthName(months[sel]) + ": " + mil(out[sel]) + " میلیون", small.copy(color = tipFg, fontWeight = FontWeight.Bold, fontSize = 11.sp))
+                val l1 = tm.measure(
+                    Fa.monthName(months[sel]) + ": " + mil(out[sel]) + " میلیون" + if (special[sel] > 0) " + ⭐ خاص " + mil(special[sel]) else "",
+                    small.copy(color = tipFg, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                )
                 val pv = prev[sel]
                 val l2 = if (pv > 0) {
                     val pct = ((out[sel] - pv) * 100 / pv)
@@ -441,8 +492,9 @@ private fun TrendYear(months: List<Int>, out: List<Long>, prev: List<Long>, last
         }
         monthLabels(f, lastIdx, sel, tm, small, label, accent)
     }
-    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
-        Legend(accent, Fa.toFa((months[0] / 100).toString()))
+    LegendFlow {
+        Legend(accent, Fa.toFa((months[0] / 100).toString()) + if (special.any { it > 0 }) " (خرج روزمره)" else "")
         if (hasPrev) Legend(ghost, Fa.toFa((months[0] / 100 - 1).toString()) + " (سال قبل)", dashed = true)
+        if (special.any { it > 0 }) Legend(SpecialColor, "⭐ ماه با خرج خاص")
     }
 }
