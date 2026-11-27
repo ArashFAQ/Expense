@@ -493,6 +493,7 @@ fun InsightsScreen(allTxs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: 
                         Spacer(Modifier.height(10.dp))
                         YearReviewCard(review)
                     }
+                    if (allTxs.any { it.special && it.ym / 100 == ym / 100 }) Section("⭐ خرج‌های خاص") { SpecialYearList(allTxs, cats, ym / 100) }
                     // ---------------- خرج‌ها
                     Section("📉 خرج‌ها") {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

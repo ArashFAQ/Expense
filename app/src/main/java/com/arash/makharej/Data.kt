@@ -46,7 +46,9 @@ data class Tx(
     /** خرج دنگی (با دیگران تقسیم شده) */
     @ColumnInfo(defaultValue = "0") val shared: Boolean = false,
     /** قرض: به چه کسی (reason = 6) */
-    val person: String? = null
+    val person: String? = null,
+    /** خرج خاص (لپ‌تاپ، ماشین…): در جمع‌ها هست ولی در میانگین‌ها و تحلیل‌ها حساب نمی‌شود */
+    @ColumnInfo(defaultValue = "0") val special: Boolean = false
 )
 
 @Entity
@@ -251,6 +253,9 @@ interface TxDao {
 
     @Query("UPDATE tx SET shared = :shared WHERE id = :id")
     suspend fun setShared(id: Long, shared: Boolean)
+
+    @Query("UPDATE tx SET special = :special WHERE id = :id")
+    suspend fun setSpecial(id: Long, special: Boolean)
 
     @Query("SELECT * FROM tx WHERE refundOf = :expenseId")
     suspend fun refundsOf(expenseId: Long): List<Tx>
@@ -631,9 +636,16 @@ private val MIGRATION_17_18 = object : Migration(17, 18) {
     }
 }
 
+/** نسخه‌ی ۱۸ ← ۱۹: خرج خاص */
+private val MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE tx ADD COLUMN special INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [Tx::class, Category::class, Asset::class, Stock::class, StockTrade::class, Due::class, Split::class, DGroup::class, DMember::class, DExpense::class, DSettle::class, AssetTrade::class, AssetDeal::class, GiftCard::class],
-    version = 18, exportSchema = false
+    version = 19, exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
     abstract fun tx(): TxDao
@@ -658,7 +670,7 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "makharej.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         DEFAULT_CATS.forEachIndexed { i, n ->

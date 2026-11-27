@@ -221,7 +221,8 @@ private class Series(val name: String, val color: Color, val values: List<Long>)
 @Composable
 private fun StackedYear(inYear: List<Tx>, cats: List<Category>, months: List<Int>, out: List<Long>, lastIdx: Int, sel: Int, onSel: (Int) -> Unit) {
     val catById = cats.associateBy { it.id }
-    val items = inYear.filter { it.isExpense }.expandSplits()
+    val specials = inYear.filter { it.isExpense && it.special }
+    val items = inYear.filter { it.isExpense && !it.special }.expandSplits()
     val totals = items.filter { it.categoryId != null && catById[it.categoryId] != null }
         .groupBy { it.categoryId!! }.mapValues { (_, l) -> l.sumOf { it.eff } }
     val top = totals.entries.sortedByDescending { it.value }.take(4).map { it.key }
@@ -230,7 +231,7 @@ private fun StackedYear(inYear: List<Tx>, cats: List<Category>, months: List<Int
         Series(c.name, c.uiColor(), months.map { m -> items.filter { it.ym == m && it.categoryId == id }.sumOf { it.eff } })
     } + Series("سایر", Color(0xFFB0A9BD), months.map { m ->
         items.filter { it.ym == m && (it.categoryId == null || it.categoryId !in top) }.sumOf { it.eff }
-    })
+    }) + Series("⭐ خرج خاص", SpecialColor, months.map { m -> specials.filter { it.ym == m }.sumOf { it.eff } })
 
     val tm = rememberTextMeasurer()
     val small = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)

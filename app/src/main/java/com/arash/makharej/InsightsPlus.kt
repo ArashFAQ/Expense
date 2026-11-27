@@ -81,7 +81,8 @@ object InsightsPlus {
     /** فقط تراکنش‌های بعد از شروع تحلیل */
     fun scope(ctx: Context, txs: List<Tx>): List<Tx> {
         val s = startMillis(ctx, txs)
-        return txs.filter { it.ts >= s }
+        // خرج‌های خاص در میانگین‌ها و تحلیل‌ها حساب نمی‌شوند
+        return txs.filter { it.ts >= s && !it.special }
     }
 
     /** ماه‌های کامل داده (از ماهِ شروع تا ماه قبل) */

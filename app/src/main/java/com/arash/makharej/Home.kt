@@ -74,8 +74,9 @@ fun MonthRow(txs: List<Tx>, isExpense: Boolean, ym: Int, onYm: (Int) -> Unit) {
     val year = ym / 100
     val minYear = minOf((txs.minOfOrNull { it.ym } ?: now) / 100, now / 100)
     val sums = remember(txs, year, isExpense) {
-        (1..12).map { m -> txs.filter { it.ym == year * 100 + m && it.isExpense == isExpense && !it.excluded }.sumOf { it.eff } }
+        (1..12).map { m -> txs.filter { it.ym == year * 100 + m && it.isExpense == isExpense && !it.excluded && !it.special }.sumOf { it.eff } }
     }
+    val starred = remember(txs, year) { txs.filter { it.special && !it.excluded && it.ym / 100 == year }.map { it.ym }.toSet() }
     val state = rememberLazyListState()
     LaunchedEffect(ym) { state.animateScrollToItem(((ym % 100) - 3).coerceAtLeast(0)) }
     val accent = MaterialTheme.colorScheme.primary
@@ -124,7 +125,7 @@ fun MonthRow(txs: List<Tx>, isExpense: Boolean, ym: Int, onYm: (Int) -> Unit) {
                         maxLines = 1
                     )
                     Text(
-                        if (future) "–" else Fa.millions(sums[i]),
+                        (if (future) "–" else Fa.millions(sums[i])) + if (isExpense && cell in starred) " ⭐" else "",
                         style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
                         color = when {
                             sel -> MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
@@ -214,7 +215,11 @@ fun HomeTab(
     val dues by remember { AppDb.get(homeCtx).due().all() }.collectAsState(initial = emptyList())
     val catById = cats.associateBy { it.id }
     val counted = txs.counted()
-    val monthOut = counted.filter { it.ym == ym && it.isExpense }.expandSplits()
+    val monthAll = counted.filter { it.ym == ym && it.isExpense }.expandSplits()
+    // خرج خاص جدا: عدد اصلی و مقایسه‌ها روی خرج روزمره
+    val specialTx = counted.filter { it.ym == ym && it.isExpense && it.special }
+    val specialOut = specialTx.sumOf { it.eff }
+    val monthOut = monthAll.filter { !it.special }
     val totalOut = monthOut.sumOf { it.eff }
     val totalIn = counted.filter { it.ym == ym && !it.isExpense }.sumOf { it.eff }
     // مقایسه با ماه قبل: اگر ماه جاری است، تا همین روزِ ماه قبل (مثلا ۱۹ آبان با ۱ تا ۱۹ مهر)
@@ -228,14 +233,14 @@ fun HomeTab(
     val prevOutByCat = prevRange.filter { it.isExpense }.expandSplits().groupBy { it.categoryId ?: -1L }.mapValues { (_, l) -> l.sumOf { it.eff } }
     val prevInByCat = prevRange.filter { !it.isExpense }.groupBy { it.categoryId ?: -1L }.mapValues { (_, l) -> l.sumOf { it.eff } }
     val prevOut = counted.filter { t ->
-        t.ym == Jalali.shiftYm(ym, -1) && t.isExpense &&
+        t.ym == Jalali.shiftYm(ym, -1) && t.isExpense && !t.special &&
             (!isCurrent || (t.jDate.substringAfterLast('/').toIntOrNull() ?: 0) <= today[2])
     }.sumOf { it.eff }
     val prevIn = counted.filter { t ->
         t.ym == Jalali.shiftYm(ym, -1) && !t.isExpense &&
             (!isCurrent || (t.jDate.substringAfterLast('/').toIntOrNull() ?: 0) <= today[2])
     }.sumOf { it.eff }
-    val uncat = monthOut.count { it.categoryId == null }
+    val uncat = monthAll.count { it.categoryId == null }
     val uncatColor = Color(0xFF90A4AE)
 
     class Slice(val key: Long, val name: String, val color: Color, val icon: ImageVector, val sum: Long, val items: List<Tx>)
@@ -265,11 +270,12 @@ fun HomeTab(
                 val numSize = if (maxOf(Fa.num(totalOut).length, Fa.num(totalIn).length) > 10) 22 else 26
                 val diff = if (prevOut > 0 && totalOut > 0) ((totalOut - prevOut) * 100 / prevOut).toInt() else null
                 SummaryCell(
-                    "خرج", totalOut, ExpenseColor, Modifier.weight(1f),
+                    if (specialOut > 0) "خرج روزمره" else "خرج", totalOut, ExpenseColor, Modifier.weight(1f),
                     extra = diff?.let { (if (it > 0) "▲" else "▼") + Fa.toFa(kotlin.math.abs(it).toString()) + "٪" },
                     extraColor = if ((diff ?: 0) > 0) ExpenseColor else IncomeColor,
                     tint = if (LocalDark.current) ExpenseColor.copy(alpha = 0.16f) else Color(0xFFFFEBEE),
-                    numSize = numSize
+                    numSize = numSize,
+                    special = specialOut.takeIf { it > 0 }
                 )
                 // درآمد بیشتر از ماه قبل = سبز
                 val diffIn = if (prevIn > 0 && totalIn > 0) ((totalIn - prevIn) * 100 / prevIn).toInt() else null
@@ -282,6 +288,8 @@ fun HomeTab(
                 )
             }
         }
+
+        if (specialTx.isNotEmpty()) item { SpecialCard(specialTx, cats, ym) }
 
         if (dues.any { Dues.open(it) && (Dues.daysTo(it) ?: 99) <= 7 }) item { UpcomingDuesCard(dues, onOpenAssets) }
 
@@ -456,7 +464,8 @@ fun HomeTab(
 @Composable
 private fun SummaryCell(
     title: String, rial: Long, color: Color, modifier: Modifier,
-    extra: String? = null, extraColor: Color = Color.Unspecified, tint: Color = Color.Transparent, numSize: Int = 26
+    extra: String? = null, extraColor: Color = Color.Unspecified, tint: Color = Color.Transparent, numSize: Int = 26,
+    special: Long? = null
 ) {
     androidx.compose.material3.Card(
         modifier, shape = RoundedCornerShape(20.dp),
@@ -487,9 +496,24 @@ private fun SummaryCell(
                 )
             }
             Text("تومان", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (special != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "⭐ + خرج خاص " + Fa.num(special), maxLines = 1,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(SpecialColor.copy(alpha = 0.16f)).padding(horizontal = 10.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = SpecialInk
+                )
+                Text(
+                    "جمع کل " + millionsText(rial + special), Modifier.padding(top = 4.dp),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
+
+val SpecialColor = Color(0xFFF9A825)
+val SpecialInk = Color(0xFFB26A00)
 
 /** درصد تغییر نسبت به ماه قبل؛ برای خرج افزایش قرمز است، برای درآمد سبز */
 @Composable

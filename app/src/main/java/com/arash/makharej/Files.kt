@@ -236,7 +236,7 @@ object Backup {
                     .put("note", t.note).put("raw", t.raw).put("excluded", t.excluded)
                     .put("dedupKey", t.dedupKey ?: JSONObject.NULL)
                     .put("bank", t.bank).put("reason", t.reason)
-                    .put("refundOf", t.refundOf ?: JSONObject.NULL).put("shared", t.shared)
+                    .put("refundOf", t.refundOf ?: JSONObject.NULL).put("shared", t.shared).put("special", t.special)
                     .put("person", t.person ?: JSONObject.NULL)
             )
         }
@@ -373,6 +373,7 @@ object Backup {
                 reason = t.optInt("reason", 0),
                 refundOf = if (t.isNull("refundOf")) null else t.optLong("refundOf"),
                 shared = t.optBoolean("shared"),
+                special = t.optBoolean("special"),
                 person = if (t.isNull("person")) null else t.optString("person")
             )
         }

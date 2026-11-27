@@ -291,6 +291,7 @@ fun TxEditor(
                 // دنگ و رسید مستقل از هم
                 if (tx.isExpense && !special && (me.shared || refunds.isNotEmpty())) DangRefundPanel(me, all, cats, db)
                 if (openPanel == "receipt" || receipts > 0) ReceiptSection(tx.id)
+                if (!special) SpecialToggle(tx)
             }
             Spacer(Modifier.height(8.dp))
         }
