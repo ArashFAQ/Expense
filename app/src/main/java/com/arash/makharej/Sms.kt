@@ -113,7 +113,7 @@ object Ingest {
             val due = try { Dues.matchPayment(ctx, tx) } catch (_: Exception) { null }
             if (due != null) auto("due", due = due.id, extra = " · " + due.title)
             if (due != null && p.isExpense && (due.kind == 0 || due.kind == 3) &&
-                AppDb.get(ctx).cat().list().any { !it.income && it.icon == "installment" }
+                (Plans.isPlan(due) || AppDb.get(ctx).cat().list().any { !it.income && it.icon == "installment" })
             ) return true
         }
         if (notify && p.isExpense && reason == 0) Notifier.showExpense(ctx, tx)
@@ -324,7 +324,11 @@ object Notifier {
             1 -> { third.putExtra("group", openGroups[0].id); "دنگ " + openGroups[0].name }
             else -> { third.putExtra("loan", true); "دنگ / قرض" }
         }
-        b.addAction(0, label, PendingIntent.getActivity(ctx, nid * 10 + 4, third, FLAGS))
+        // برداشت از خودپرداز: دکمه‌ی سوم «نقد برداشتم» (پول به کیف نقد می‌رود و خرج حساب نمی‌شود)
+        if (Cash.isAtm(tx.raw)) b.addAction(
+            0, "💵 نقد برداشتم",
+            PendingIntent.getBroadcast(ctx, nid * 10 + 1, Intent(ctx, ActionReceiver::class.java).putExtra("tx", tx.id).putExtra("cash", true), FLAGS)
+        ) else b.addAction(0, label, PendingIntent.getActivity(ctx, nid * 10 + 4, third, FLAGS))
 
         try {
             AppLock.applyPrivacy(ctx, b, CHANNEL, "خرج جدید")
@@ -481,6 +485,14 @@ class ActionReceiver : BroadcastReceiver() {
                 } finally {
                     pending.finish()
                 }
+            }
+            return
+        }
+        if (intent.getBooleanExtra("cash", false) && tx >= 0) {
+            val app = context.applicationContext
+            val pending = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try { Cash.markWithdraw(app, tx); SummaryWidget.render(app) } finally { pending.finish() }
             }
             return
         }

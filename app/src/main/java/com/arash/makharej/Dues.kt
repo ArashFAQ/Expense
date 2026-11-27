@@ -87,7 +87,13 @@ data class Due(
     val period: Int = 1,
     val paid: Int = 0,
     val note: String = "",
-    val done: Boolean = false
+    val done: Boolean = false,
+    /** خرید قسطی (اسنپ‌پی، دیجی‌پی…): دسته‌ی خرید؛ هر قسط با همین دسته خرج حساب می‌شود */
+    val planCat: Long? = null,
+    /** خرید قسطی: مبلغ کل خرید */
+    @androidx.room.ColumnInfo(defaultValue = "0") val planTotal: Long = 0,
+    /** خرید قسطی: تراکنش پیش‌پرداخت (اگر بود) */
+    val planTx: Long? = null
 )
 
 @Dao
@@ -231,6 +237,15 @@ object Dues {
     /** برداشت را به قسط/چک وصل کن: دسته‌ی «قسط و وام» (اگر هست) و یادداشت */
     private suspend fun link(ctx: Context, d: Due, t: Tx) {
         val db = AppDb.get(ctx)
+        // قسط خرید قسطی: خرج همین ماه در دسته‌ی خودِ خرید، با شماره‌ی قسط
+        if (Plans.isPlan(d) && t.isExpense) {
+            d.planCat?.let { db.tx().setCategory(t.id, it) }
+            db.tx().setPlan(t.id, d.id)
+            val k = db.tx().countPlan(d.id, d.planTx ?: -1L)
+            val label = "قسط " + Fa.toFa(k.toString()) + " از " + Fa.toFa(d.count.toString()) + " · " + d.title
+            db.tx().setNote(t.id, if (t.note.isBlank()) label else label + " · " + t.note)
+            return
+        }
         if ((d.kind == 0 || d.kind == 3) && t.isExpense) {
             val cat = db.cat().list().firstOrNull { !it.income && it.icon == "installment" }?.id
             if (cat != null) db.tx().setCategory(t.id, cat)

@@ -336,7 +336,9 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
     var balEdit by remember { mutableStateOf<Tx?>(null) }
     val visible = balances.filter { !Wealth.hidden(ctx, it.bank) }
     val hidden = balances.filter { Wealth.hidden(ctx, it.bank) }
-    val bankTotal = visible.sumOf { it.balance ?: 0L }
+    // کیف پول نقد (برداشت‌های نقدی منهای خرج‌های نقدی) جزو پولِ در دسترس است
+    val cashBal = remember(txs, tick) { if (Cash.used(ctx, txs)) Cash.balance(ctx, txs).coerceAtLeast(0) else 0L }
+    val bankTotal = visible.sumOf { it.balance ?: 0L } + cashBal
     val savedFromSms = txs.filter { it.reason == 3 }.sumOf { it.amount }
     val values = assets.associate { it.id to Wealth.assetValue(ctx, it) }
     val investTotal = values.values.sum()
@@ -459,6 +461,10 @@ fun AssetsTab(txs: List<Tx>, db: AppDb, cats: List<Category> = emptyList()) {
                             Icons.Outlined.AccountBalance, BankColor, Banks.name(t.bank),
                             "به‌روز شده " + ago(t.ts), Fa.toman(t.balance ?: 0), bank = t.bank
                         ) { balEdit = t }
+                    }
+                    // کیف پول نقد
+                    CashWalletRow(txs, onChanged = { tick++ }) { title, sub, value, warn, onClick ->
+                        AssetRow(Icons.Outlined.Payments, if (warn) MaterialTheme.colorScheme.error else Color(0xFF2E7D32), title, sub, value, onClick = onClick)
                     }
                     // کارت‌های هدیه (حساب بدون پیامک)
                     activeGifts.forEach { g ->

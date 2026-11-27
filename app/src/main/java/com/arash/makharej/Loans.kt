@@ -358,9 +358,16 @@ fun RepayPicker(deposit: Tx, txs: List<Tx>, cats: List<Category>, onDone: () -> 
     val gdata = rememberGroups()
     var settleFrom by remember { mutableStateOf<Pair<DGroup, DMember>?>(null) }
     var selling by remember { mutableStateOf(false) }
+    var returning by remember { mutableStateOf(false) }
+    var reimb by remember { mutableStateOf(false) }
     val t = target
     val sf = settleFrom
     when {
+        returning -> ExpensePickerDialog(
+            deposit, txs, cats, onPick = { e -> scope.launch { Refunds.linkReturn(ctx, deposit.id, e.id); onDone() } },
+            onDismiss = { returning = false }, returnMode = true
+        )
+        reimb -> ReimbPicker(deposit, txs, cats, onDone = onDone, onDismiss = { reimb = false })
         selling -> AssetTradeDialog(deposit, onDone = onDone, onDismiss = { selling = false })
         sf != null -> {
             val me = gdata.me(sf.first.id)
@@ -375,7 +382,9 @@ fun RepayPicker(deposit: Tx, txs: List<Tx>, cats: List<Category>, onDone: () -> 
         else -> ExpensePickerDialog(
             deposit, txs, cats, onPick = { target = it }, onDismiss = onDismiss, onBorrow = { borrow = true },
             top = if (gdata.open().isNotEmpty()) ({ GroupDebtorsForDeposit(gdata, deposit) { g, m -> settleFrom = g to m } }) else null,
-            onSellAsset = { selling = true }
+            onSellAsset = { selling = true },
+            onReturn = { returning = true },
+            onReimb = { reimb = true }
         )
     }
 }

@@ -493,7 +493,16 @@ fun InsightsScreen(allTxs: List<Tx>, cats: List<Category>, dues: List<Due>, ym: 
                         Spacer(Modifier.height(10.dp))
                         YearReviewCard(review)
                     }
-                    if (allTxs.any { it.special && it.ym / 100 == ym / 100 }) Section("⭐ خرج‌های خاص") { SpecialYearList(allTxs, cats, ym / 100) }
+                    if (allTxs.any { it.special && it.ym / 100 == ym / 100 }) Section("⭐ خرج و درآمد خاص") { SpecialYearList(allTxs, cats, ym / 100) }
+                    val yearly = InsightsPlus.spreadMonthly(allTxs, ym)
+                    if (yearly > 0) Section("📆 پرداخت‌های سالانه") {
+                        val ys = allTxs.filter { it.isExpense && !it.excluded && it.spread > 1 && InsightsPlus.spreadOut(it).any { p -> p.ym == ym } }
+                        Text(
+                            "در تحلیل‌ها ماهی " + Fa.toman(yearly) + " از پرداخت‌های سالانه حساب شده (" +
+                                ys.joinToString("، ") { (it.note.ifBlank { catById[it.categoryId]?.name ?: "بدون دسته" }) } + ")؛ جمع ماهِ پرداخت همان مبلغ کامل است.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                     // ---------------- خرج‌ها
                     Section("📉 خرج‌ها") {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

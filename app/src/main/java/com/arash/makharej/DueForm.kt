@@ -244,7 +244,8 @@ fun DueEditDialog(initial: Due?, onSave: (Due) -> Unit, onDismiss: () -> Unit, d
                                     count = when (kind) { 0 -> total ?: left!!; 3 -> 0; else -> 1 },
                                     period = p,
                                     paid = if (periodic) paid else (initial?.paid ?: 0),
-                                    note = note.trim(), done = false
+                                    note = note.trim(), done = false,
+                                    planCat = initial?.planCat, planTotal = initial?.planTotal ?: 0, planTx = initial?.planTx
                                 )
                             )
                         }

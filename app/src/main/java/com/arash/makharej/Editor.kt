@@ -30,6 +30,9 @@ import androidx.compose.material.icons.outlined.CurrencyExchange
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.LocalAtm
+import androidx.compose.material.icons.outlined.Work
+import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.Sms
@@ -93,7 +96,8 @@ fun TxEditor(
         }
     }
     var note by remember(tx.id) { mutableStateOf(tx.note) }
-    var excluded by remember(tx.id) { mutableStateOf(tx.excluded) }
+    // تنخواه (۱۹/۲۰) در جمع‌ها حساب نمی‌شود ولی دسته و توضیحش مثل خرج عادی ویرایش می‌شود
+    var excluded by remember(tx.id) { mutableStateOf(tx.excluded && tx.reason !in setOf(19, 20)) }
     var confirmDel by remember(tx.id) { mutableStateOf(false) }
     var editAmount by remember(tx.id) { mutableStateOf(false) }
     var showRaw by remember(tx.id) { mutableStateOf(false) }
@@ -108,17 +112,20 @@ fun TxEditor(
     var pickOwn by remember(tx.id) { mutableStateOf(false) }
     var pickOut by remember(tx.id) { mutableStateOf(false) }
     var cashDang by remember(tx.id) { mutableStateOf(false) }
+    var pickReturn by remember(tx.id) { mutableStateOf(false) }
+    var pickReimb by remember(tx.id) { mutableStateOf(false) }
     var openPanel by remember(tx.id) { mutableStateOf("") } // dang / group / receipt
     var newCat by remember(tx.id) { mutableStateOf(false) }
     val gdata = rememberGroups()
     var groupFor by remember(tx.id) { mutableStateOf<DGroup?>(null) }
     val all by remember { db?.tx()?.all() ?: kotlinx.coroutines.flow.flowOf(emptyList()) }.collectAsState(initial = emptyList())
     val me = all.firstOrNull { it.id == tx.id } ?: tx
-    val refunds = all.filter { it.refundOf == tx.id }
+    val refunds = all.filter { it.refundOf == tx.id && it.reason != 17 }
+    val returns = all.filter { it.refundOf == tx.id && it.reason == 17 }.sortedBy { it.ts }
     val receipts = Receipts.counts[tx.id] ?: 0
 
     // حالت‌های خاص (قرض، دنگ گروهی، خرید دارایی، بازپرداخت و…) همان بخش قبلی را نشان می‌دهند
-    val special = tx.reason in setOf(4, 6, 7, 8, 9, 11, 12, 13, 14) || tx.refundOf != null || Loans.isLoan(tx)
+    val special = tx.reason in setOf(4, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18) || tx.refundOf != null || Loans.isLoan(tx)
     val ownLike = excluded && tx.reason in setOf(0, 1, 2, 3)
     val showCats = !excluded && !special && (!pendingDeposit || depositKind == 1)
     val col = if (tx.isExpense) ExpenseColor else IncomeColor
@@ -178,6 +185,11 @@ fun TxEditor(
                         pickOwn = true
                     }
                 }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BigChoice(Icons.AutoMirrored.Outlined.Undo, "برگشت خرید", false, IncomeColor, Modifier.weight(1f)) { pickReturn = true }
+                    BigChoice(Icons.Outlined.Work, "برگشت تنخواه", false, IncomeColor, Modifier.weight(1f)) { pickReimb = true }
+                }
             } else if (tx.reason == 15 && db != null) {
                 // ---- تراکنش قدیمی (قبل از نصب)
                 Spacer(Modifier.height(14.dp))
@@ -229,7 +241,11 @@ fun TxEditor(
             }
 
             // ---- حالت‌های خاص: قرض، دنگ گروهی، خرید دارایی، بازپرداخت
-            if (special && db != null) DangSection(tx, db, cats, onCancel)
+            if (special && db != null) {
+                if (tx.reason in 16..18) KindSection(tx, db, cats, onCancel) else DangSection(tx, db, cats, onCancel)
+            }
+            // واریزِ تازه که «درآمد» انتخاب شد: درآمد خاص؟
+            if (pendingDeposit && depositKind == 1) SpecialToggle(tx)
 
             // ---- توضیح
             Spacer(Modifier.height(14.dp))
@@ -262,8 +278,16 @@ fun TxEditor(
                         openPanel = if (openPanel == "group") "" else "group"
                     }
                     if (!sharedOn) acts += Act(Icons.Outlined.CurrencyExchange, "قرض / دارایی", false) { pickOut = true }
+                    // برداشت از خودپرداز: پول به کیف نقد می‌رود و خرج حساب نمی‌شود
+                    if (tx.bank != Banks.MANUAL && tx.reason == 0 && !sharedOn) acts += Act(Icons.Outlined.LocalAtm, "نقد برداشتم", false) {
+                        scope.launch { Cash.markWithdraw(ctx, tx.id); onCancel() }
+                    }
                 }
-                if (!tx.isExpense && !special && !excluded) acts += Act(Icons.Outlined.CurrencyExchange, "بازپرداخت / قرض", false) { pickRepay = true }
+                if (!tx.isExpense && !special && !excluded) {
+                    acts += Act(Icons.Outlined.CurrencyExchange, "بازپرداخت / قرض", false) { pickRepay = true }
+                    acts += Act(Icons.AutoMirrored.Outlined.Undo, "برگشت خرید", false) { pickReturn = true }
+                    if (Reimb.pending(all).isNotEmpty()) acts += Act(Icons.Outlined.Work, "برگشت تنخواه", false) { pickReimb = true }
+                }
                 if (tx.id > 0) acts += Act(
                     Icons.Outlined.AttachFile, if (receipts > 0) "رسید " + Fa.toFa(receipts.toString()) else "رسید",
                     receipts > 0 || openPanel == "receipt"
@@ -290,8 +314,9 @@ fun TxEditor(
                 }
                 // دنگ و رسید مستقل از هم
                 if (tx.isExpense && !special && (me.shared || refunds.isNotEmpty())) DangRefundPanel(me, all, cats, db)
+                if (tx.isExpense && returns.isNotEmpty()) ReturnsPanel(me, returns)
                 if (openPanel == "receipt" || receipts > 0) ReceiptSection(tx.id)
-                if (!special) SpecialToggle(tx)
+                if (!special) { if (tx.isExpense) KindBox(tx, me, sel, cats, db) else SpecialToggle(tx) }
             }
             Spacer(Modifier.height(8.dp))
         }
@@ -335,6 +360,11 @@ fun TxEditor(
     }, onDismiss = { pickOwn = false; onCancel() })
     if (pickRepay) RepayPicker(tx, all, cats, onDone = { pickRepay = false; onCancel() }, onDismiss = { pickRepay = false })
     if (pickOut) OutPicker(tx, all, onDone = { pickOut = false; onCancel() }, onDismiss = { pickOut = false })
+    if (pickReturn) ExpensePickerDialog(
+        tx, all, cats, onPick = { e -> pickReturn = false; scope.launch { Refunds.linkReturn(ctx, tx.id, e.id); onCancel() } },
+        onDismiss = { pickReturn = false }, returnMode = true
+    )
+    if (pickReimb) ReimbPicker(tx, all, cats, onDone = { pickReimb = false; onCancel() }, onDismiss = { pickReimb = false })
     if (cashDang && db != null) AmountDialog("دریافت نقدی دنگ", null, onOk = { rial ->
         cashDang = false
         scope.launch { Refunds.addCash(ctx, me, rial) }
@@ -522,7 +552,7 @@ private fun DangRefundPanel(me: Tx, all: List<Tx>, cats: List<Category>, db: App
     var pickDeposit by remember { mutableStateOf(false) }
     var cash by remember { mutableStateOf(false) }
     var linking by remember { mutableStateOf<Tx?>(null) }
-    val refunds = all.filter { it.refundOf == me.id }.sortedBy { it.ts }
+    val refunds = all.filter { it.refundOf == me.id && it.reason != 17 }.sortedBy { it.ts }
     val back = refunds.sumOf { it.amount }
     Panel(MaterialTheme.colorScheme.primary) {
         Text("دنگی", fontWeight = FontWeight.Bold)
@@ -552,6 +582,30 @@ private fun DangRefundPanel(me: Tx, all: List<Tx>, cats: List<Category>, db: App
         cash = false
         scope.launch { Refunds.addCash(ctx, me, rial) }
     }, onDismiss = { cash = false })
+}
+
+/** برگشت خرید (مرجوعی): پول‌هایی که فروشنده برگرداند */
+@Composable
+private fun ReturnsPanel(me: Tx, returns: List<Tx>) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val back = returns.sumOf { it.amount }
+    Panel(Color(0xFF607D8B)) {
+        Text("↩ برگشت خرید", fontWeight = FontWeight.Bold)
+        returns.forEach { r ->
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "برگشت " + Fa.toman(r.amount) + "  ·  " + Fa.dayTitle(r.jDate) + "  ·  " + Banks.name(r.bank),
+                    Modifier.weight(1f), style = MaterialTheme.typography.bodySmall
+                )
+                TextButton(onClick = { scope.launch { Refunds.unlink(ctx, r) } }) { Text("حذف", color = MaterialTheme.colorScheme.error) }
+            }
+        }
+        Text(
+            if (back >= me.amount) "کل مبلغ برگشت؛ این خرید پس داده شد" else "خالص این خرید: " + Fa.toman(me.amount - back),
+            fontWeight = FontWeight.Bold, color = ExpenseColor, modifier = Modifier.padding(top = 4.dp)
+        )
+    }
 }
 
 /** ساخت دسته‌ی تازه از همین صفحه: اسم، آیکون و رنگ؛ بعد از ساخت همان لحظه انتخاب می‌شود */

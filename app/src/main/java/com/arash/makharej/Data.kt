@@ -48,7 +48,13 @@ data class Tx(
     /** قرض: به چه کسی (reason = 6) */
     val person: String? = null,
     /** خرج خاص (لپ‌تاپ، ماشین…): در جمع‌ها هست ولی در میانگین‌ها و تحلیل‌ها حساب نمی‌شود */
-    @ColumnInfo(defaultValue = "0") val special: Boolean = false
+    @ColumnInfo(defaultValue = "0") val special: Boolean = false,
+    /** پرداخت سالانه: در تحلیل‌ها روی این‌همه ماه پخش می‌شود (۰ = نه) */
+    @ColumnInfo(defaultValue = "0") val spread: Int = 0,
+    /** خرج دستی که از کیف پول نقد پرداخت شد */
+    @ColumnInfo(defaultValue = "0") val cash: Boolean = false,
+    /** خرید قسطی: شناسه‌ی قسط (Due) — هم برای خود خرید و هم برای قسط‌هایش */
+    val planId: Long? = null
 )
 
 @Entity
@@ -206,7 +212,8 @@ interface TxDao {
 
     @Query(
         "UPDATE tx SET categoryId = :cat, note = :note, amount = :amount, " +
-            "reason = CASE WHEN excluded = :ex THEN reason ELSE 0 END, excluded = :ex WHERE id = :id"
+            "reason = CASE WHEN excluded = :ex OR reason IN (19, 20) THEN reason ELSE 0 END, " +
+            "excluded = CASE WHEN reason IN (19, 20) THEN 1 ELSE :ex END WHERE id = :id"
     )
     suspend fun update(id: Long, cat: Long?, note: String, ex: Boolean, amount: Long)
 
@@ -256,6 +263,29 @@ interface TxDao {
 
     @Query("UPDATE tx SET special = :special WHERE id = :id")
     suspend fun setSpecial(id: Long, special: Boolean)
+
+    @Query("UPDATE tx SET spread = :n WHERE id = :id")
+    suspend fun setSpread(id: Long, n: Int)
+
+    @Query("UPDATE tx SET planId = :plan WHERE id = :id")
+    suspend fun setPlan(id: Long, plan: Long?)
+
+    @Query("UPDATE tx SET planId = NULL WHERE planId = :plan")
+    suspend fun clearPlan(plan: Long)
+
+    @Query("SELECT COUNT(*) FROM tx WHERE planId = :plan AND id != :except")
+    suspend fun countPlan(plan: Long, except: Long): Int
+
+    /** برگشت خرید (reason = 17): واریز درآمد نیست و از خرج اصلی کم می‌شود */
+    @Query("UPDATE tx SET refundOf = :expenseId, excluded = 1, reason = 17, categoryId = NULL WHERE id = :id")
+    suspend fun setReturn(id: Long, expenseId: Long)
+
+    /** تنخواه: ۱۹ = منتظر برگشت، ۲۰ = برگشت خورد (person = dep:<واریز>)؛ برگشت تنخواه (واریز) = ۱۸ */
+    @Query("UPDATE tx SET reason = :r, excluded = 1, person = :p WHERE id = :id")
+    suspend fun setReimb(id: Long, r: Int, p: String?)
+
+    @Query("UPDATE tx SET reason = 0, excluded = 0, person = NULL WHERE id = :id")
+    suspend fun clearReimb(id: Long)
 
     @Query("SELECT * FROM tx WHERE refundOf = :expenseId")
     suspend fun refundsOf(expenseId: Long): List<Tx>
@@ -636,6 +666,18 @@ private val MIGRATION_17_18 = object : Migration(17, 18) {
     }
 }
 
+/** نسخه‌ی ۱۹ ← ۲۰: پرداخت سالانه، کیف پول نقد، خرید قسطی */
+private val MIGRATION_19_20 = object : Migration(19, 20) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE tx ADD COLUMN spread INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE tx ADD COLUMN cash INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE tx ADD COLUMN planId INTEGER")
+        db.execSQL("ALTER TABLE Due ADD COLUMN planCat INTEGER")
+        db.execSQL("ALTER TABLE Due ADD COLUMN planTotal INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE Due ADD COLUMN planTx INTEGER")
+    }
+}
+
 /** نسخه‌ی ۱۸ ← ۱۹: خرج خاص */
 private val MIGRATION_18_19 = object : Migration(18, 19) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -645,7 +687,7 @@ private val MIGRATION_18_19 = object : Migration(18, 19) {
 
 @Database(
     entities = [Tx::class, Category::class, Asset::class, Stock::class, StockTrade::class, Due::class, Split::class, DGroup::class, DMember::class, DExpense::class, DSettle::class, AssetTrade::class, AssetDeal::class, GiftCard::class],
-    version = 19, exportSchema = false
+    version = 20, exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
     abstract fun tx(): TxDao
@@ -670,7 +712,7 @@ abstract class AppDb : RoomDatabase() {
 
         fun get(ctx: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "makharej.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         DEFAULT_CATS.forEachIndexed { i, n ->

@@ -49,6 +49,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.outlined.LocalAtm
+import androidx.compose.material.icons.outlined.Work
+import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
@@ -472,6 +475,8 @@ fun MainScreen(startTab: Int = 0, startIncome: Boolean = false) {
     Transfers.update(txs)
     val splitsAll by remember { db.split().all() }.collectAsState(initial = emptyList())
     Splits.update(splitsAll)
+    val duesAll by remember { db.due().all() }.collectAsState(initial = emptyList())
+    Plans.update(duesAll)
     LaunchedEffect(Unit) { Receipts.scan(ctx) }
     val cats by remember { db.cat().all() }.collectAsState(initial = emptyList())
     // جابه‌جایی بین تب‌ها با کشیدن چپ و راست
@@ -1030,6 +1035,10 @@ fun TxRow(t: Tx, cat: Category?, combined: Boolean = false, onClick: () -> Unit)
         t.reason == 13 || t.reason == 14 -> { title = t.person ?: "خرید/فروش دارایی"; bg = neutral }
         t.reason == 12 -> { title = "تسویه‌ی دنگ · " + (t.person ?: ""); bg = neutral }
         t.excluded && t.reason == 9 -> { title = if (t.note == "بخشیده شد") "بدهی بخشیده شد" else "پرداخت بدهی"; bg = neutral }
+        t.reason == 16 -> { title = "به کیف نقد"; bg = neutral }
+        t.reason == 17 -> { title = "برگشت خرید"; bg = neutral }
+        t.reason == 18 -> { title = "برگشت تنخواه"; bg = neutral }
+        t.reason == 19 || t.reason == 20 -> { title = "تنخواه" + (cat?.let { " · " + it.name } ?: ""); bg = neutral }
         t.excluded -> { title = "حساب خودم"; bg = neutral }
         // فهرست یک‌جا: درآمد کارت روشن با نوار سبز (تا از خرج‌های رنگی جدا شود)
         combined && !t.isExpense -> { title = cat?.name ?: "واریز"; bg = neutral }
@@ -1038,6 +1047,7 @@ fun TxRow(t: Tx, cat: Category?, combined: Boolean = false, onClick: () -> Unit)
         else -> { title = "بدون دسته"; bg = neutral }
     }
     val colored = cat != null && !t.excluded && !(combined && !t.isExpense)
+    val ret = if (t.isExpense) Refunds.returned[t.id] ?: 0L else 0L
     val incomeStripe = combined && !t.isExpense && !t.excluded
     val fg = if (colored) (if (bg.luminance() > 0.55f) Color(0xFF111111) else Color.White) else MaterialTheme.colorScheme.onSurface
     val fgSub = if (colored) fg.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
@@ -1068,6 +1078,9 @@ fun TxRow(t: Tx, cat: Category?, combined: Boolean = false, onClick: () -> Unit)
                 t.reason in 6..9 -> CatIcons.loan
                 t.reason == 11 || t.reason == 12 -> CatIcons.dang
                 t.reason == 13 || t.reason == 14 -> CatIcons.savingsIcon
+                t.reason == 16 -> Icons.Outlined.LocalAtm
+                t.reason == 17 -> Icons.AutoMirrored.Outlined.Undo
+                t.reason in 18..20 -> Icons.Outlined.Work
                 t.excluded -> CatIcons.transfer
                 cat != null -> cat.uiIcon()
                 else -> CatIcons.unknown
@@ -1093,13 +1106,17 @@ fun TxRow(t: Tx, cat: Category?, combined: Boolean = false, onClick: () -> Unit)
             Column(Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.Bold, color = titleColor)
                 Text(
-                    Fa.toFa(t.time) + "  ·  " + Banks.name(t.bank) +
+                    Fa.toFa(t.time) + "  ·  " + (if (t.cash) "کیف نقد" else Banks.name(t.bank)) +
                         (if ((Receipts.counts[t.id] ?: 0) > 0) "  ·  رسید" else "") +
                         (if (t.reason == 6 || t.reason == 8) {
                             val left = t.amount - (Refunds.byExpense[t.id] ?: 0L)
                             if (left > 0) "  ·  مانده " + Fa.toman(left) else "  ·  تسویه شد"
                         }
+                        else if (ret > 0) (if (t.eff == 0L) "  ·  پس داده شد" else "  ·  برگشت " + millionsText(ret) + " · خالص " + Fa.toman(t.eff))
                         else if (t.refunded > 0) "  ·  دنگی · سهم من " + Fa.toman(t.eff) else if (t.shared) "  ·  دنگی" else "") +
+                        (if (t.reason == 19) "  ·  منتظر برگشت" else if (t.reason == 20) "  ·  برگشت خورد" else "") +
+                        (if (t.spread > 0) "  ·  📆 " + Fa.toFa(t.spread.toString()) + " ماه" else "") +
+                        (Plans.purchaseLabel(t)?.let { "  ·  $it" } ?: "") +
                         if (t.note.isNotEmpty()) "  ·  ${t.note}" else "",
                     style = MaterialTheme.typography.bodySmall,
                     color = fgSub,
@@ -1217,8 +1234,14 @@ fun EditDialog(t: Tx, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
 /** افزودن دستی خرج یا واریز؛ تاریخ و ساعت همین لحظه */
 @Composable
 fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: () -> Unit) {
+    val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val money = rememberMoney(null)
+    // کیف پول نقد (فقط اگر قبلا برداشت نقدی ثبت شده) و خرید قسطی
+    val cashInfo by produceState<Long?>(null) { val l = db.tx().list(); value = if (Cash.used(ctx, l)) Cash.balance(ctx, l) else null }
+    var fromCash by remember { mutableStateOf(false) }
+    var planOn by remember { mutableStateOf(false) }
+    val plan = rememberPlanForm()
     var sel by remember { mutableStateOf<Long?>(null) }
     var note by remember { mutableStateOf("") }
     var newCat by remember { mutableStateOf(false) }
@@ -1234,7 +1257,7 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
     val accent = catAccent(cats, sel, if (isExpense) ExpenseColor else IncomeColor)
     ColorDialog(
         title = if (isExpense) "خرج جدید" else "درآمد جدید", subtitle = "خانه‌های سفید را پر کن", accent = accent,
-        okText = "ذخیره", okEnabled = amount != null,
+        okText = "ذخیره", okEnabled = if (planOn) plan.valid(amount ?: 0) else amount != null,
         onOk = {
             val now = System.currentTimeMillis()
             val c = java.util.Calendar.getInstance().apply { timeInMillis = now }
@@ -1253,15 +1276,29 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                 categoryId = sel,
                 note = note.trim(),
                 dedupKey = "manual-$now",
-                bank = Banks.MANUAL
+                bank = Banks.MANUAL,
+                cash = isExpense && fromCash
             )
-            scope.launch { db.tx().insert(tx) }
+            scope.launch {
+                val down = amount ?: 0
+                val id = if (down > 0) db.tx().insert(tx).takeIf { it > 0 } else null
+                if (planOn) Plans.create(
+                    ctx, note.trim().ifBlank { cats.firstOrNull { it.id == sel }?.name ?: "خرید قسطی" }, sel,
+                    plan.total.rial ?: 0, plan.eachOr(down) ?: 0, plan.n ?: 1, plan.first, id
+                )
+            }
             onClose()
         },
         onDismiss = onClose
     ) {
-        FormLine(Icons.Outlined.AttachMoney, Color(0xFF2E7D32), "مبلغ", null) {
+        FormLine(Icons.Outlined.AttachMoney, Color(0xFF2E7D32), if (planOn) "پیش‌پرداخت" else "مبلغ", if (planOn) "اگر نبود خالی" else null) {
             Box(Modifier.focusRequester(focus)) { FormMoney(money, accent) }
+        }
+        if (isExpense && cashInfo != null) FormLine(Icons.Outlined.LocalAtm, Color(0xFF2E7D32), "از کجا؟", null) {
+            FormChips(
+                listOf(true to "💵 کیف نقد (" + millionsText(cashInfo ?: 0) + ")", false to "بدون حساب"),
+                fromCash, accent
+            ) { fromCash = it }
         }
         FormLine(Icons.Outlined.CalendarMonth, Color(0xFFEF6C00), "تاریخ", null) {
             FormPick((if (isToday) "امروز، " else "") + jDateText(date), "انتخاب تاریخ", accent, Icons.Outlined.CalendarMonth) { pickDate = true }
@@ -1276,6 +1313,10 @@ fun AddTxDialog(isExpense: Boolean, cats: List<Category>, db: AppDb, onClose: ()
                 note = n
                 if (sel == null && c != null && cats.any { it.id == c && it.income == !isExpense }) sel = c
             }
+        }
+        if (isExpense) {
+            FormSwitch("🧾 خرید قسطی", "اسنپ‌پی، دیجی‌پی، تارا…", planOn, accent) { planOn = it }
+            if (planOn) PlanFields(plan, amount ?: 0, accent)
         }
     }
 

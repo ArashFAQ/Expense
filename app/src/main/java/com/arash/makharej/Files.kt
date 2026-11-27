@@ -238,6 +238,7 @@ object Backup {
                     .put("bank", t.bank).put("reason", t.reason)
                     .put("refundOf", t.refundOf ?: JSONObject.NULL).put("shared", t.shared).put("special", t.special)
                     .put("person", t.person ?: JSONObject.NULL)
+                    .put("spread", t.spread).put("cash", t.cash).put("planId", t.planId ?: JSONObject.NULL)
             )
         }
         JSONObject()
@@ -303,6 +304,7 @@ object Backup {
                         JSONObject().put("id", d.id).put("kind", d.kind).put("title", d.title).put("amount", d.amount)
                             .put("bank", d.bank ?: JSONObject.NULL).put("startJDate", d.startJDate).put("count", d.count)
                             .put("period", d.period).put("paid", d.paid).put("note", d.note).put("done", d.done)
+                            .put("planCat", d.planCat ?: JSONObject.NULL).put("planTotal", d.planTotal).put("planTx", d.planTx ?: JSONObject.NULL)
                     )
                 }
             })
@@ -374,7 +376,10 @@ object Backup {
                 refundOf = if (t.isNull("refundOf")) null else t.optLong("refundOf"),
                 shared = t.optBoolean("shared"),
                 special = t.optBoolean("special"),
-                person = if (t.isNull("person")) null else t.optString("person")
+                person = if (t.isNull("person")) null else t.optString("person"),
+                spread = t.optInt("spread", 0),
+                cash = t.optBoolean("cash"),
+                planId = if (!t.has("planId") || t.isNull("planId")) null else t.optLong("planId")
             )
         }
         val aa = o.optJSONArray("assets") ?: JSONArray()
@@ -405,7 +410,9 @@ object Backup {
             Due(
                 d.getLong("id"), d.getInt("kind"), d.getString("title"), d.getLong("amount"),
                 if (d.isNull("bank")) null else d.optString("bank"), d.getString("startJDate"),
-                d.optInt("count", 1), d.optInt("period", 1), d.optInt("paid"), d.optString("note"), d.optBoolean("done")
+                d.optInt("count", 1), d.optInt("period", 1), d.optInt("paid"), d.optString("note"), d.optBoolean("done"),
+                if (!d.has("planCat") || d.isNull("planCat")) null else d.optLong("planCat"), d.optLong("planTotal"),
+                if (!d.has("planTx") || d.isNull("planTx")) null else d.optLong("planTx")
             )
         }
         val spa = o.optJSONArray("splits") ?: JSONArray()

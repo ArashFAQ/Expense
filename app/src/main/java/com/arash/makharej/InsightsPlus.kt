@@ -81,9 +81,31 @@ object InsightsPlus {
     /** فقط تراکنش‌های بعد از شروع تحلیل */
     fun scope(ctx: Context, txs: List<Tx>): List<Tx> {
         val s = startMillis(ctx, txs)
-        // خرج‌های خاص در میانگین‌ها و تحلیل‌ها حساب نمی‌شوند
-        return txs.filter { it.ts >= s && !it.special }
+        // خرج‌های خاص در میانگین‌ها و تحلیل‌ها حساب نمی‌شوند؛ پرداخت سالانه روی چند ماه پخش می‌شود
+        return txs.filter { it.ts >= s && !it.special }.flatMap { t -> if (t.isExpense && !t.excluded && t.spread > 1) spreadOut(t) else listOf(t) }
     }
+
+    /** پرداخت سالانه: n تکه‌ی ماهانه (شناسه‌ی منفی تا با خودِ تراکنش قاطی نشود) */
+    fun spreadOut(t: Tx): List<Tx> {
+        val n = t.spread
+        val total = t.eff
+        val part = total / n
+        val d = t.jDate.split("/").mapNotNull { it.toIntOrNull() }
+        if (d.size != 3) return listOf(t)
+        return (0 until n).map { i ->
+            val m = Dues.shiftMonths(intArrayOf(d[0], d[1], d[2]), i)
+            val day = minOf(m[2], JalaliCal.monthLength(m[0], m[1]))
+            t.copy(
+                id = -(t.id * 100 + i + 1), amount = if (i == n - 1) total - part * (n - 1) else part,
+                jDate = Dues.fmt(m[0], m[1], day), ym = m[0] * 100 + m[1],
+                ts = if (i == 0) t.ts else JalaliCal.toMillis(m[0], m[1], day, 12, 0), spread = 0
+            )
+        }
+    }
+
+    /** سهم ماهانه‌ی پرداخت‌های سالانه‌ای که این ماه را پوشش می‌دهند */
+    fun spreadMonthly(txs: List<Tx>, ym: Int): Long =
+        txs.filter { it.isExpense && !it.excluded && it.spread > 1 }.flatMap { spreadOut(it) }.filter { it.ym == ym }.sumOf { it.amount }
 
     /** ماه‌های کامل داده (از ماهِ شروع تا ماه قبل) */
     fun monthsOfData(ctx: Context, txs: List<Tx>): Int {

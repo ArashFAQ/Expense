@@ -54,8 +54,20 @@ object Refunds {
     var byExpense: Map<Long, Long> = emptyMap()
         private set
 
+    /** برگشت خرید (مرجوعی، reason = 17) هر خرج */
+    @Volatile
+    var returned: Map<Long, Long> = emptyMap()
+        private set
+
     fun update(txs: List<Tx>) {
         byExpense = txs.filter { it.refundOf != null }.groupBy { it.refundOf!! }.mapValues { (_, l) -> l.sumOf { it.amount } }
+        returned = txs.filter { it.refundOf != null && it.reason == 17 }.groupBy { it.refundOf!! }.mapValues { (_, l) -> l.sumOf { it.amount } }
+    }
+
+    /** برگشت خرید: واریز به خرج اصلی وصل می‌شود و از آن کم می‌شود (دنگی نمی‌شود) */
+    suspend fun linkReturn(ctx: Context, depositId: Long, expenseId: Long) {
+        AppDb.get(ctx).tx().setReturn(depositId, expenseId)
+        Notifier.cancel(ctx, depositId)
     }
 
     const val WINDOW = 60L * 24 * 60 * 60_000 // بازپرداخت تا ۶۰ روز بعد از خرج
@@ -127,7 +139,10 @@ fun ExpensePickerDialog(
     deposit: Tx, txs: List<Tx>, cats: List<Category>, onPick: (Tx) -> Unit, onDismiss: () -> Unit,
     onBorrow: (() -> Unit)? = null,
     top: (@Composable () -> Unit)? = null,
-    onSellAsset: (() -> Unit)? = null
+    onSellAsset: (() -> Unit)? = null,
+    onReturn: (() -> Unit)? = null,
+    onReimb: (() -> Unit)? = null,
+    returnMode: Boolean = false
 ) {
     var q by remember { mutableStateOf("") }
     val catById = cats.associateBy { it.id }
@@ -138,8 +153,8 @@ fun ExpensePickerDialog(
         qq.isEmpty() || e.note.contains(qq, true) ||
             (e.categoryId?.let { catById[it]?.name }?.contains(qq, true) == true) ||
             (e.amount / 10).toString().contains(Fa.toEn(qq))
-    }.sortedWith(compareByDescending<Tx> { it.shared }.thenByDescending { it.ts })
-    val loans = Loans.open(txs).filter { o ->
+    }.sortedWith(if (returnMode) compareByDescending<Tx> { it.ts } else compareByDescending<Tx> { it.shared }.thenByDescending { it.ts })
+    val loans = if (returnMode) emptyList() else Loans.open(txs).filter { o ->
         val qq = q.trim()
         o.loan.ts <= deposit.ts + 60_000 &&
             (qq.isEmpty() || (o.loan.person ?: "").contains(qq, true) || o.loan.note.contains(qq, true))
@@ -147,7 +162,7 @@ fun ExpensePickerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(Fa.toman(deposit.amount) + " بازپرداخت کدام قرض یا خرج است؟") },
+        title = { Text(Fa.toman(deposit.amount) + if (returnMode) " برگشت کدام خرید است؟" else " بازپرداخت کدام قرض یا خرج است؟") },
         text = {
             Column {
                 OutlinedTextField(
@@ -161,8 +176,16 @@ fun ExpensePickerDialog(
                 if (onSellAsset != null) OutlinedButton(onClick = onSellAsset, modifier = Modifier.fillMaxWidth()) {
                     Text("فروش دلار، سکه یا طلا")
                 }
+                if (onReturn != null || onReimb != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (onReturn != null) OutlinedButton(onClick = onReturn, modifier = Modifier.weight(1f)) { Text("↩ برگشت خرید") }
+                    if (onReimb != null) OutlinedButton(onClick = onReimb, modifier = Modifier.weight(1f)) { Text("💼 برگشت تنخواه") }
+                }
+                if (returnMode) Text(
+                    "خریدی که پولش برگشت را انتخاب کن؛ این واریز درآمد حساب نمی‌شود و از همان خرید کم می‌شود.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(Modifier.height(6.dp))
-                if (list.isEmpty() && loans.isEmpty()) Text("قرض باز یا خرجی در ۶۰ روز قبل از این واریز پیدا نشد.")
+                if (list.isEmpty() && loans.isEmpty()) Text(if (returnMode) "خریدی در ۶۰ روز قبل از این واریز پیدا نشد." else "قرض باز یا خرجی در ۶۰ روز قبل از این واریز پیدا نشد.")
                 LazyColumn(Modifier.heightIn(max = 420.dp)) {
                     if (top != null) item { Column { top() } }
                     if (loans.isNotEmpty()) item {

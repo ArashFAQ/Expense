@@ -44,6 +44,16 @@ object Special {
         val p90 = hist[hist.size * 9 / 10]
         return t.amount >= p90 * 4
     }
+
+    /** درآمدی که حداقل ۱۰ میلیون تومان و ۱٫۵ برابر میانه‌ی درآمد ماهانه‌ی شش ماه اخیر باشد (مثل عیدی، پاداش، فروش ماشین) */
+    fun looksSpecialIncome(t: Tx, all: List<Tx>): Boolean {
+        if (t.isExpense || t.special || t.amount < 100_000_000L) return false
+        val since = t.ts - 180L * 86_400_000L
+        val months = all.filter { !it.isExpense && !it.excluded && !it.special && it.id != t.id && it.ts in since until t.ts }
+            .groupBy { it.ym }.values.map { l -> l.sumOf { it.amount } }.sorted()
+        if (months.size < 3) return false
+        return t.amount * 2 >= months[months.size / 2] * 3
+    }
 }
 
 /** کارت زرد خانه: خرج‌های خاص ماه؛ با لمس فهرستشان باز می‌شود */
@@ -54,7 +64,8 @@ fun SpecialCard(list: List<Tx>, cats: List<Category>, ym: Int) {
     val catById = cats.associateBy { it.id }
     var open by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Tx?>(null) }
-    val total = list.sumOf { it.eff }
+    val totalOut = list.filter { it.isExpense }.sumOf { it.eff }
+    val totalIn = list.filter { !it.isExpense }.sumOf { it.eff }
     Card(shape = RoundedCornerShape(20.dp), colors = cardColors()) {
         Column(Modifier.fillMaxWidth()) {
             Row(
@@ -66,13 +77,27 @@ fun SpecialCard(list: List<Tx>, cats: List<Category>, ym: Int) {
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(Fa.toFa(list.size.toString()) + " خرج خاص در " + Fa.monthName(ym), fontWeight = FontWeight.Bold)
+                    val ne = list.count { it.isExpense }
+                    val ni = list.size - ne
+                    Text(
+                        listOfNotNull(
+                            if (ne > 0) Fa.toFa(ne.toString()) + " خرج خاص" else null,
+                            if (ni > 0) Fa.toFa(ni.toString()) + " درآمد خاص" else null
+                        ).joinToString(" و ") + " در " + Fa.monthName(ym),
+                        fontWeight = FontWeight.Bold
+                    )
                     Text(
                         list.sortedByDescending { it.eff }.take(3).joinToString(" · ") { (it.note.ifBlank { catById[it.categoryId]?.name ?: "بدون دسته" }) + " " + millionsText(it.eff).removeSuffix(" میلیون") + "م" },
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1
                     )
                 }
-                Text(millionsText(total) + if (open) " ⌃" else " ›", fontWeight = FontWeight.ExtraBold, color = SpecialInk)
+                Text(
+                    listOfNotNull(
+                        if (totalOut > 0) millionsText(totalOut) else null,
+                        if (totalIn > 0) "+" + millionsText(totalIn) else null
+                    ).joinToString(" · ") + if (open) " ⌃" else " ›",
+                    fontWeight = FontWeight.ExtraBold, color = SpecialInk
+                )
             }
             if (open) Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 list.sortedByDescending { it.ts }.forEach { t -> TxRow(t, catById[t.categoryId]) { editing = t } }
@@ -85,12 +110,15 @@ fun SpecialCard(list: List<Tx>, cats: List<Category>, ym: Int) {
 /** ردیف «خرج خاص» در صفحه‌ی ویرایش (با پیشنهاد اگر خرج خیلی بزرگ است) */
 @Composable
 fun SpecialToggle(tx: Tx) {
-    if (!tx.isExpense || tx.excluded) return
+    if (tx.excluded && !(tx.reason == 5 && !tx.isExpense)) return
+    val inc = !tx.isExpense
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val db = remember { AppDb.get(ctx) }
     var on by remember(tx.id) { mutableStateOf(tx.special) }
-    val suggest by produceState(false, tx.id) { value = Special.looksSpecial(tx, db.tx().list()) }
+    val suggest by produceState(false, tx.id) {
+        value = if (inc) Special.looksSpecialIncome(tx, db.tx().list()) else Special.looksSpecial(tx, db.tx().list())
+    }
     val shape = RoundedCornerShape(16.dp)
     Column(
         Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(shape)
@@ -101,10 +129,14 @@ fun SpecialToggle(tx: Tx) {
             Text("⭐", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text("خرج خاص", fontWeight = FontWeight.Bold)
+                Text(if (inc) "درآمد خاص" else "خرج خاص", fontWeight = FontWeight.Bold)
                 Text(
-                    if (suggest && !on) "خیلی بزرگ‌تر از خرج‌های معمولت است؛ مثل لپ‌تاپ یا ماشین؟"
-                    else "در جمع ماه هست ولی میانگین‌ها و تحلیل‌ها را به هم نمی‌زند",
+                    when {
+                        suggest && !on && inc -> "خیلی بیشتر از درآمد معمول ماهانه‌ات است؛ مثل عیدی، پاداش یا فروش چیزی؟"
+                        suggest && !on -> "خیلی بزرگ‌تر از خرج‌های معمولت است؛ مثل لپ‌تاپ یا ماشین؟"
+                        inc -> "در جمع ماه هست ولی «درآمد معمول»، نرخ پس‌انداز و تحلیل‌ها را به هم نمی‌زند"
+                        else -> "در جمع ماه هست ولی میانگین‌ها و تحلیل‌ها را به هم نمی‌زند"
+                    },
                     style = MaterialTheme.typography.labelSmall, color = if (suggest && !on) SpecialInk else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -119,15 +151,22 @@ fun SpecialToggle(tx: Tx) {
 /** تحلیل: فهرست خرج‌های خاص امسال */
 @Composable
 fun SpecialYearList(allTxs: List<Tx>, cats: List<Category>, year: Int) {
-    val list = allTxs.filter { it.special && it.isExpense && !it.excluded && it.ym / 100 == year }.sortedByDescending { it.eff }
-    if (list.isEmpty()) return
+    val all = allTxs.filter { it.special && !it.excluded && it.ym / 100 == year }.sortedByDescending { it.eff }
+    if (all.isEmpty()) return
     val catById = cats.associateBy { it.id }
-    Text("⭐ خرج‌های خاص امسال · " + millionsText(list.sumOf { it.eff }), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
-    Text("در هیچ‌کدام از تحلیل‌ها و میانگین‌ها حساب نشده‌اند", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    list.forEach { t ->
-        Row(Modifier.padding(top = 4.dp)) {
-            Text(t.note.ifBlank { catById[t.categoryId]?.name ?: "بدون دسته" } + " · " + Fa.monthName(t.ym), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-            Text(millionsText(t.eff), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = SpecialInk)
+    listOf(true, false).forEach { e ->
+        val list = all.filter { it.isExpense == e }
+        if (list.isEmpty()) return@forEach
+        Text(
+            (if (e) "⭐ خرج‌های خاص امسال · " else "⭐ درآمدهای خاص امسال · ") + millionsText(list.sumOf { it.eff }),
+            fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+        )
+        Text("در هیچ‌کدام از تحلیل‌ها و میانگین‌ها حساب نشده‌اند", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        list.forEach { t ->
+            Row(Modifier.padding(top = 4.dp)) {
+                Text(t.note.ifBlank { catById[t.categoryId]?.name ?: if (e) "بدون دسته" else "واریز" } + " · " + Fa.monthName(t.ym), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                Text((if (e) "" else "+") + millionsText(t.eff), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = if (e) SpecialInk else IncomeColor)
+            }
         }
     }
 }
